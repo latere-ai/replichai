@@ -120,7 +120,12 @@ func RecordedIdentity(ctx context.Context, forge LiveForge, owner, name string) 
 // transcript beside it. These are the system-authored attestation over the
 // agent's own work. It reads no paper source and no clock other than now, so
 // the CLI and the server share one finalize and cannot drift.
-func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, now func() time.Time) (FinalizeReport, error) {
+//
+// run is what the caller knows about the run itself. A caller that knows
+// nothing passes the zero Run, and the manifest then keeps whatever record an
+// earlier finalize wrote: the run happened once, and a later finalize that did
+// not see it must not erase the account of it.
+func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, run Run, events []provider.Event, now func() time.Time) (FinalizeReport, error) {
 	if now == nil {
 		now = time.Now
 	}
@@ -177,6 +182,12 @@ func FinalizeLive(ctx context.Context, forge LiveForge, owner, name string, id p
 
 	manifest := ManifestFor(id, owner+"/"+name, methodDigest, verdict, now(), redist)
 	manifest.Findings = &Findings{Present: findings, Problems: problems, Reproduction: rep.Reproduction}
+	if run.known() {
+		if run.Rounds == 0 {
+			run.Rounds = gradingRounds(tree)
+		}
+		manifest.Run = &run
+	}
 	committed, err := commitManifestIfChanged(ctx, forge, owner, name, manifest)
 	if err != nil {
 		return rep, err
@@ -297,8 +308,18 @@ func commitManifestIfChanged(ctx context.Context, forge LiveForge, owner, name s
 		return false, err
 	} else if ok {
 		var prev Manifest
-		if json.Unmarshal(existing, &prev) == nil && SameManifest(prev, m) {
-			return false, nil // unchanged, so no commit
+		if json.Unmarshal(existing, &prev) == nil {
+			if m.Run == nil {
+				// This finalize knew nothing about the run. The record an
+				// earlier one wrote still describes it.
+				m.Run = prev.Run
+				if raw, err = json.MarshalIndent(m, "", "  "); err != nil {
+					return false, err
+				}
+			}
+			if SameManifest(prev, m) {
+				return false, nil // unchanged, so no commit
+			}
 		}
 	}
 	if err := forge.PutFile(ctx, owner, name, ManifestFile,
@@ -427,6 +448,21 @@ func systemAuthored(p string) bool {
 		return true
 	}
 	return strings.HasPrefix(p, transcriptDir+"/")
+}
+
+// gradingRounds counts the grades the tree carries. A local run commits each
+// round's grade as grade/verdict-<n>.json beside its work, so the count is how
+// many times the work was graded. A tree with none answers zero, which the
+// manifest leaves out: a hosted runtime grades out of sight, and that is not
+// the same as never grading.
+func gradingRounds(tree []string) int {
+	rounds := 0
+	for _, p := range tree {
+		if strings.HasPrefix(p, gradeDir+"/verdict-") && strings.HasSuffix(p, ".json") {
+			rounds++
+		}
+	}
+	return rounds
 }
 
 // holdsReproduction reports whether a committed tree holds anything the run put

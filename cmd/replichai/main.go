@@ -154,7 +154,8 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			if evidence.Status.Verdict != nil {
 				grade = provider.Grade(evidence.Status.Verdict.Grade)
 			}
-			if err := finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, m.Digest(), grade,
+			record := runRecord(runtime, evidence.Status, *model, audit.PromptDigest(ctx), stderr)
+			if err := finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, m.Digest(), grade, record,
 				providerEventsFromManaged(evidence.Events), *invite, stdout); err != nil {
 				return err
 			}
@@ -544,7 +545,7 @@ func finishLocalPush(ctx context.Context, runtime managed.Runtime, gh *github.Cl
 // the system-authored attestation, the verdict and its evidence, beside the
 // agent's work. It reads the repository from GitHub, so it works whether the
 // run finished in-process or is picked up afterwards by finish.
-func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, events []provider.Event, invite string, stdout *os.File) error {
+func finalizePublication(ctx context.Context, gh *github.Client, owner, name string, id paper.Identity, methodDigest string, verdict provider.Grade, run publish.Run, events []provider.Event, invite string, stdout *os.File) error {
 	repoFull := owner + "/" + name
 
 	// The instrument check is a CLI-only report (007a) read from the committed
@@ -558,7 +559,7 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 	// The finalize itself, which verifies the tree, writes the manifest, and
 	// commits the transcript, is the shared path the server also drives, so
 	// the two cannot drift. The CLI only reports what it produced.
-	rep, err := publish.FinalizeLive(ctx, gh, owner, name, id, methodDigest, verdict, events, time.Now)
+	rep, err := publish.FinalizeLive(ctx, gh, owner, name, id, methodDigest, verdict, run, events, time.Now)
 	if err != nil {
 		return err
 	}
@@ -743,7 +744,11 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 				if evidence.Status.Verdict != nil {
 					verdict = provider.Grade(evidence.Status.Verdict.Grade)
 				}
-				return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, providerEventsFromManaged(evidence.Events), *invite, stdout)
+				// The model that was asked for and the prompt the session was
+				// given were fixed by the process that started it, so neither
+				// is known here and neither is recorded.
+				record := runRecord(runtime, evidence.Status, "", audit.PromptDigest(ctx), stderr)
+				return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, record, providerEventsFromManaged(evidence.Events), *invite, stdout)
 			},
 		}
 		destination := finishDestination(ref)
@@ -759,7 +764,9 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		verdict = verdictOverride
 	}
 
-	return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, nil, *invite, stdout)
+	// No session is in hand, so nothing is known about the run. The manifest
+	// keeps whatever an earlier finalize recorded.
+	return finalizePublication(ctx, gh, owner, name, id, m.Digest(), verdict, publish.Run{}, nil, *invite, stdout)
 }
 
 // inviteFlag renders the --invite portion of the suggested finish command.

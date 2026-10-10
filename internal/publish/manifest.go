@@ -36,7 +36,91 @@ type Manifest struct {
 	Reproduction   Reproduction   `json:"reproduction"`
 	Redistribution Redistribution `json:"redistribution"`
 	Findings       *Findings      `json:"findings,omitempty"`
+	Run            *Run           `json:"run,omitempty"`
 }
+
+// Run records what one run ran under and how it ended (046). Two runs of one
+// paper under one method differ by the agent system, the model, the network
+// they could reach and how many times they were graded, and those moved the
+// result more than the paper did in the runs that prompted this record. The
+// manifest is the file the registry and any analysis read, so it says which run
+// this was.
+//
+// Every field is optional, and a field the caller could not know is left out
+// rather than guessed: a hosted runtime has no harness version to report, and a
+// run that never started has no model. A nil Run means the manifest predates
+// the record, or was written by a finalize that knew nothing about the run.
+//
+// There is no free-text error here. The reason is one of a closed list, because
+// a manifest may be made public and an error message can carry a path or a
+// credential that nothing has scanned.
+type Run struct {
+	// Project names the project that started the run, and Run and Runs say
+	// which run of the paper this was and of how many, counted from one. With
+	// the paper they place the run in a study.
+	Project string `json:"project,omitempty"`
+	Run     int    `json:"run,omitempty"`
+	Runs    int    `json:"runs,omitempty"`
+
+	// Runtime is where the session executed, and Session its identifier there.
+	Runtime string `json:"runtime,omitempty"`
+	Session string `json:"session,omitempty"`
+
+	// Harness is the coding agent that did the work, with the version it
+	// reported. Model is the model the runtime resolved, and RequestedModel
+	// what was asked for, which may be a preference such as "best".
+	Harness        string    `json:"harness,omitempty"`
+	HarnessVersion string    `json:"harness_version,omitempty"`
+	Model          *RunModel `json:"model,omitempty"`
+	RequestedModel string    `json:"requested_model,omitempty"`
+
+	// Sandbox is the boundary the work ran behind. Network is its egress
+	// policy; under an allowlist, NetworkAllowed counts the hosts on it and
+	// NetworkDigest identifies the list, so two runs can be seen to have had
+	// the same reach without the list being repeated here.
+	Sandbox        string `json:"sandbox,omitempty"`
+	Network        string `json:"network,omitempty"`
+	NetworkAllowed int    `json:"network_allowed,omitempty"`
+	NetworkDigest  string `json:"network_digest,omitempty"`
+
+	// PromptDigest identifies the exact instructions, task and rubric the
+	// session was given. It differs from the method digest, which covers the
+	// method's files and not the text the runtime adds around them. Build is
+	// the revision of this program that ran the session.
+	PromptDigest string `json:"prompt_digest,omitempty"`
+	Build        string `json:"build,omitempty"`
+
+	// StartedAt and FinishedAt bound the session. State and Reason say how it
+	// ended; Reason is ReasonNotStarted for a run that failed before a session
+	// existed.
+	StartedAt  time.Time `json:"started_at,omitzero"`
+	FinishedAt time.Time `json:"finished_at,omitzero"`
+	State      string    `json:"state,omitempty"`
+	Reason     string    `json:"reason,omitempty"`
+
+	// Rounds is how many times the work was graded. More than one means it was
+	// revised after a grade, so its findings are not the first attempt's.
+	Rounds int `json:"rounds,omitempty"`
+
+	// Tokens is every token the session used, and VendorCostMicroUSD what the
+	// harness reported it cost, where it reports one.
+	Tokens             int64 `json:"tokens,omitempty"`
+	VendorCostMicroUSD int64 `json:"vendor_cost_micro_usd,omitempty"`
+}
+
+// RunModel names a model by its provider and identifier.
+type RunModel struct {
+	Provider string `json:"provider,omitempty"`
+	ID       string `json:"id"`
+}
+
+// ReasonNotStarted is the Reason of a run that failed before its session
+// existed, for instance because the runtime could not be reached. No runtime
+// reports it, since no runtime ran.
+const ReasonNotStarted = "not_started"
+
+// known reports whether the record says anything at all.
+func (r Run) known() bool { return !reflect.DeepEqual(r, Run{}) }
 
 // Findings records what the system made of the agent's verdict.json (021a). It
 // is a record and not a gate: the findings are the agent's claim, the

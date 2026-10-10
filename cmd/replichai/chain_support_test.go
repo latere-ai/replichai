@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/project"
+	"github.com/latere-ai/replichai/internal/publish"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
@@ -106,6 +108,8 @@ type scriptedRunner struct {
 	out    string
 	pub    *publisher
 	pushed string
+	// record is the run record built at the end of the session.
+	record publish.Run
 }
 
 func (*scriptedRunner) Prepare(context.Context, batch.Resolved, batch.EntryState) error { return nil }
@@ -156,6 +160,9 @@ func (r *scriptedRunner) Execute(ctx context.Context, entry batch.Resolved) (bat
 			return err
 		}
 		r.pushed = workspace
+		// The record the product would put in the manifest, built from the
+		// session directory this runtime wrote itself.
+		r.record = runRecord(runtime, evidence.Status, audit.DefaultModelPreference, audit.PromptDigest(ctx), errOut)
 		return nil
 	}}
 	auditor := audit.NewSessionAuditor(controller, m,
@@ -234,6 +241,29 @@ func fakeForge(t *testing.T) *httptest.Server {
 // absent.
 func fakeForgeWith(t *testing.T, files map[string][]byte) *httptest.Server {
 	t.Helper()
+	server, _ := fakeForgeRecording(t, files)
+	return server
+}
+
+// forgeWrites is what a fake forge was asked to write through the contents
+// API, so a test can read back what the system committed and not only that it
+// committed something.
+type forgeWrites struct {
+	mu    sync.Mutex
+	files map[string][]byte
+}
+
+// file returns what was last written at path in the repository "owner/name".
+func (w *forgeWrites) file(repo, path string) []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.files[repo+"/"+path]
+}
+
+// fakeForgeRecording is fakeForgeWith that also keeps what was written.
+func fakeForgeRecording(t *testing.T, files map[string][]byte) (*httptest.Server, *forgeWrites) {
+	t.Helper()
+	writes := &forgeWrites{files: map[string][]byte{}}
 	var committed []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
@@ -249,6 +279,17 @@ func fakeForgeWith(t *testing.T, files map[string][]byte) *httptest.Server {
 			write(w, http.StatusOK, map[string]any{"tree": []any{}, "truncated": false})
 		case strings.Contains(path, "/contents/") && r.Method == http.MethodPut:
 			committed = append(committed, strings.SplitN(path, "/contents/", 2)[1])
+			var body struct {
+				Content string `json:"content"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				if raw, err := base64.StdEncoding.DecodeString(body.Content); err == nil {
+					repo, file, _ := strings.Cut(strings.TrimPrefix(path, "/repos/"), "/contents/")
+					writes.mu.Lock()
+					writes.files[repo+"/"+file] = raw
+					writes.mu.Unlock()
+				}
+			}
 			write(w, http.StatusCreated, map[string]any{"content": map[string]string{"sha": "manifest"}})
 		case strings.Contains(path, "/contents/"):
 			http.NotFound(w, r) // Nothing is committed yet.
@@ -283,7 +324,7 @@ func fakeForgeWith(t *testing.T, files map[string][]byte) *httptest.Server {
 			t.Error("the system committed no evidence after the push")
 		}
 	})
-	return server
+	return server, writes
 }
 
 func write(w http.ResponseWriter, status int, body any) {

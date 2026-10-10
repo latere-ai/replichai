@@ -89,12 +89,24 @@ func TestAProjectIsOpenedRunPushedAndFiled(t *testing.T) {
 		mount: provider.RepoMount{URL: allocated.URL, Token: allocated.Token},
 	}
 	work := t.TempDir()
+	runner := &scriptedRunner{t: t, root: t.TempDir(), out: work, pub: pub}
 	state, err := batch.Run(t.Context(),
 		batch.File{Project: title, Papers: []batch.Entry{{Paper: "10.1145/3654777.3676417"}}},
-		&scriptedRunner{t: t, root: t.TempDir(), out: work, pub: pub},
+		runner,
 		batch.Options{StatePath: filepath.Join(work, "batch.json")})
 	if err != nil {
 		t.Fatalf("run the project: %v: %s", err, state.Entries[0].Error)
+	}
+
+	// The run's record is read from the session directory the runtime wrote,
+	// not from a fixture: the harness and the sandbox it names are the ones
+	// that ran, and the round is the one grade this session kept.
+	record := runner.record
+	if record.Runtime != "local" || record.Harness != "claude-code" || record.Sandbox == "" || record.Network == "" {
+		t.Errorf("the record does not say what the run ran on: %+v", record)
+	}
+	if record.State != "done" || record.Rounds != 1 || record.Model == nil || !strings.HasPrefix(record.PromptDigest, "sha256:") {
+		t.Errorf("the record does not say how the run went: %+v", record)
 	}
 	if len(state.Entries) != 1 || state.Entries[0].Phase != batch.Done {
 		t.Fatalf("the paper did not finish: %+v", state.Entries)
