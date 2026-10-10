@@ -36,6 +36,9 @@ committed. The commit log already holds that.
 
 ### Fixed
 
+- Menus and select lists open in front of the whole page against the control
+  that opened them, flip above it where there is no room below, and stay
+  inside the window, so no box around them cuts them off.
 - Resuming a project that lists one paper several times runs the runs that
   failed or never started. It used to match by paper alone, so it ran none of
   them and reported every run as done with the first run's repository.
