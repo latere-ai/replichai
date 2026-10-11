@@ -809,6 +809,10 @@ try {
         // the pointer or keyboard focus.
         brands: [...f.querySelectorAll('.lu-footer-link[data-brand]')].map((a) => a.dataset.brand),
         gallery: hrefs.includes('https://latere.site/'),
+        // The chat as the lineup names it, and the catalog that describes
+        // every product, on the company site.
+        chat: f.querySelector('[data-footer-group="applications"] a[href="https://chat.latere.ai/"]')?.textContent.trim() ?? null,
+        catalog: f.querySelector('[data-footer-group="company"] a[href="https://latere.ai/products"]')?.textContent.trim() ?? null,
         ours: f.querySelector('[data-footer-group="research"] a[href="https://replichai.latere.ai/"]')?.textContent.trim() ?? null,
         platform: hrefs.includes('https://platform.latere.ai/console'),
         // Drive, Topos, Cella and Lux are sections of the platform console,
@@ -827,6 +831,8 @@ try {
     if (foot.groups.join() !== 'applications,research,platform,company,legal') fail(`the footer's groups are ${JSON.stringify(foot.groups)}, want applications, research, platform, company and legal`)
     if (foot.brands.join() !== 'chat,replichai,platform') fail(`the footer's product links are ${JSON.stringify(foot.brands)}, want chat, replichai and platform`)
     if (!foot.gallery) fail('the footer does not link the gallery')
+    if (foot.chat !== 'Latere Chat') fail(`the footer lists the chat as ${JSON.stringify(foot.chat)}, want Latere Chat`)
+    if (foot.catalog !== 'Products') fail(`the footer's link to the product catalog reads ${JSON.stringify(foot.catalog)}, want Products`)
     if (foot.ours !== 'ReplicHAI') fail(`the research group does not link this product by name (found ${JSON.stringify(foot.ours)})`)
     if (!foot.platform) fail('the footer does not link the platform console')
     if (foot.retired.length) fail(`the footer still links ${JSON.stringify(foot.retired)}; those products are platform sections now`)

@@ -14,7 +14,7 @@
   "dependencies": {
     "dompurify": "^3.4.12",
     "highlight.js": "^11.11.1",
-    "latere-ui": "github:latere-ai/latere-ui#v2.1.1",
+    "latere-ui": "github:latere-ai/latere-ui#v2.2.0",
     "marked": "^18.0.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

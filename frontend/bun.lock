@@ -7,7 +7,7 @@
       "dependencies": {
         "dompurify": "^3.4.12",
         "highlight.js": "^11.11.1",
-        "latere-ui": "github:latere-ai/latere-ui#v2.1.1",
+        "latere-ui": "github:latere-ai/latere-ui#v2.2.0",
         "marked": "^18.0.7",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
@@ -306,7 +306,7 @@
 
     "json5": ["json5@2.2.3", "", { "bin": { "json5": "lib/cli.js" } }, "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg=="],
 
-    "latere-ui": ["latere-ui@github:latere-ai/latere-ui#f4c87f4", { "dependencies": { "@opentelemetry/api": "1.9.1", "@opentelemetry/exporter-trace-otlp-http": "0.218.0", "@opentelemetry/instrumentation": "0.218.0", "@opentelemetry/instrumentation-document-load": "0.63.0", "@opentelemetry/instrumentation-fetch": "0.218.0", "@opentelemetry/instrumentation-xml-http-request": "0.218.0", "@opentelemetry/resources": "2.7.1", "@opentelemetry/sdk-trace-web": "2.7.1", "@opentelemetry/semantic-conventions": "1.43.0", "web-vitals": "6.2.2" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" } }, "latere-ai-latere-ui-f4c87f4", "sha512-Dk/QS7nDekh/5xxf923zUwx79C6LtHDqpfZPSv12MArzd+vc0yUgScjc9rccCUk+9lS3K5Tdgi1Q9xS57gOqpg=="],
+    "latere-ui": ["latere-ui@github:latere-ai/latere-ui#663e0f2", { "dependencies": { "@opentelemetry/api": "1.9.1", "@opentelemetry/exporter-trace-otlp-http": "0.218.0", "@opentelemetry/instrumentation": "0.218.0", "@opentelemetry/instrumentation-document-load": "0.63.0", "@opentelemetry/instrumentation-fetch": "0.218.0", "@opentelemetry/instrumentation-xml-http-request": "0.218.0", "@opentelemetry/resources": "2.7.1", "@opentelemetry/sdk-trace-web": "2.7.1", "@opentelemetry/semantic-conventions": "1.43.0", "web-vitals": "6.2.2" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" } }, "latere-ai-latere-ui-663e0f2", "sha512-6waYHaWgj3Zxwr2ilSfuEUwgrColp8O7j+GmbASc+gA5YX/aLs3A5eIM7jE/4g64TIdkhB2YTvX0eyIazlHF8A=="],
 
     "loose-envify": ["loose-envify@1.4.0", "", { "dependencies": { "js-tokens": "^3.0.0 || ^4.0.0" }, "bin": { "loose-envify": "cli.js" } }, "sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q=="],
 
