@@ -39,6 +39,8 @@ committed. The commit log already holds that.
   written under schema 1 still read, and the app shows them the same way.
 - The method changed with the schema, so its digest moved. A reproduction made
   from this release on is not comparable under one digest with an earlier one.
+- The footer links the product catalog at `latere.ai/products` under Company,
+  and lists the chat as Latere Chat under Applications.
 
 ### Fixed
 
