@@ -117,7 +117,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 // networkProfiles is the network profile each run is given, by the run's
 // index: the one its paper or its project file names, else the one the flag
 // names, else the default. Every name is checked before anything runs, so a
-// misspelt profile fails the study rather than one run of it.
+// misspelled profile fails the study rather than one run of it.
 func networkProfiles(entries []batch.Resolved, flag string) (map[int]audit.NetworkProfile, error) {
 	profiles := make(map[int]audit.NetworkProfile, len(entries))
 	for _, entry := range entries {
