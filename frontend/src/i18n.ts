@@ -34,13 +34,13 @@ const en = {
     // open and a session is what spends.
     landingClaim: 'Does the paper|reproduce?',
     landingLead:
-      'Give replichai a paper. It finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper does not state, and returns a verdict with its evidence.',
+      'Give ReplicHAI a paper. It finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper does not state, and returns a verdict with its evidence.',
     landingInnerTitle: 'The inner loop',
     landingInnerBody:
-      'The algorithm, model or analysis pipeline. replichai implements it, runs it, and publishes it as a repository with the agent’s commit history.',
+      'The algorithm, model or analysis pipeline. ReplicHAI implements it, runs it, and publishes it as a repository with the agent’s commit history.',
     landingOuterTitle: 'The outer loop',
     landingOuterBody:
-      'The study that tests it with people. replichai names it, marks it out of scope, and never simulates it. Simulating a human study is a common way reproducibility claims go wrong.',
+      'The study that tests it with people. ReplicHAI names it, marks it out of scope, and never simulates it. Simulating a human study is a common way reproducibility claims go wrong.',
     landingVerdictTitle: 'The verdict',
     landingVerdictBody:
       'Written by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning rather than only the number.',
@@ -50,7 +50,7 @@ const en = {
     // has.
     lpLoopsTitle: 'One loop re-runs.|The other cannot.',
     lpLoopsCaption:
-      'The algorithm can be re-run, so it is drawn as a closed loop. The study with people cannot, so it is drawn open. replichai never simulates it.',
+      'The algorithm can be re-run, so it is drawn as a closed loop. The study with people cannot, so it is drawn open. ReplicHAI never simulates it.',
     lpPipelineTitle: 'What a session|does',
     lpPipelineCaption:
       'Four steps. Each leaves something you can open afterwards: the release it found, the repository it wrote, and the transcript of how it got there.',
@@ -185,10 +185,34 @@ const en = {
     lpCostFundBody: 'Credits you buy go into your wallet. You allocate them to a project, and sessions spend from the project.',
     lpCostRun: 'Run',
     lpCostRunBody: 'A reserve is held while a session runs. Whatever it does not spend is returned when it finishes.',
+    // Figure 1 and the two tables (047). A figure is numbered and captioned the
+    // way a journal sets one: the number, a title that states the claim, then
+    // what each panel shows. The panel letters are the caption's handles.
+    figAlt: 'Figure 1. An inner loop, a closed ring that a marker goes round once per run, inside an outer loop, an open ring that nothing travels.',
+    figImplement: 'Implement',
+    figRerun: 'Execute',
+    figCompare: 'Compare',
+    figRecord: 'Record',
+    figRunLabel: 'Run',
+    figOpen: 'Never simulated',
+    figPanelA: 'a',
+    figPanelB: 'b',
+    figLabel: 'Figure {n}.',
+    figTitle: 'The boundary every audit draws.',
+    figBody:
+      '(a) The inner loop: the analysis a machine can re-run on what the authors released. Each lap is one run. (b) The outer loop: the study with people. It is named and left open, and ReplicHAI never simulates it.',
+    figPause: 'Pause the figure',
+    figPlay: 'Play the figure',
+    tableLabel: 'Table {n}.',
+    lpShipsTable: 'The five files every session commits.',
+    lpShipsColFile: 'File',
+    lpShipsColAnswers: 'What it answers',
+    lpDemoTable: 'A verdict as the app shows it. The paper and its numbers are invented.',
+    lpNavRegistry: 'Registry',
     signInTitle: 'Sign in',
     signInBody: 'Sign in to submit a paper, watch the audit run, and sign the verdict.',
     signInNote: 'Built for research with human participants.',
-    signInWith: 'Sign in with latere',
+    signInWith: 'Sign in with Latere',
     authUnavailableTitle: 'ReplicHAI|is unavailable',
     authUnavailableBody: 'We couldn’t check your session. You may be offline, or the service may be temporarily unavailable.',
     retry: 'Try again',
@@ -201,7 +225,7 @@ const en = {
     // things that help.
     noAccessTitle: 'No access|to this account',
     noAccessBody:
-      'You are signed in as {email}, but this account cannot use replichai right now. Sign out and back in. If that does not help, a platform admin has revoked access and can restore it.',
+      'You are signed in as {email}, but this account cannot use ReplicHAI right now. Sign out and back in. If that does not help, a platform admin has revoked access and can restore it.',
     // shell
     workspace: 'Workspace',
     navProjects: 'Projects',
@@ -400,9 +424,9 @@ const en = {
     purge: 'Delete permanently',
     purgeTitle: 'Delete this project permanently?',
     purgeBody:
-      'The project, its papers, and every session it holds are removed from replichai and cannot be brought back.',
+      'The project, its papers, and every session it holds are removed from ReplicHAI and cannot be brought back.',
     purgeKeepsRepos:
-      'The GitHub repositories its sessions published are made private, not deleted. This removes replichai’s record of the reproduction; the repositories are kept as evidence.',
+      'The GitHub repositories its sessions published are made private, not deleted. This removes ReplicHAI’s record of the reproduction; the repositories are kept as evidence.',
     purgeConfirm: 'Delete permanently',
     purging: 'Deleting…',
     errCreditsRemaining: 'This project still holds credits. Take them back first, then delete it.',
@@ -415,7 +439,7 @@ const en = {
     deleteSessionBody:
       'The session and its record are removed from this project. Its cost stays on your ledger. The session cannot be brought back, but you can run the paper again.',
     deleteSessionKeepsRepo:
-      'Its GitHub repository is made private, not deleted. This removes replichai’s record of the reproduction; the repository is kept as evidence.',
+      'Its GitHub repository is made private, not deleted. This removes ReplicHAI’s record of the reproduction; the repository is kept as evidence.',
     deleteSessionConfirm: 'Delete session',
     deletingSession: 'Deleting…',
     errSessionRunning: 'This session is still running. Stop it first.',
@@ -443,7 +467,7 @@ const en = {
     // guessing why, whether a typo, a truncated link, or a page that was never
     // here, and offers the two places worth going next.
     notFoundTitle: 'No page|at this address',
-    notFoundBody: 'There is no page at this address on replichai. The link may be incomplete, or the page may never have existed.',
+    notFoundBody: 'There is no page at this address on ReplicHAI. The link may be incomplete, or the page may never have existed.',
     notFoundHome: 'Go to your projects',
     // submit / new project
     submit: 'Submit',
@@ -771,11 +795,11 @@ const en = {
       'Publishing puts your name on this result, so the name must link to a public page. Choose a handle above and turn on the public profile.',
     profileNotFound: 'No such profile',
     profileNotFoundBody: 'This researcher has no public page, or the address is wrong.',
-    profileBackHome: 'Go to replichai',
+    profileBackHome: 'Go to ReplicHAI',
     profileSignedWork: 'Signed reproductions',
     profileNoSignedWork: 'Nothing published under this name yet.',
     profileUnverified:
-      'These details are self-reported and unverified: replichai does not check that somebody works where they say. It does guarantee that the work listed below is public and was signed by this account.',
+      'These details are self-reported and unverified: ReplicHAI does not check that somebody works where they say. It does guarantee that the work listed below is public and was signed by this account.',
     errHandleTaken: 'That handle is already taken.',
     errHandleReserved: 'That handle is reserved.',
     errInvalidHandle: 'Use 3\u201339 characters: a\u2013z, 0\u20139 and hyphens.',

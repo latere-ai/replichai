@@ -5,15 +5,23 @@ import { SiteFooter } from 'latere-ui/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { listPublic, type PaperCitation, type ProjectView } from './api'
-import { LatereMark, Lockup, Mark } from './brand'
-import { mountHeroScene } from './hero-scene'
+import { LatereMark, Lockup, Mark, markArc } from './brand'
+import { HeroFigure } from './hero-figure'
 import type { I18n, TKey } from './i18n'
 import { Ico } from './icons'
 import { listCitation } from './papers'
-import type { Theme, ThemeMode } from './theme'
+import type { ThemeMode } from './theme'
 import { Seams } from './ui'
+import './landing.css'
 
-// The landing (029, rebuilt by 033): a full page rather than a sign-in screen.
+// The landing (029, rebuilt by 033, set like a paper by 047): a full page
+// rather than a sign-in screen.
+//
+// 047 sets it the way research is set: numbered sections under a rule rather
+// than boxed bands, a serif to state and a sans to read, a figure numbered and
+// captioned underneath, tables with three rules and nothing else, and the
+// registry as a list of references. The argument and every guarantee below
+// are unchanged.
 //
 // 017 built it as a single fold and 029 made it a page: the argument, three
 // figures that show the mechanism rather than assert it, and real published
@@ -74,11 +82,12 @@ function useReveal<T extends HTMLElement>() {
 
 const REDUCE = '(prefers-reduced-motion: reduce)'
 
-// Band is one section of the page: an eyebrow naming what it is about, a
-// heading, a caption, and whatever shows the thing. It carries the reveal, so no
-// screen below has to remember to.
+// Band is one section of the page, set like a section of a paper: a rule, its
+// number and name in the margin, a serif heading, a caption, and whatever shows
+// the thing. It carries the reveal, so no section below has to remember to.
 function Band({
   id,
+  n,
   eyebrow,
   i18n,
   titleKey,
@@ -87,6 +96,7 @@ function Band({
   children,
 }: {
   id: string
+  n: number
   i18n: I18n
   eyebrow: string
   // The key, not the sentence: the heading is set by Seams, which is the only
@@ -99,90 +109,62 @@ function Band({
   const ref = useReveal<HTMLElement>()
   return (
     <section className={className ? `lp-section ${className}` : 'lp-section'} data-test={id} ref={ref}>
-      <div className="lp-head">
-        <span className="lp-eyebrow">{eyebrow}</span>
-        <h2>
-          <Seams i18n={i18n} k={titleKey} />
-        </h2>
-        {caption && <p>{caption}</p>}
-      </div>
+      <SectionHead i18n={i18n} n={n} eyebrow={eyebrow} titleKey={titleKey} caption={caption} />
       {children}
     </section>
   )
 }
 
+// SectionHead is the margin and the heading: the number and name of the section
+// on the left, the heading and its caption on the right, as a paper sets a
+// numbered section. On a phone the two stack.
+function SectionHead({ i18n, n, eyebrow, titleKey, caption }: { i18n: I18n; n: number; eyebrow: string; titleKey: TKey; caption?: string }) {
+  return (
+    <div className="lp-head">
+      <span className="lp-eyebrow">
+        <span className="lp-n">{n}</span>
+        {eyebrow}
+      </span>
+      <div className="lp-head-main">
+        <h2>
+          <Seams i18n={i18n} k={titleKey} />
+        </h2>
+        {caption && <p>{caption}</p>}
+      </div>
+    </div>
+  )
+}
+
 // ── The hero ────────────────────────────────────────────────────────────────
 
-// HeroSlab is the first screen: a panel with the mark inside it as a field of
-// particles rather than a drawing. The scene is loaded lazily and is allowed to
-// fail; the slab, the claim, and the sign-in and registry links are HTML and
-// never depend on it.
-function HeroSlab({ i18n, href, theme }: { i18n: I18n; href: string; theme: Theme }) {
+// Hero is the first screen: the claim and the way in on the left, Figure 1 on
+// the right. Every word and both calls to action are HTML and depend on
+// nothing that loads; the figure is inline SVG and has nothing to fail.
+function Hero({ i18n, href }: { i18n: I18n; href: string }) {
   const { t } = i18n
-  const stage = useRef<HTMLDivElement | null>(null)
-  const mount = useRef<HTMLDivElement | null>(null)
   // The hero is a band like any other and starts at the pre-reveal opacity, so
-  // it needs the observer that ends that. Without it the whole first screen,
-  // slab, scene, claim, and both header links, stays at opacity 0 for every reader
-  // who has not asked for less motion, which is nearly all of them.
+  // it needs the observer that ends that. Without it the whole first screen
+  // stays at opacity 0 for every reader who has not asked for less motion.
   const reveal = useReveal<HTMLElement>()
-
-  useEffect(() => {
-    const el = mount.current
-    if (!el) return
-    let live = true
-    let scene: Awaited<ReturnType<typeof mountHeroScene>> = null
-    const reduce = window.matchMedia?.(REDUCE).matches ?? false
-    mountHeroScene(el, stage.current, reduce, theme)
-      .then((s) => {
-        if (!live) return s?.dispose()
-        scene = s
-      })
-      .catch(() => {})
-    return () => {
-      live = false
-      scene?.dispose()
-    }
-    // The palette is baked into every buffer the scene builds, so an appearance
-    // change is a rebuild rather than a repaint. It costs one teardown at the
-    // moment somebody flips the switch, which is the only moment it happens.
-  }, [theme])
-
   return (
     <section className="lp-hero" ref={reveal}>
-      <div className="lp-slab" ref={stage}>
-        <div className="lp-scene" ref={mount} aria-hidden="true" />
-        <div className="lp-slab-veil" aria-hidden="true" />
-        <div className="lp-slab-top">
-          <span className="lp-eyebrow">{t('lpEyebrowAudited')}</span>
-          <span className="lp-slab-aside">{t('lpHeroAside')}</span>
+      <div className="lp-hero-copy">
+        <span className="lp-eyebrow">{t('lpEyebrowAudited')}</span>
+        <h1>
+          <Seams i18n={i18n} k="landingClaim" />
+        </h1>
+        <p className="landing-lead">{t('landingLead')}</p>
+        <div className="lp-cta">
+          <a className="btn lg" data-test="lp-hero-signin" href={href}>
+            <LatereMark height={12} /> {t('signInWith')}
+          </a>
+          <a className="btn ghost lg" data-test="lp-hero-registry" href="/registry">
+            {t('browseRegistry')} <Ico name="arrowRight" size={14} />
+          </a>
         </div>
-        <div className="lp-slab-foot">
-          <div className="lp-hero-copy">
-            <h1>
-              <Seams i18n={i18n} k="landingClaim" />
-            </h1>
-            <p className="landing-lead">{t('landingLead')}</p>
-            <div className="lp-cta">
-              <a className="btn lg" data-test="lp-hero-signin" href={href}>
-                <LatereMark height={12} /> {t('signInWith')}
-              </a>
-              <a className="btn ghost lg lp-on-slab" data-test="lp-hero-registry" href="/registry">
-                <Ico name="globe" size={13} /> {t('browseRegistry')}
-              </a>
-            </div>
-            <p className="landing-note">{t('signInBody')}</p>
-          </div>
-          <div className="lp-slab-legend">
-            <span className="lp-legend-row">
-              <span className="lp-swatch lp-swatch-inner" /> {t('landingInnerTitle')}
-            </span>
-            <span className="lp-legend-row">
-              <span className="lp-swatch lp-swatch-outer" /> {t('landingOuterTitle')}
-            </span>
-          </div>
-        </div>
+        <p className="landing-note">{t('signInBody')}</p>
       </div>
+      <HeroFigure i18n={i18n} />
     </section>
   )
 }
@@ -203,42 +185,42 @@ const SHIPS = [
 function ShipsBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-ships" i18n={i18n} className="lp-split" eyebrow={t('lpShipsEyebrow')} titleKey="lpShipsTitle" caption={t('lpShipsCaption')}>
-      <ol className="lp-stack">
-        {SHIPS.map((f, i) => (
-          <li key={f.path} className={'warn' in f && f.warn ? 'lp-file warn' : 'lp-file'} style={{ '--i': i } as React.CSSProperties}>
-            <span className="lp-file-name">{f.path}</span>
-            <span className="lp-file-body">{t(f.body)}</span>
+    <Band id="lp-ships" n={3} i18n={i18n} eyebrow={t('lpShipsEyebrow')} titleKey="lpShipsTitle" caption={t('lpShipsCaption')}>
+      {/* A table, set with three rules and nothing else; its caption above it,
+          where a journal sets a table's. */}
+      <div className="lp-table-wrap">
+        <p className="lp-table-caption">
+          <b>{t('tableLabel', { n: '1' })}</b> {t('lpShipsTable')}
+        </p>
+        <ol className="lp-stack">
+          <li className="lp-file lp-file-head" aria-hidden="true">
+            <span>{t('lpShipsColFile')}</span>
+            <span>{t('lpShipsColAnswers')}</span>
           </li>
-        ))}
-      </ol>
+          {SHIPS.map((f, i) => (
+            <li key={f.path} className={'warn' in f && f.warn ? 'lp-file warn' : 'lp-file'} style={{ '--i': i } as React.CSSProperties}>
+              <span className="lp-file-name">{f.path}</span>
+              <span className="lp-file-body">{t(f.body)}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </Band>
   )
 }
 
 // ── The boundary ────────────────────────────────────────────────────────────
 
-// LoopFigure is the product's one boundary, drawn: an inner ring a machine
-// re-runs, drawn closed and traced by a runner that goes round, and an outer ring
-// that stands for the study with people, drawn open and never completed.
-//
-// It is the mark at figure scale, deliberately: the identity and the argument
-// are one thing, so a reader who sees this ten times in a browser tab has
-// already been told what the tab means.
-function LoopFigure() {
+// The three points carry a glyph each, drawn from the mark: the closed ring for
+// the inner loop, the open arc for the outer one, and the two together for the
+// verdict, which is written across both. The color is the mark's: azure for
+// what re-runs, ink for what does not.
+function PointGlyph({ kind }: { kind: 'Inner' | 'Outer' | 'Verdict' }) {
   return (
-    <figure className="lp-loop" aria-hidden="true">
-      <svg viewBox="0 0 240 240" className="lp-loop-svg" role="img">
-        {/* The outer loop: open, and it stays open. The dash pattern is the
-            mark's own, scaled: six dashes, so it never reads as a spinner. */}
-        <circle className="lp-ring-outer" cx="120" cy="120" r="92" strokeDasharray="60 36.87" />
-        {/* The inner loop: closed, because it is the half that re-runs. */}
-        <circle className="lp-ring-inner" cx="120" cy="120" r="50" />
-        {/* The runner: one arc traveling the closed loop. It is what "re-runs"
-            looks like. */}
-        <circle className="lp-ring-runner" cx="120" cy="120" r="50" strokeDasharray="40 274" />
-      </svg>
-    </figure>
+    <svg className="lp-point-glyph" width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      {kind !== 'Inner' && <path className="mark-outer" d={markArc(12, 12, 9.35)} strokeWidth={1.4} />}
+      {kind !== 'Outer' && <circle className="mark-inner" cx="12" cy="12" r="4.75" strokeWidth={1.7} />}
+    </svg>
   )
 }
 
@@ -250,28 +232,18 @@ const POINTS = [
 
 function LoopsBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
-  const ref = useReveal<HTMLElement>()
   return (
-    <section className="lp-section lp-loops" data-test="lp-loops" ref={ref}>
-      <div className="lp-panel lp-block">
-        <div className="lp-panel-copy">
-          <span className="lp-eyebrow">{t('lpLoopsEyebrow')}</span>
-          <h2>
-            <Seams i18n={i18n} k="lpLoopsTitle" />
-          </h2>
-          <p>{t('lpLoopsCaption')}</p>
-          <div className="landing-points">
-            {POINTS.map((p) => (
-              <div key={p.key} className={p.open ? 'landing-point open' : 'landing-point'}>
-                <h3>{t(`landing${p.key}Title`)}</h3>
-                <p>{t(`landing${p.key}Body`)}</p>
-              </div>
-            ))}
+    <Band id="lp-loops" n={1} i18n={i18n} className="lp-loops" eyebrow={t('lpLoopsEyebrow')} titleKey="lpLoopsTitle" caption={t('lpLoopsCaption')}>
+      <div className="landing-points">
+        {POINTS.map((p) => (
+          <div key={p.key} className={p.open ? 'landing-point open' : 'landing-point'}>
+            <PointGlyph kind={p.key} />
+            <h3>{t(`landing${p.key}Title`)}</h3>
+            <p>{t(`landing${p.key}Body`)}</p>
           </div>
-        </div>
-        <LoopFigure />
+        ))}
       </div>
-    </section>
+    </Band>
   )
 }
 
@@ -390,18 +362,12 @@ function WalkBand({ i18n }: { i18n: I18n }) {
         reveal(el)
       }}
     >
-      <div className="lp-head">
-        <span className="lp-eyebrow">{t('lpPipelineEyebrow')}</span>
-        <h2>
-          <Seams i18n={i18n} k="lpPipelineTitle" />
-        </h2>
-        <p>{t('lpPipelineCaption')}</p>
-      </div>
+      <SectionHead i18n={i18n} n={2} eyebrow={t('lpPipelineEyebrow')} titleKey="lpPipelineTitle" caption={t('lpPipelineCaption')} />
       <div className="lp-walk-grid">
         <ol className="lp-walk-steps">
           {STEPS.map((s, i) => (
             <li key={s} className="lp-step" data-step={i}>
-              <span className="lp-step-n">{t('lpStepN', { n: String(i + 1).padStart(2, '0') })}</span>
+              <span className="lp-step-n">{t('lpStepN', { n: String(i + 1) })}</span>
               <h3>{t(`lpStep${s}`)}</h3>
               <p>{t(`lpStep${s}Body`)}</p>
               <span className="lp-step-artifact">
@@ -410,7 +376,7 @@ function WalkBand({ i18n }: { i18n: I18n }) {
             </li>
           ))}
         </ol>
-        <div className="lp-walk-panel lp-block">
+        <div className="lp-walk-panel">
           <div className="lp-plates">
             <div className="lp-plate" data-plate="0">
               <span className="lp-plate-label">{t('lpPlateKey')}</span>
@@ -486,8 +452,11 @@ const PART_ICONS = { Claim: 'layers', Evidence: 'fileText', Verdict: 'shieldChec
 function VerdictBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-anatomy" i18n={i18n} eyebrow={t('lpAnatomyEyebrow')} titleKey="lpAnatomyTitle" caption={t('lpAnatomyCaption')}>
+    <Band id="lp-anatomy" n={4} i18n={i18n} eyebrow={t('lpAnatomyEyebrow')} titleKey="lpAnatomyTitle" caption={t('lpAnatomyCaption')}>
       <div className="lp-showcase">
+        <p className="lp-table-caption">
+          <b>{t('tableLabel', { n: '2' })}</b> {t('lpDemoTable')}
+        </p>
         <div className="lp-window">
           <div className="lp-window-bar">
             <span className="lp-window-ico">
@@ -573,7 +542,7 @@ const FIELDS = [
 function WhoBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-who" i18n={i18n} className="lp-split" eyebrow={t('lpWhoEyebrow')} titleKey="lpWhoTitle" caption={t('lpWhoCaption')}>
+    <Band id="lp-who" n={5} i18n={i18n} eyebrow={t('lpWhoEyebrow')} titleKey="lpWhoTitle" caption={t('lpWhoCaption')}>
       <div className="lp-fields">
         {FIELDS.map((f) => (
           <div key={f.key} className={f.accent ? 'lp-field accent' : 'lp-field'}>
@@ -593,29 +562,19 @@ const COSTS = ['SignIn', 'Fund', 'Run'] as const
 
 function CostBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
-  const ref = useReveal<HTMLElement>()
   return (
-    <section className="lp-section" data-test="lp-cost" ref={ref}>
-      <div className="lp-panel lp-quiet">
-        <div className="lp-head">
-          <span className="lp-eyebrow">{t('lpCostEyebrow')}</span>
-          <h2>
-            <Seams i18n={i18n} k="lpCostTitle" />
-          </h2>
-          <p>{t('lpCostCaption')}</p>
-        </div>
-        <div className="lp-costs">
-          {COSTS.map((c, i) => (
-            <div key={c} className="lp-cost">
-              {/* A numeral needs no translation, so it is one. */}
-              <span className="lp-cost-n">{String(i + 1).padStart(2, '0')}</span>
-              <h3>{t(`lpCost${c}`)}</h3>
-              <p>{t(`lpCost${c}Body`)}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
+    <Band id="lp-cost" n={6} i18n={i18n} eyebrow={t('lpCostEyebrow')} titleKey="lpCostTitle" caption={t('lpCostCaption')}>
+      <ol className="lp-costs">
+        {COSTS.map((c, i) => (
+          <li key={c} className="lp-cost">
+            {/* A numeral needs no translation, so it is one. */}
+            <span className="lp-cost-n">{i + 1}</span>
+            <h3>{t(`lpCost${c}`)}</h3>
+            <p>{t(`lpCost${c}Body`)}</p>
+          </li>
+        ))}
+      </ol>
+    </Band>
   )
 }
 
@@ -643,40 +602,37 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
   if (rows.length === 0) return null
   return (
     <section className="lp-section" data-test="lp-strip" ref={ref}>
-      <div className="lp-strip-head">
-        <div className="lp-head">
-          <span className="lp-eyebrow">{t('lpStripEyebrow')}</span>
-          <h2>
-            <Seams i18n={i18n} k="lpStripTitle" />
-          </h2>
-          <p>{t('lpStripCaption')}</p>
-        </div>
-        <a className="btn ghost sm" href="/registry">
-          <Ico name="globe" size={13} /> {t('browseRegistry')}
-        </a>
-      </div>
-      <div className="lp-strip">
+      <SectionHead i18n={i18n} n={7} eyebrow={t('lpStripEyebrow')} titleKey="lpStripTitle" caption={t('lpStripCaption')} />
+      {/* Set as a paper sets its references: numbered, the citation first, the
+          work's own title after it, and what makes it a reproduction last. */}
+      <ol className="lp-strip">
         {rows.map((p, i) => (
-          <a key={p.id} className="lp-card" href={`/p/${p.id}`} style={{ '--i': i } as React.CSSProperties}>
-            <span className="lp-card-title">{p.title}</span>
-            {/* Which paper this is a reproduction of (043). A card's title is a
-                name its owner typed; the citation is the paper's own, and it is
-                what a stranger scans the registry by. A project holding more
-                than one says so rather than letting the first stand for all. */}
-            <PaperCite i18n={i18n} papers={p.papers} />
-            {/* Named, and named as what: a bare name under a paper's title reads
-                as the paper's author, which is the one person this line is never
-                about. The signer is who put their name to the reproduction. */}
-            <span className="lp-card-by">
-              <Ico name="shieldCheck" size={11} />
-              {t('lpCardSigner', { name: p.signed_off_name || p.owner_name || t('ownerUnknown') })}
-            </span>
-            <span className="lp-card-foot">
-              <Ico name="globe" size={11} /> {t('sessionCount', { n: String(p.session_count) })}
-            </span>
-          </a>
+          <li key={p.id} style={{ '--i': i } as React.CSSProperties}>
+            <a className="lp-card" href={`/p/${p.id}`}>
+              <span className="lp-card-n">{i + 1}</span>
+              <span className="lp-card-body">
+                {/* Which paper this is a reproduction of (043). A card's title
+                    is a name its owner typed; the citation is the paper's own,
+                    and it is what a stranger scans the registry by. */}
+                <PaperCite i18n={i18n} papers={p.papers} />
+                <span className="lp-card-title">{p.title}</span>
+                {/* Named, and named as what: a bare name under a paper's title
+                    reads as the paper's author, which is the one person this
+                    line is never about. The signer is who put their name to
+                    the reproduction. */}
+                <span className="lp-card-by">
+                  {t('lpCardSigner', { name: p.signed_off_name || p.owner_name || t('ownerUnknown') })}
+                  <span className="lp-card-foot"> · {t('sessionCount', { n: String(p.session_count) })}</span>
+                </span>
+              </span>
+              <Ico name="arrowRight" size={14} className="lp-card-go" />
+            </a>
+          </li>
         ))}
-      </div>
+      </ol>
+      <a className="lp-more" href="/registry">
+        {t('browseRegistry')} <Ico name="arrowRight" size={13} />
+      </a>
     </section>
   )
 }
@@ -716,10 +672,11 @@ export function Landing({
 }: {
   i18n: I18n
   next?: string
-  theme: { mode: ThemeMode; theme: Theme; setMode: (m: ThemeMode) => void }
+  theme: { mode: ThemeMode; setMode: (m: ThemeMode) => void }
 }) {
   const { t } = i18n
   const href = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
+  const closeRef = useReveal<HTMLElement>()
 
   return (
     <div className="landing">
@@ -727,29 +684,31 @@ export function Landing({
           fold: a page that scrolls cannot keep a button above the fold, and a
           sticky header keeps it visible at every position. */}
       <header className="lp-bar">
-        <HomeLockup />
-        <nav className="lp-bar-actions">
-          <a className="btn ghost sm lp-bar-registry" href="/registry">
-            <Ico name="globe" size={13} /> {t('browseRegistry')}
-          </a>
-          <a className="btn" data-test="lp-signin" href={href}>
-            <LatereMark height={11} /> {t('signInWith')}
-          </a>
-        </nav>
+        <div className="lp-bar-in">
+          <HomeLockup />
+          <nav className="lp-bar-actions">
+            <a className="lp-bar-link lp-bar-registry" href="/registry">
+              {t('lpNavRegistry')}
+            </a>
+            <a className="btn" data-test="lp-signin" href={href}>
+              <LatereMark height={11} /> {t('signInWith')}
+            </a>
+          </nav>
+        </div>
       </header>
 
-      <HeroSlab i18n={i18n} href={href} theme={theme.theme} />
-      <ShipsBand i18n={i18n} />
+      <Hero i18n={i18n} href={href} />
       <LoopsBand i18n={i18n} />
       <WalkBand i18n={i18n} />
+      <ShipsBand i18n={i18n} />
       <VerdictBand i18n={i18n} />
       <WhoBand i18n={i18n} />
       <CostBand i18n={i18n} />
       <PublishedStrip i18n={i18n} />
 
-      <section className="lp-close-wrap">
-        <div className="lp-close lp-block">
-          <Mark size={46} className="lp-close-mark" />
+      <section className="lp-close-wrap" ref={closeRef}>
+        <div className="lp-close">
+          <Mark size={40} className="lp-close-mark" />
           <h2>
             <Seams i18n={i18n} k="lpCloseTitle" />
           </h2>
@@ -758,8 +717,8 @@ export function Landing({
             <a className="btn lg" href={href}>
               <LatereMark height={12} /> {t('signInWith')}
             </a>
-            <a className="btn ghost lg lp-on-slab" href="/registry">
-              <Ico name="globe" size={13} /> {t('browseRegistry')}
+            <a className="btn ghost lg" href="/registry">
+              {t('browseRegistry')} <Ico name="arrowRight" size={14} />
             </a>
           </div>
           <span className="landing-note">{t('signInNote')}</span>

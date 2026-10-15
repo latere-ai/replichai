@@ -147,6 +147,9 @@ const ICONS = {
     p('M12 16.5V11M12 7.5h.01', 'a'),
   ],
   dot: <circle key="c" cx="12" cy="12" r="4.5" />,
+  pause: p('M9 5.5v13M15 5.5v13'),
+  play: p('M8 5.8v12.4a.8.8 0 0 0 1.2.7l9.6-6.2a.8.8 0 0 0 0-1.4L9.2 5.1a.8.8 0 0 0-1.2.7Z'),
+  arrowRight: p('M5 12h14M13 6l6 6-6 6'),
 } satisfies Record<string, ReactNode>
 
 export type IconName = keyof typeof ICONS
