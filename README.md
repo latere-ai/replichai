@@ -64,8 +64,8 @@ judgment. [`docs/procedure.md`](docs/procedure.md) explains why.
 
 One audit is one run. A second run of the same paper can split it into
 different components and reach different outcomes for them, and
-[`docs/repeat-runs-pilot.md`](docs/repeat-runs-pilot.md) records how far apart
-runs have landed. A project file can run one paper several times.
+[a pilot of 49 runs](https://github.com/latere-ai/replichai-experiments/blob/main/docs/repeat-runs-pilot.md) records how
+far apart runs have landed. A project file can run one paper several times.
 
 ## Run it on your own machine
 

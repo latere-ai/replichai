@@ -31,15 +31,9 @@ Pages grouped by who reads them.
 | [`architecture.md`](architecture.md) | how the engine and the application are put together, the trust boundaries, and why each layer is split where it is |
 | [`../specs/README.md`](../specs/README.md) | the design records: what was decided, what was built, and what is left |
 
-## Strategy notes
+## Studies of the audits
 
-Working notes for the team deciding what to build and what to study. They are
-not documentation of the software.
-
-| Page | |
-|---|---|
-| [`landscape.md`](landscape.md) | who else was building something adjacent in July 2026, scored on four axes, with the August corrections folded in |
-| [`consultations.md`](consultations.md) | what researchers advised in August 2026, the decisions it leaves open, and where each stood in October |
-| [`repeat-runs-pilot.md`](repeat-runs-pilot.md) | what 49 runs of three papers showed about run-to-run variation, and where it came from |
-| [`dispersion-model.md`](dispersion-model.md) | a proposed statistical model that gives each paper its own run-to-run dispersion, and the tests that would show it describes the paper |
-| [`dispersion-model.pdf`](dispersion-model.pdf) | the same model as a manuscript that reads on its own, with the pilot as its appendix. [`../tools/manuscript/build.py`](../tools/manuscript/build.py) builds it and its `.tex` from the two pages above; rebuild after editing either |
+How far repeat audits of one paper agree, the statistical model for measuring
+it, and the background notes behind that work are kept in
+[`latere-ai/replichai-experiments`](https://github.com/latere-ai/replichai-experiments). They are not
+documentation of the software.

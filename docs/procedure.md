@@ -60,7 +60,7 @@ A per-component reproduction table for the inner loop: each component the bounda
 
 How many components an inner loop has is itself a judgment, so the scalar rate is treated as a summary, not a measurement. The same paper, audited repeatedly under one method, decomposes into different counts (between 14 and 22 components across ten runs of one paper), and the rate moves with it. The runs also differ in more than the count: they place the inner/outer boundary differently (one to five outer-loop components across six runs of another paper), and they label the same disagreement with the paper differently. A rate is therefore reported only as a derived footnote to the table, labeled as a summary of one particular decomposition, and never compared across papers or across runs. The rubric grades the table, not the number.
 
-One audit is one run, and one run is one draw. [`repeat-runs-pilot.md`](repeat-runs-pilot.md) records how far repeat runs of one paper land from each other and why; much of the difference comes from the agent system and the environment the run had, not from the paper.
+One audit is one run, and one run is one draw. [A pilot of 49 runs](https://github.com/latere-ai/replichai-experiments/blob/main/docs/repeat-runs-pilot.md) records how far repeat runs of one paper land from each other and why; much of the difference comes from the agent system and the environment the run had, not from the paper.
 
 The verdict must also separate **re-analysis** from **re-observation**. Reproducing a paper's statistics from its released data does not re-validate its claim about the world; that claim rests on the outer loop and on the sample that was collected. An audit that blurs the two overstates what it proved.
 

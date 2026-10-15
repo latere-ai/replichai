@@ -13,7 +13,7 @@ status: designed
 
 ## Problem
 
-A session's verdict is presented as the paper's verdict. It is one draw. Forty-nine runs of three papers on 10 and 11 September 2026 ([`docs/repeat-runs-pilot.md`](../docs/repeat-runs-pilot.md)) showed how far apart draws land and why:
+A session's verdict is presented as the paper's verdict. It is one draw. Forty-nine runs of three papers on 10 and 11 September 2026 ([the pilot](https://github.com/latere-ai/replichai-experiments/blob/main/docs/repeat-runs-pilot.md)) showed how far apart draws land and why:
 
 - Two agent systems ran every paper under one method digest. Component counts varied about eight times more under one than the other, and the systems placed the inner/outer boundary differently. The manifest the registry reads records neither system.
 - Which copy of the paper a run could read depended on its network policy, so identical computations were compared against different reported values.
@@ -76,7 +76,7 @@ The local runtime runs `verdict.Validate` after the worker stage and gives the p
 
 ### 9. Report a study, not a run (designed)
 
-A study screen shows, per claim, how many runs reproduced it under each environment profile, the paper's instability (the chance two runs disagree about a claim), and the difference the environment made. A single session's verdict says it is one run. The statistics are in [`docs/dispersion-model.md`](../docs/dispersion-model.md). The screen is prototyped and reviewed before it is wired.
+A study screen shows, per claim, how many runs reproduced it under each environment profile, the paper's instability (the chance two runs disagree about a claim), and the difference the environment made. A single session's verdict says it is one run. The statistics are in [the dispersion model](https://github.com/latere-ai/replichai-experiments/blob/main/docs/dispersion-model.md). The screen is prototyped and reviewed before it is wired.
 
 ## The construct
 
@@ -92,7 +92,7 @@ For the platform, decisions 5 and 6 carry this measure: the released materials a
 2. Every pilot mismatch shape and `not_fetched` validate under schema 2; one malformed row is a problem at that row and the rest of the file survives; schema 1 files still validate. (Built. Of the 29 findings files the pilot runs published, 27 validate and all 214 mismatches are read; the other two record a search as found with no address, which is a rule the files break.)
 3. A manifest names system, model, network profile, prompt digest, project, run number, terminal reason and grading rounds, and one exists for a run that never started. (Built, for a session on the operator's machine; a hosted session's record is sparser. The paper copy hash waits for decision 5.)
 4. A study can run with grading and zero revisions, and round 0's findings are on record for every run.
-5. `tools/repeat-runs/analyze.py` reproduces its report from manifests alone, with no transcript reading. (Partly: it reads the agent system and how a run ended from the run record, and falls back to `environment.json` for runs finalized before the record.)
+5. The pilot's analysis script in replichai-experiments reproduces its report from manifests alone, with no transcript reading. (Partly: it reads the agent system and how a run ended from the run record, and falls back to `environment.json` for runs finalized before the record.)
 6. A study screen shows per-claim reproduction counts per profile, and a session verdict says it is one run.
 
 ## Not in scope
