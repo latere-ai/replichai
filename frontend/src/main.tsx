@@ -5,6 +5,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { TipHost } from './ui'
+// The ink ladder first, scoped to `data-design="ink"` on <html>, then the
+// app's own sheet, which adds only what the ladder does not name (047).
+import 'latere-ui/ink'
 import './styles.css'
 
 // TipHost is mounted beside the app, not inside it: it draws every tooltip from

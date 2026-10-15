@@ -1,16 +1,22 @@
 <!doctype html>
-<html lang="en">
+<!-- `data-design="ink"` opts the page into latere-ui's ink ladder, the
+     palette the platform and its identity pages read (047). -->
+<html lang="en" data-design="ink">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- The one face the app renders: the `<em>` in a screen description.
-         Without this the request is discovered only when those glyphs are
-         first laid out, which is late enough to swap the text under a reader
-         already looking at it. -->
+    <!-- The faces every first screen sets: Inter for what is read, Instrument
+         Serif for what is stated. Without the preload a face is requested only
+         when its glyphs are first laid out, which is late enough to swap the
+         text under a reader already looking at it. 600 is left to load on use. -->
+    <link rel="preload" href="/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/instrument-serif-regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/instrument-serif-italic.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#2369bd" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#161616" media="(prefers-color-scheme: dark)" />
     <!-- Everything between the markers is what this document says about itself,
          and the server replaces the whole region for an address it can describe
          — a published reproduction, a researcher's page (042a). It is a region
