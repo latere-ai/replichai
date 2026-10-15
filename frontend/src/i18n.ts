@@ -98,15 +98,14 @@ const en = {
     lpLoopsEyebrow: 'The boundary',
     lpPipelineEyebrow: 'A session, step by step',
     lpAnatomyEyebrow: 'In the app',
-    // What comes back. The five names are the five paths `internal/publish`
-    // treats as worker-written, so this list and the gate cannot disagree; they
-    // are filenames and are not translated.
+    // What comes back: the files a reader opens first. The names are filenames
+    // and are not translated.
     lpShipsEyebrow: 'What you get',
     lpShipsTitle: 'A repository|you can clone.',
     lpShipsCaption:
-      'An audit writes a reproduction repository you can clone. It holds five files. Each answers one question, and one of them lists everything that could not be confirmed.',
+      'An audit writes a reproduction repository you can clone. Each file answers one question, and one of them lists everything that could not be confirmed.',
     lpShipsReadme: 'What the paper is, what the reproduction is, and how to run it.',
-    lpShipsRepro: 'The verdict and its rate, the inner/outer boundary table, the unstated decisions, and the open-science scorecard.',
+    lpShipsRepro: 'The verdict with its per-component table, the inner/outer boundary, the unstated decisions, and the open-science scorecard.',
     lpShipsSrc: 'A runnable best-effort implementation of the inner loop.',
     lpShipsUnverified: 'Everything that could not be confirmed, each with what blocked it.',
     lpShipsSources: 'The paper’s key and every artifact search performed, with its result.',
@@ -331,7 +330,7 @@ const en = {
     // projects
     projectsIntro:
       'A project holds one or more papers and every replication session run on them. Each session is a record you can inspect, with its steps and token usage. It is not a score for ranking papers.',
-    statementEmpty: 'Nothing yet. A platform admin adds credits to your account.',
+    statementEmpty: 'Nothing yet. Credits you buy, or an admin adds, show up here.',
     ledgerTopup: 'Added by an admin',
     ledgerAllocate: 'Allocated to a project',
     ledgerReclaim: 'Taken back from a project',
