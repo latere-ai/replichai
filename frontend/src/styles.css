@@ -12,12 +12,15 @@
    inner loop in every figure, the part a machine re-runs, and the published
    state, which is what the product makes. It is never spent on a control.
 
-   Two faces, as on the platform: Instrument Serif for what a screen states (a
-   title, a heading, a paper's name), Inter for what is read. Both are the
-   platform's files, byte for byte, under the same paths, so a reader who has
-   visited either site already has them. `block` rather than `swap`, as on the
-   platform: the faces are preloaded with the document, and a swap reflows text
-   a reader is already looking at, which is a layout shift. */
+   One face, Inter, as on the platform: the platform's files, byte for byte,
+   under the same paths, so a reader who has visited either site already has
+   them. Headings are its semibold, never a display face and never italic: the
+   condensed serif 047 tried first read too tall and too decorative for a
+   reader who came to check numbers. What makes a page read like research here
+   is its structure (numbered sections, captioned figures, tables with three
+   rules, references set as references), not a typeface. `block` rather than
+   `swap`, as on the platform: the faces are preloaded with the document, and a
+   swap reflows text a reader is already looking at, which is a layout shift. */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -39,21 +42,6 @@
   font-display: block;
   src: url('/fonts/inter-600.woff2') format('woff2');
 }
-@font-face {
-  font-family: 'Instrument Serif';
-  font-style: normal;
-  font-weight: 400;
-  font-display: block;
-  src: url('/fonts/instrument-serif-regular.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Instrument Serif';
-  font-style: italic;
-  font-weight: 400;
-  font-display: block;
-  src: url('/fonts/instrument-serif-italic.woff2') format('woff2');
-}
-
 :root {
   /* Row rhythm. Two distinct gaps: --gap-row separates the two sides of a list
      row, such as a label from its value; --gap-inline separates items that sit
@@ -87,7 +75,6 @@
   --pub: var(--azure);
 
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-serif: 'Instrument Serif', Georgia, serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   /* The ladder's radii, under the names this sheet already uses. */
@@ -263,19 +250,19 @@ textarea {
      browser that does not support the unit. */
   height: 100vh;
   height: 100dvh;
-  /* One ground for the rail and the work, divided by a hairline, as the
-     platform's console is (047). 034 floated the work in an inset card on a
-     deeper ground; that depth is what made the console look like another
-     product beside the platform. */
-  background: var(--bg);
+  /* The background the rail sits on. The content panel is a raised surface on
+     it, so the boundary between navigation and work is a change of depth rather
+     than a line (034). */
+  background: var(--bg-deep);
 }
 .rail {
   width: 236px;
   flex: none;
   display: flex;
   flex-direction: column;
+  /* No fill and no border: the rail is part of the background. A surface here
+     would draw a second panel beside the one the reader is working in. */
   background: transparent;
-  border-right: 1px solid var(--border);
   transition: width 0.18s var(--ease-fluid);
 }
 .rail-head {
@@ -426,16 +413,16 @@ textarea {
 .mark-inner {
   stroke: var(--azure);
 }
-/* The name, drawn (brand.tsx). One em of the face tall from ascender to
-   descender, so it is sized by the font size it sits in, and lowered by its
-   descender so its baseline is the line's. */
+/* The name, with a hairline gap at the seam between Replic and HAI. The
+   tracking is tightened and the seam adds a fraction of it back, so the break
+   is visible at any size without reading as a typo. */
 .wordmark {
-  display: inline-block;
-  flex: none;
-  width: 3.537em;
-  height: 0.948em;
-  vertical-align: -0.205em;
-  fill: currentColor;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+.wordmark-seam {
+  margin-left: 0.055em;
 }
 .lockup {
   display: inline-flex;
@@ -450,7 +437,7 @@ textarea {
   flex: 0 0 auto;
 }
 .rail-name {
-  font-size: 19px;
+  font-size: 15px;
 }
 .rail-beta {
   font: 500 11px/1 var(--font-sans);
@@ -486,7 +473,7 @@ textarea {
   min-height: 36px;
   padding: 6px 10px;
   border: none;
-  border-radius: var(--radius-action);
+  border-radius: 12px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -515,13 +502,14 @@ textarea {
   background: var(--bg-raised);
   color: var(--fg-1);
 }
-/* The current destination is a tint and a weight, as on the platform: never a
-   colored edge, and never a second surface with a shadow. The destination's
-   hue stays on its icon only. */
+/* The current destination is the one raised surface in the rail, the same
+   surface the content uses, so the current row and the content panel read as
+   one (034). Never a colored edge. The destination's hue stays on its icon. */
 .nav-btn.active {
-  background: var(--bg-hover);
+  background: var(--bg);
   color: var(--fg-1);
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 14px -10px rgba(0, 0, 0, 0.24);
 }
 .nav-btn.active .nav-ico {
   background: color-mix(in srgb, currentColor 18%, transparent);
@@ -628,8 +616,14 @@ textarea {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* Inset on three sides: the rail's own padding is the fourth, so the gap
+     between the last nav row and the paper's edge is even all the way round. */
+  margin: 8px 8px 8px 0;
   background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 18px 40px -30px rgba(0, 0, 0, 0.3);
 }
 .topbar {
   height: 56px;
@@ -828,12 +822,11 @@ textarea {
 .seam {
   white-space: nowrap;
 }
-/* A screen states its title in the serif, as the landing states its headings,
-   so the app and the page a reader arrived from are one hand (047). */
 h1.screen-title {
   margin: 0;
-  font: 400 32px/1.1 var(--font-serif);
-  letter-spacing: -0.01em;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
 }
 .screen-desc {
   margin: 0;
@@ -843,9 +836,9 @@ h1.screen-title {
   line-height: 1.6;
 }
 .screen-desc em {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 15px;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--fg-1);
 }
 
 /* ── Page measure ── */
@@ -1338,8 +1331,9 @@ h1.screen-title {
 }
 .detail-title {
   margin: 0;
-  font: 400 30px/1.15 var(--font-serif);
-  letter-spacing: -0.01em;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
   /* `break-word`, not `anywhere`: `anywhere` lets a word break to make the line
      box narrower even where the word would have fitted, and it takes the
      element's min-content width down with it. Beside a button that cannot
@@ -2027,10 +2021,12 @@ input.submit-input {
   gap: 5px;
   min-width: 0;
 }
-/* A paper's title is stated, so it is the serif (047). */
 .paper-title {
   margin: 0;
-  font: 400 22px/1.25 var(--font-serif);
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
   color: var(--fg-1);
   overflow-wrap: break-word;
 }
@@ -3327,8 +3323,10 @@ input.submit-input {
 }
 .findings-word {
   margin: 2px 0 6px;
-  font: 400 34px/1.1 var(--font-serif);
-  letter-spacing: -0.01em;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 .findings-summary {
   margin: 0;
@@ -4077,8 +4075,8 @@ input.submit-input {
 }
 
 /* The registry as a list of references (047): numbered, the paper's citation
-   first, the reproduction's title in the serif's italic, as a reference list
-   sets a work's title, and who signed it last. Rows are divided by hairlines
+   first, the reproduction's title upright, as a reference list sets an
+   article's title, and who signed it last. Rows are divided by hairlines
    between two outer rules, with no card around them. */
 .ref-list {
   list-style: none;
@@ -4127,7 +4125,10 @@ input.submit-input {
   white-space: normal;
 }
 .ref-row .row-title {
-  font: italic 400 20px/1.3 var(--font-serif);
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
   white-space: normal;
 }
 .ref-row .row-sub {
