@@ -13,7 +13,7 @@ status: built
 
 ## Problem
 
-Settings is reachable only by clicking the person's own card at the foot of the rail. There is no destination for it, and the one page stacks identity, access, credits, appearance, and the researcher profile into a single scroll. As more lands under "my account" (a wallet statement, a researcher record, a place top-ups will arrive from [022](022-money-comes-in-without-an-admin.md)), one scroll is the wrong shape.
+Settings is reachable only by clicking the person's own card at the foot of the rail. There is no destination for it, and the one page stacks identity, access, credits, appearance, and the researcher profile into a single scroll. As more lands under "my account" (a wallet statement, a researcher record, a place top-ups will arrive from 022a to 022f), one scroll is the wrong shape.
 
 And the statement it already shows cannot answer the first question a reader has of it. A wallet entry reads `Allocated to a project` with no project named, because a wallet-side `allocate` entry stores no project reference at all; the project id lives only on the paired pot-side entry ([011](011-what-a-session-costs.md)'s `transfer`). The reader cannot tell *which* project their credits went to, cannot follow it there, and once a project is purged there is nothing left to name it by.
 
@@ -27,4 +27,4 @@ And the statement it already shows cannot answer the first question a reader has
 
 - Backfilling historical `allocate`/`reclaim` rows (the pre-024b entries carry no id to recover reliably). Named in 024b as a deliberate non-goal.
 - Anything about the pot-side (project) ledger view; this is the *wallet* owner's statement.
-- Top-up arrival itself ([022](022-money-comes-in-without-an-admin.md)); the credits tab is only its future home.
+- Top-up arrival itself (022a to 022f); the credits tab is only its future home.
