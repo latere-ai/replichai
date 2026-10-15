@@ -101,18 +101,28 @@
 * {
   box-sizing: border-box;
 }
-/* Elastic scrolling stays inside the pane being scrolled (047). The console is
-   a fixed frame (`.shell` is the viewport's height) whose rail and main pane
-   scroll on their own, so the page itself has nothing to scroll and must not
-   bounce: on a trackpad or a phone the whole frame, rail and bar included,
-   used to rubber-band at either end. The root's overscroll is turned off while
-   the frame is mounted, and every pane that scrolls contains its own: it still
-   bounces at its ends, and the bounce never carries to the frame around it.
-   The landing is a document that scrolls as a whole, so it keeps the
-   browser's own behavior. */
+/* Elastic scrolling stays inside the pane being scrolled (047). A trackpad
+   pull past the end of the console's main pane or its rail stretches that pane,
+   and a pull past either end of the landing stretches the page under its
+   sticky header. The frame, the rail beside the pane, and the header never
+   move.
+
+   The page's own bounce is what moved them, so it is off: always under the
+   console's fixed frame, and on the landing for a fine pointer, where
+   elastic.ts draws the stretch in its place. On a touch screen the landing
+   keeps the platform's own bounce, which is what a phone reader expects. Every
+   pane that scrolls contains its overscroll, so a browser that stretches inner
+   panes itself (Safari, Firefox) stretches that pane and carries nothing to
+   the frame; in Chromium, which stretches only the page, elastic.ts draws it. */
 html:has(.shell),
 html:has(.shell) body {
   overscroll-behavior: none;
+}
+@media (pointer: fine) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
 }
 .rail-nav,
 .screen,
@@ -125,6 +135,19 @@ html:has(.shell) body {
 .ev-detail-body,
 .disc-body pre {
   overscroll-behavior: contain;
+}
+/* The stretch itself. Only while a pull or its spring-back is in progress:
+   at rest nothing carries a translate, which would otherwise make every pane a
+   containing block for the fixed menus and dialogs inside it. */
+.screen.elastic-on > *,
+.rail-nav.elastic-on > *,
+.lp-body.elastic-on {
+  translate: 0 var(--elastic, 0px);
+}
+.screen.elastic-release > *,
+.rail-nav.elastic-release > *,
+.lp-body.elastic-release {
+  transition: translate 480ms var(--motion-ease);
 }
 body {
   margin: 0;
