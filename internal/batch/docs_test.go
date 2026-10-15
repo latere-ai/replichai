@@ -42,11 +42,11 @@ func TestTheDocumentedProjectFileWorks(t *testing.T) {
 	}
 	// The guide says the file's defaults apply to every paper and a paper
 	// may override any of them. Both halves are in the example.
-	if entries[0].Model != "best" || entries[0].Harness != "claude-code" || entries[0].Runs != 1 {
+	if entries[0].Model != "best" || entries[0].Harness != "claude-code" || entries[0].Runs != 1 || entries[0].Network != "artifacts" {
 		t.Errorf("the file's defaults did not reach the first paper: %+v", entries[0])
 	}
 	for run, entry := range entries[1:] {
-		if entry.Model != "fast" || entry.Reference() != "10.1145/3654777.3676417" {
+		if entry.Model != "fast" || entry.Reference() != "10.1145/3654777.3676417" || entry.File != "papers/uist-2024.pdf" {
 			t.Errorf("the per-paper override did not apply: %+v", entry)
 		}
 		if entry.Run != run+1 || entry.Runs != 3 {
