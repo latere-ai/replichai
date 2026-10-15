@@ -3791,22 +3791,17 @@ input.submit-input {
     width: 264px;
     max-width: 84vw;
     transform: translateX(-100%);
-    box-shadow: var(--shadow-pop);
-    transition: transform 0.22s var(--ease-fluid);
+    transition: transform 0.22s var(--ease-fluid), box-shadow 0.22s var(--ease-fluid);
     /* A drawer floats over the screen, so it needs its own background. The
        rail's fill is transparent in the flow and has nothing behind it here. */
-    background: var(--bg-deep);
+    background: var(--bg);
+    border-right: none;
   }
-  /* No inset on a phone: 390px has no width to spend on a margin, and the
-     drawer already separates navigation from work. */
-  .main {
-    margin: 0;
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
-  }
+  /* The shadow belongs to the open drawer only: on a closed one it spilled
+     onto the screen's left edge. */
   .rail-open {
     transform: none;
+    box-shadow: var(--shadow-dialog);
   }
   .rail-scrim {
     display: block;
