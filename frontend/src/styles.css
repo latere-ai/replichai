@@ -4142,3 +4142,59 @@ input.submit-input {
 .ref-row .chev {
   margin-top: 3px;
 }
+
+/* The findings on a phone (047). A four-column table at 390px either scrolls
+   sideways, which hid the evidence and left each row a tall blank, or squeezes
+   every claim to three words a line. Each row restacks instead: the claim on
+   its own line, its loop and outcome under it side by side, so the comparison
+   the table exists for stays on one line, and the evidence under those. The
+   head is dropped because every cell now says what it is. */
+@media (max-width: 760px) {
+  .grid-table-wrap {
+    overflow: visible;
+  }
+  .grid-table,
+  .grid-table tbody {
+    display: block;
+    min-width: 0;
+  }
+  .grid-table thead {
+    display: none;
+  }
+  .grid-table tr {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    column-gap: 16px;
+    row-gap: 6px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+  .grid-table tbody tr:first-child {
+    border-top: none;
+  }
+  .grid-table td {
+    display: block;
+    padding: 0;
+    border: none;
+    width: auto !important;
+  }
+  .grid-table td:first-child,
+  .grid-table td:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+  .unresolved-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 6px;
+  }
+  .unresolved-row > .outcome-tag {
+    width: auto;
+  }
+  .unresolved-row > .stack {
+    grid-column: 1 / -1;
+  }
+  .unresolved-row > .claim-cite {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
