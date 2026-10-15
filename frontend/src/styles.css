@@ -407,32 +407,33 @@ textarea {
   flex: 0 0 auto;
   display: block;
 }
-/* The mark's two loops use vlag's two poles. The outer ring, the study with
-   people that is never simulated, takes the warm crimson, which is vlag's warm
-   pole and the hue --err also carries. The inner ring, the part a machine
-   re-runs, takes the cool azure, the brand pole. The color carries the
-   meaning, so the two never swap. */
+/* The mark's two colors: the outer ring, the study with people that is never
+   simulated, in ink like every Latere mark; the inner ring, the part a machine
+   re-runs, in the product's azure. The color carries the meaning, so the two
+   never swap (047). */
 .mark-outer {
-  stroke: var(--err);
+  stroke: var(--fg-1);
 }
 .mark-inner {
-  stroke: var(--brand);
+  stroke: var(--azure);
 }
-/* The name, with a hairline gap at the seam between replic and hai. The
-   tracking is tightened and the seam adds a fraction of it back, so the break
-   is visible at any size without reading as a typo. */
+/* The name, drawn (brand.tsx). One em of the face tall from ascender to
+   descender, so it is sized by the font size it sits in, and lowered by its
+   descender so its baseline is the line's. */
 .wordmark {
-  font-weight: 600;
-  letter-spacing: -0.035em;
-}
-.wordmark-seam {
-  margin-left: 0.055em;
+  display: inline-block;
+  flex: none;
+  width: 3.537em;
+  height: 0.948em;
+  vertical-align: -0.205em;
+  fill: currentColor;
 }
 .lockup {
   display: inline-flex;
   align-items: center;
-  gap: 0.42em;
+  gap: 0.4em;
   line-height: 1;
+  color: var(--fg-1);
 }
 /* Kept as a selector hook only: the fold rule hides it, and the SVG carries its
    own size. */

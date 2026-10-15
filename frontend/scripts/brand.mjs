@@ -1,16 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Generates the raster brand assets that a vector cannot cover: the Apple touch
-// icon, because iOS ignores SVG, and the social card, because crawlers do not
-// rasterise SVG.
-// Both come out of the same geometry the in-app mark uses, so the three can
-// never drift into three different marks.
+// Generates the brand assets a component cannot serve: the favicon, the Apple
+// touch icon, because iOS ignores SVG, and the social card, because crawlers do
+// not rasterize SVG. All three are rendered from `src/brand.tsx` itself, the
+// component the app draws, so the tab, the home screen, the card and the app
+// can never show four different marks.
 //
 // The output is committed, so a build needs no browser. This runs by hand when
-// the mark changes: `node scripts/brand.mjs` from `frontend/`.
+// the mark changes: `bun scripts/brand.mjs` from `frontend/`. Bun, not node,
+// because it imports the TSX the app draws the mark with.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { createElement as h } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+
+import { Lockup, Mark } from '../src/brand.tsx'
 
 const require = createRequire(import.meta.url)
 const puppeteer = (await import(require.resolve('puppeteer-core'))).default
@@ -23,63 +28,64 @@ if (!CHROME || !existsSync(CHROME)) {
   process.exit(1)
 }
 
-// One mark, two sizes, six dashes, the same six `brand.tsx` draws, so the tab
-// icon, the social card, and the app all show one mark rather than three.
-const mark = (px, { tile = false, segments = 6, radius = 0 } = {}) => {
-  const s = px / 32
-  const c = 2 * Math.PI * 10.4 * s
-  const seg = c / segments
-  const dash = seg * 0.62
-  // Two-tone off a tile: white rings on an azure tile for the home-screen icon;
-  // vlag's two poles, crimson outer and azure inner, on transparency everywhere
-  // else, matching the in-app mark.
-  const outerInk = tile ? '#ffffff' : '#a9373b'
-  const innerInk = tile ? '#ffffff' : '#2369bd'
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${px} ${px}" width="${px}" height="${px}">
-    ${tile ? `<rect width="${px}" height="${px}" rx="${radius}" fill="#2369bd"/>` : ''}
-    <circle cx="${px / 2}" cy="${px / 2}" r="${10.4 * s}" fill="none" stroke="${outerInk}" stroke-opacity="${tile ? 0.55 : 1}" stroke-width="${2.3 * s}" stroke-dasharray="${dash} ${seg - dash}"/>
-    <circle cx="${px / 2}" cy="${px / 2}" r="${5.6 * s}" fill="none" stroke="${innerInk}" stroke-width="${3.1 * s}"/>
-  </svg>`
-}
+// The two inks the mark is drawn in, light and dark: ink's text tone for the
+// outer ring and latere-ui's registered replichai azure for the inner one.
+const INK = { light: { outer: '#0d0d0d', inner: '#2369bd' }, dark: { outer: '#ececec', inner: '#78b1ed' } }
 
-const SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+// The favicon is the mark at its smallest optical size with its colors in a
+// style element, so the ink ring turns light on a dark browser tab, the way the
+// platform's favicon does. A browser tab is the one place the mark sits on a
+// ground the app does not choose.
+const favicon = renderToStaticMarkup(h(Mark, { size: 16 }))
+  .replace('<svg class="mark"', '<svg xmlns="http://www.w3.org/2000/svg"')
+  .replace(' aria-hidden="true" focusable="false"', '')
+  .replace(
+    '>',
+    `><style>.mark-outer{stroke:${INK.light.outer}}.mark-inner{stroke:${INK.light.inner}}@media (prefers-color-scheme:dark){.mark-outer{stroke:${INK.dark.outer}}.mark-inner{stroke:${INK.dark.inner}}}</style>`,
+  )
 
-// The touch icon is the tile variant at 180px with six dashes, matching
-// favicon.svg, because an icon is read small everywhere it appears. It is drawn square
-// and full-bleed: iOS applies its own corner mask, and a tile that rounds itself
-// first comes out a circle on the home screen while every icon beside it is a
-// squircle.
-const icon = `<body style="margin:0"><div style="width:180px;height:180px">${mark(180, { tile: true, radius: 0 })}</div></body>`
+// A page-local copy of the two faces the card sets, so the render does not
+// depend on what the machine running this has installed.
+const face = (family, file, style = 'normal', weight = 400) =>
+  `@font-face{font-family:'${family}';font-style:${style};font-weight:${weight};src:url(data:font/woff2;base64,${readFileSync(`public/fonts/${file}`).toString('base64')}) format('woff2')}`
+const FACES = [face('Inter', 'inter-400.woff2'), face('Inter', 'inter-500.woff2', 'normal', 500), face('Instrument Serif', 'instrument-serif-regular.woff2'), face('Instrument Serif', 'instrument-serif-italic.woff2', 'italic')].join('')
+const PAINT = (t) => `.mark-outer{stroke:${INK[t].outer}}.mark-inner{stroke:${INK[t].inner}}.wordmark{width:3.537em;height:.948em;fill:currentColor}.lockup{display:inline-flex;align-items:center;gap:.4em;line-height:1}`
 
-// The social card is the landing's own lockup and claim, at card scale. It says
-// the same thing the page says, because a link preview is the first screen for
-// anybody who arrives through somebody else.
-const card = `<body style="margin:0">
-  <div style="width:1200px;height:630px;background:#fafaf9;color:#0c0a09;font-family:${SANS};display:flex;flex-direction:column;justify-content:center;padding:0 92px;box-sizing:border-box">
-    <div style="display:flex;align-items:center;gap:18px;margin-bottom:44px">
-      <div style="width:52px;height:52px">${mark(52)}</div>
-      <div style="font-size:38px;font-weight:600;letter-spacing:-0.035em">replic<span style="margin-left:0.055em">hai</span></div>
+// The touch icon is the mark on an ink tile, drawn square and full-bleed: iOS
+// applies its own corner mask, and a tile that rounds itself first comes out a
+// circle on the home screen while every icon beside it is a squircle.
+const icon = `<style>${PAINT('dark')}body{margin:0}</style>
+  <div style="width:180px;height:180px;background:#161616;display:grid;place-items:center">${renderToStaticMarkup(h(Mark, { size: 120 }))}</div>`
+
+// The social card is the landing's lockup and claim at card scale, set as the
+// landing sets them. A link preview is the first screen for anybody who arrives
+// through somebody else, so it says what the page says.
+const card = `<style>${FACES}${PAINT('light')}body{margin:0}</style>
+  <div style="width:1200px;height:630px;background:#ffffff;color:#0d0d0d;font-family:Inter;display:flex;flex-direction:column;justify-content:center;padding:0 96px;box-sizing:border-box">
+    <div style="margin-bottom:48px">${renderToStaticMarkup(h(Lockup, { size: 44 }))}</div>
+    <div style="font:400 104px/0.98 'Instrument Serif';letter-spacing:-0.02em">Does the paper <i>reproduce?</i></div>
+    <div style="margin-top:36px;font-size:27px;line-height:1.5;color:#525252;max-width:44ch">
+      ReplicHAI re-runs the part of a paper a machine can run. The study with people is named, marked out of scope, and never simulated.
     </div>
-    <div style="font-size:78px;font-weight:600;letter-spacing:-0.04em;line-height:1.04;max-width:15ch">Does the paper reproduce?</div>
-    <div style="margin-top:38px;font-size:27px;line-height:1.5;color:#5c5b58;max-width:44ch">
-      replichai re-runs the part of a paper a machine can run. The study with people is named, marked out of scope, and never simulated.
-    </div>
-  </div>
-</body>`
+  </div>`
 
 mkdirSync('public', { recursive: true })
+writeFileSync('public/favicon.svg', favicon + '\n')
+console.log('wrote public/favicon.svg')
+
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true })
 try {
-  for (const [name, html, w, h] of [
+  for (const [name, html, w, ht] of [
     ['apple-touch-icon.png', icon, 180, 180],
     ['og.png', card, 1200, 630],
   ]) {
     const page = await browser.newPage()
-    await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 })
+    await page.setViewport({ width: w, height: ht, deviceScaleFactor: 1 })
     await page.setContent(html, { waitUntil: 'load' })
-    const buf = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: w, height: h } })
+    await page.evaluate(() => document.fonts.ready)
+    const buf = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: w, height: ht } })
     writeFileSync(`public/${name}`, buf)
-    console.log(`wrote public/${name} (${w}×${h})`)
+    console.log(`wrote public/${name} (${w}×${ht})`)
     await page.close()
   }
 } finally {
