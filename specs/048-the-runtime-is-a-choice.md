@@ -58,7 +58,7 @@ On Anthropic the exact model stays a command-line option, as 031 decided. The re
 
 ### What a session records
 
-At enqueue the job records two things beside the tier, in the transaction that inserts it:
+At enqueue the job records three things beside the tier, in the transaction that inserts it (the third, `payer`, is under Price and charge):
 
 - `runtime`: the canonical runtime name the person chose, or the deployment default when they chose none.
 - `model`: an exact model when the person picked one, empty when they picked an Effort level.
@@ -69,13 +69,21 @@ A session on a Latere Effort level can be served by more than one model: the pla
 
 ### Price and charge
 
-**The person's own Latere wallet pays.** The owner decided this on 2026-10-15, for sessions started from the app as well as from the command line. ReplicHAI starts a Latere session as the person who pressed Start, and the platform charges that person's wallet, exactly as for a session they start in the console or the chat. ReplicHAI takes no hold, posts no charge, and never refuses a Latere start for an empty ReplicHAI wallet; the platform refuses it, with its own reason, when the person's Latere wallet cannot pay. A session run on the person's own machine already works this way (045k: it never touches the credit ledger).
+**The person's own Latere wallet pays.** The owner decided this on 2026-10-16, for sessions started from the app as well as from the command line. ReplicHAI starts a Latere session as the person who pressed Start, and the platform charges that person's wallet, exactly as for a session they start in the console or the chat. ReplicHAI takes no hold, posts no charge, and never refuses a Latere start for an empty ReplicHAI wallet; the platform refuses it, with its own reason, when the person's Latere wallet cannot pay. A session run on the person's own machine already works this way (045k: it never touches the credit ledger).
 
 The rejected answer was ReplicHAI credits: ReplicHAI running the session under a platform organization of its own and charging the project's pot. It would have kept one balance for a ReplicHAI user, at the cost of ReplicHAI holding a second wallet on the platform, which the platform's own rule (a product may not hold a wallet of its own) argues against.
 
+**Who pays is recorded on the job, at enqueue.** A runtime's catalog entry says who pays for its sessions: the project (Anthropic, memory) or the person (Latere). `Enqueue` writes that as the job's `payer`, `project` or `person`, in the inserting transaction, next to `runtime` and `model`. It is written rather than derived later from the runtime's name, so a change to a runtime's entry never re-bills a session that already ran. The two paths then differ in three places and nowhere else:
+
+- `Enqueue` takes the start reserve (`takeReserveTx`) and snapshots the rate card only when the payer is the project. A person-paid job takes no hold, so an empty pot does not refuse it.
+- The terminal write settles (`settleTx`) only when the payer is the project. A person-paid job has no hold to release and no charge to post, so the ledger never sees it, as it never sees an imported local session (045k).
+- A job's cost is priced from the rate card for a project-paid job, and is the cost the platform reported for a person-paid one. The card is never asked to price a Latere session.
+
+Existing rows have no `payer` and read as `project`, which is what every one of them was.
+
 What a session costs is what the platform reports: the sum of `cost_usd_micro` over the session's model calls, which Topos totals as the session's `spent_cost_usd_micro`. ReplicHAI's rate card does not price a Latere session, because a Latere session can run any of hundreds of models and the platform is the one that prices them. The cost is shown on the session as today, marked as charged to the person's Latere wallet rather than to the project.
 
-**Acting for the person in the background.** A session runs for hours after the browser request that started it has ended, and ReplicHAI's server reads its events, starts its grading rounds and collects its files throughout. The server therefore keeps the person's own platform sign-in: the app's sign-in asks for a refresh token (`offline_access`), the server stores it encrypted, and mints a short-lived token for the platform's API (`api.latere.ai`) from it when a job needs one. Two platform changes come first, and neither is ReplicHAI's to make: the ReplicHAI client in Auth's registry gains `api.latere.ai` as an audience it may mint for, and the family's identity rules record that a product may keep a person's refresh token for background work that person started. Both are written up in Auth's own specs. Until they are live, the server does not offer the Latere runtime, and the command line reaches it with the person's personal access token.
+**Acting for the person in the background.** A session runs for hours after the browser request that started it has ended, and ReplicHAI's server reads its events, starts its grading rounds and collects its files throughout. The server therefore keeps the person's own platform sign-in: the app's sign-in asks for a refresh token (`offline_access`), the server stores it encrypted, and mints a short-lived token for the platform's API (`api.latere.ai`) from it when a job needs one. Two platform changes come first, and neither is ReplicHAI's to make: the family's identity rules record that a product may keep a person's sign-in for work that person started (the decision record of 2026-10-16 in the family's specs), and Auth's registry declares ReplicHAI's web client with `offline_access` and lets both ReplicHAI clients mint for `api.latere.ai` (Auth spec 095). Until they are live, the server does not offer the Latere runtime, and the command line reaches it with the person's personal access token.
 
 A refresh token rotates on every use, and presenting a spent one ends the whole sign-in. The server therefore refreshes one person's token under a lock, stores the new token before it uses the access token, and keeps each access token until it expires rather than refreshing per call.
 
