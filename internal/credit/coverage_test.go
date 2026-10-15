@@ -89,7 +89,7 @@ func TestCoversFlagsAModelTheCardDoesNotName(t *testing.T) {
 }
 
 // TestCoverageDoesNotTrustTheSynthesisedName checks that names does not compare
-// names. Card.For synthesises a fallback entry carrying the requested model's
+// names. Card.For synthesizes a fallback entry carrying the requested model's
 // name, so an exact match and a fallback are identical by name. A check
 // comparing names would report every model as named, and the whole report
 // would be silently useless.
@@ -103,7 +103,7 @@ func TestCoverageDoesNotTrustTheSynthesisedName(t *testing.T) {
 		t.Fatalf("the fallback did not carry the requested name: %q", rates.Model)
 	}
 	if card.names("claude-something-6") {
-		t.Error("names() believed the synthesised entry")
+		t.Error("names() believed the synthesized entry")
 	}
 	if !card.names("claude-opus-5-20260901") {
 		t.Error("names() missed a dated snapshot of a model the card carries")
@@ -148,7 +148,7 @@ func TestCoversReportsAResolutionFailureWithoutClaimingAFinding(t *testing.T) {
 // is a dated snapshot of, as opposed to Card.For having fallen back to the
 // dearest rates.
 //
-// It cannot compare names to find out. The fallback synthesises an entry
+// It cannot compare names to find out. The fallback synthesizes an entry
 // carrying the requested name, so a fallback and a real match are identical by
 // name, and a check comparing them would report every model as priced.
 func (c Card) names(model string) bool {

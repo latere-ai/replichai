@@ -266,7 +266,7 @@ type Harness interface {
 	// Decode turns one line of the harness's stream into zero or more
 	// normalized events. stream is the stage's unique name rather than its
 	// role, because one session may run several judges and ids derived from
-	// the role alone would collide. An unrecognised line becomes one event
+	// the role alone would collide. An unrecognized line becomes one event
 	// of kind KindRaw carrying the line; it is never dropped.
 	Decode(stream string, index int, line []byte) ([]managed.Event, error)
 }
