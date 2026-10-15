@@ -117,7 +117,7 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	// The ID token yields a sub but no email.
 	client := fakeOIDC{identity: oidc.User{Sub: "uuid-1", Raw: map[string]any{}}}
 	userInfo := func(_ context.Context, _ string) (Profile, error) {
-		return Profile{Email: "hi@changkun.de"}, nil
+		return Profile{Email: "ada@example.org"}, nil
 	}
 	l := NewLogin(client, codec, access.NewMemStore(), "https://replichai.latere.ai", false, userInfo)
 
@@ -132,7 +132,7 @@ func TestCallbackFetchesEmailFromUserInfo(t *testing.T) {
 	if err := l.codec.Open(sealed, &s); err != nil {
 		t.Fatalf("open session: %v", err)
 	}
-	if s.Sub != "uuid-1" || s.Email != "hi@changkun.de" {
+	if s.Sub != "uuid-1" || s.Email != "ada@example.org" {
 		t.Errorf("session = %+v, want the userinfo email bound to the sub", s)
 	}
 }

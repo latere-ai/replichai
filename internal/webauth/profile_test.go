@@ -47,18 +47,18 @@ func TestCallbackKeepsDisplayClaims(t *testing.T) {
 
 	t.Run("name and picture", func(t *testing.T) {
 		s := callbackSession(t, id, func(context.Context, string) (Profile, error) {
-			return Profile{Email: "hi@changkun.de", Name: "Changkun Ou", Picture: "https://auth.latere.ai/avatar/1.png"}, nil
+			return Profile{Email: "ada@example.org", Name: "Ada Lovelace", Picture: "https://auth.latere.ai/avatar/1.png"}, nil
 		})
-		if s.Name != "Changkun Ou" || s.Picture != "https://auth.latere.ai/avatar/1.png" {
+		if s.Name != "Ada Lovelace" || s.Picture != "https://auth.latere.ai/avatar/1.png" {
 			t.Errorf("session = %+v, want the display claims carried", s)
 		}
 	})
 
 	t.Run("no display claims still signs in", func(t *testing.T) {
 		s := callbackSession(t, id, func(context.Context, string) (Profile, error) {
-			return Profile{Email: "hi@changkun.de"}, nil
+			return Profile{Email: "ada@example.org"}, nil
 		})
-		if s.Sub != "uuid-1" || s.Email != "hi@changkun.de" {
+		if s.Sub != "uuid-1" || s.Email != "ada@example.org" {
 			t.Errorf("session = %+v, want a sign-in on email alone", s)
 		}
 		if s.Name != "" || s.Picture != "" {
@@ -67,11 +67,11 @@ func TestCallbackKeepsDisplayClaims(t *testing.T) {
 	})
 
 	t.Run("userinfo failure costs the name, never the sign-in", func(t *testing.T) {
-		withEmail := oidc.User{Sub: "uuid-1", Email: "hi@changkun.de", Raw: map[string]any{}}
+		withEmail := oidc.User{Sub: "uuid-1", Email: "ada@example.org", Raw: map[string]any{}}
 		s := callbackSession(t, withEmail, func(context.Context, string) (Profile, error) {
 			return Profile{}, context.DeadlineExceeded
 		})
-		if s.Sub != "uuid-1" || s.Email != "hi@changkun.de" {
+		if s.Sub != "uuid-1" || s.Email != "ada@example.org" {
 			t.Errorf("session = %+v, want the sign-in to survive a userinfo failure", s)
 		}
 	})
@@ -86,8 +86,8 @@ func TestHTTPUserInfoDecodesDisplayClaims(t *testing.T) {
 			t.Errorf("authorization = %q", got)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"email":              "hi@changkun.de",
-			"preferred_username": "changkun",
+			"email":              "ada@example.org",
+			"preferred_username": "ada",
 			"picture":            "https://auth.latere.ai/a.png",
 			"roles":              []string{"platform-admin"},
 		})
@@ -98,7 +98,7 @@ func TestHTTPUserInfoDecodesDisplayClaims(t *testing.T) {
 	if err != nil {
 		t.Fatalf("userinfo: %v", err)
 	}
-	want := Profile{Email: "hi@changkun.de", Name: "changkun", Picture: "https://auth.latere.ai/a.png"}
+	want := Profile{Email: "ada@example.org", Name: "ada", Picture: "https://auth.latere.ai/a.png"}
 	if p != want {
 		t.Errorf("profile = %+v, want %+v", p, want)
 	}
@@ -131,7 +131,7 @@ func TestMeReportsDisplayClaims(t *testing.T) {
 	t.Run("ungranted principal still gets a name", func(t *testing.T) {
 		r := httptest.NewRequest("GET", "/me", nil)
 		r = r.WithContext(httpapi.WithIdentity(r.Context(), httpapi.Identity{
-			Sub: "uuid-1", Email: "hi@changkun.de", Name: "Changkun Ou", Picture: "https://auth.latere.ai/a.png",
+			Sub: "uuid-1", Email: "ada@example.org", Name: "Ada Lovelace", Picture: "https://auth.latere.ai/a.png",
 		}))
 		w := httptest.NewRecorder()
 		me(w, r)
@@ -143,7 +143,7 @@ func TestMeReportsDisplayClaims(t *testing.T) {
 		if body["tier"] != "none" {
 			t.Errorf("tier = %v, want none", body["tier"])
 		}
-		if body["name"] != "Changkun Ou" || body["picture"] != "https://auth.latere.ai/a.png" {
+		if body["name"] != "Ada Lovelace" || body["picture"] != "https://auth.latere.ai/a.png" {
 			t.Errorf("me = %v, want the display claims reported", body)
 		}
 	})

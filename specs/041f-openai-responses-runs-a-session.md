@@ -31,7 +31,7 @@ Capabilities advertise only what the current API can enforce:
 - attachments and read-write Git repositories through container materialization;
 - portable evaluation/revision.
 
-An unrestricted `NetworkOpen` request is **unsupported** when the container API offers only disabled/allowlist policy. It is rejected before container creation; the adapter never turns “open” into a guessed allowlist. This means an existing open-network audit is eligible for OpenAI only after its route supplies an explicit sufficient domain policy. Experiments/cohorts with disabled or known-domain access can route immediately. The Latere/Cella path in 041g is the alternative for policies Cella can enforce differently.
+An unrestricted `NetworkOpen` request is **unsupported** when the container API offers only disabled/allowlist policy. It is rejected before container creation; the adapter never turns “open” into a guessed allowlist. This means an existing open-network audit is eligible for OpenAI only after its route supplies an explicit sufficient domain policy. Experiments/cohorts with disabled or known-domain access can route immediately. The Latere/Cella path in 041g (Cella is Latere's sandbox control plane) is the alternative for policies Cella can enforce differently.
 
 Zero-data-retention or account policy that prevents stored/background retrieval is also unsupported for detached/resumable sessions. The adapter reports this during a capability probe where the API exposes it, or as a typed start policy error; it does not claim restart durability in a mode that cannot retrieve the Response.
 
@@ -106,5 +106,5 @@ The evaluator is a separate Response without the worker's assistant role or self
 - Claiming unrestricted internet when only allowlists are enforceable.
 - OpenAI Workspace Agents: the direct runtime uses public Responses/container lifecycle because replichai requires programmatic retrieval, cancellation, artifacts, and durable references.
 - OpenAI's beta multi-agent feature. Replichai needs one reproducible worker/evaluator loop first.
-- Using Lux's OpenAI compatibility surface for this adapter. Lux's documented compatibility Responses subset is stateless, while this runtime requires stored background retrieval; 041g uses Lux natively through Topos instead.
+- Using the OpenAI compatibility surface of Lux (Latere's model gateway) for this adapter. Lux's documented compatibility Responses subset is stateless, while this runtime requires stored background retrieval; 041g uses Lux natively through Topos (Latere's agent runtime) instead.
 - Selecting a direct OpenAI runtime per researcher. Routing remains operator policy.

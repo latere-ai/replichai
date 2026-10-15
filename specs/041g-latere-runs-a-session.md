@@ -5,16 +5,17 @@ status: designed
 
 # 041g — Latere runs a session
 
-> **Amended 2026-09-16.** The family removed agent delegation on 2026-09-06:
-> one hop, one token minted for one audience, and no token that carries a
-> chain. The credential paragraph below is corrected. Where the rest of this
-> spec says Auth mints delegated credentials, or names a delegated Auth
-> identity for a Drive mount, read: the caller asks Auth for a token addressed
-> to the one service it is about to call, and asks again for the next one.
+> **Amended 2026-09-16.** The Latere platform removed agent delegation on
+> 2026-09-06: one hop, one token minted for one audience, and no token that
+> carries a chain. The credential paragraph below is corrected. Where the rest
+> of this spec says Auth (Latere's identity provider) mints delegated
+> credentials, or names a delegated Auth identity for a Drive (Latere's file
+> storage service) mount, read: the caller asks Auth for a token addressed to
+> the one service it is about to call, and asks again for the next one.
 
 **Status:** designed, not built. **Production enablement is blocked on durable replay at the in-flight model/tool boundary** (below). The adapter and fake/local integration may be built after 041e, but it must not be offered as a hosted runtime until that prerequisite is demonstrated.
 
-**Scope:** add `latere-topos`, a platform-native runtime composed from the embeddable Topos runtime, Lux native model access, and Cella sandboxes. Preserve replichai's durable session/evidence/billing contract, use Latere Auth delegation and cost attribution, and leave Drive mount lifecycle with Cella/Drive. Do not route managed sessions through a vendor compatibility surface.
+**Scope:** add `latere-topos`, a platform-native runtime composed from the embeddable Topos runtime, Lux native model access, and Cella sandboxes (Topos is Latere's agent runtime, Lux its model gateway, and Cella its sandbox control plane). Preserve replichai's durable session/evidence/billing contract, use Latere Auth delegation and cost attribution, and leave Drive mount lifecycle with Cella/Drive. Do not route managed sessions through a vendor compatibility surface.
 
 **Depends on:** [041e](041e-anthropic-conforms-to-the-session-contract.md), the current `latere.ai/x/topos` public runtime/sandbox interfaces, and the platform contracts documented at [platform.latere.ai](https://platform.latere.ai/): Lux native dialect, Cella sandbox API, Latere Auth delegation, and Drive/Cella mount lifecycle.
 

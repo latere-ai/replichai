@@ -20,7 +20,7 @@ status: built
 - **The harness is not ours.** The worker loop, the tools it has, and the transcript it emits belong to the backend. When a run fails the way [044](044-a-run-that-produced-nothing.md) failed, the only lever is the method text.
 - **Parallelism is somebody else's quota.** A replication project is a list of papers, and running it means running twenty sessions. Today that is twenty hosted sessions against one vendor's concurrency limits.
 
-The seam to fix it already exists and is the one this deck plugs into. `managed.Runtime` is ten methods, held to a shared conformance suite in `internal/managed/contracttest`, composed explicitly in `internal/runtimes/builtin`. Nothing above it names a vendor. A local runtime is a peer of `anthropic-managed`, not a fork of the program.
+The seam to fix it already exists and is the one these specs plug into. `managed.Runtime` is ten methods, held to a shared conformance suite in `internal/managed/contracttest`, composed explicitly in `internal/runtimes/builtin`. Nothing above it names a vendor. A local runtime is a peer of `anthropic-managed`, not a fork of the program.
 
 ```mermaid
 flowchart TB
@@ -63,7 +63,7 @@ flowchart TB
 
 ## Why this is not 041g
 
-[041g](041g-latere-runs-a-session.md) composes a hosted runtime from Topos, Cella, Lux and Auth, and is blocked on durable replay at the in-flight model/tool boundary. It answers "the platform runs your session on its infrastructure". This deck answers "you run your session on your laptop, and the platform holds the record". They differ in who owns the machine, who holds the model credential, who pays the vendor, and what happens when the process dies. Both are worth having: 041g is the product's own execution, 045 is how the method gets exercised by anybody outside the project, and how a replication project of twenty papers gets run without asking a vendor for concurrency.
+[041g](041g-latere-runs-a-session.md) composes a hosted runtime from Topos, Cella, Lux and Auth (Latere's agent runtime, sandbox control plane, model gateway and identity provider), and is blocked on durable replay at the in-flight model/tool boundary. It answers "the platform runs your session on its infrastructure". The 045 series answers "you run your session on your laptop, and the platform holds the record". They differ in who owns the machine, who holds the model credential, who pays the vendor, and what happens when the process dies. Both are worth having: 041g is the product's own execution, 045 is how the method gets exercised by anybody outside the project, and how a replication project of twenty papers gets run without asking a vendor for concurrency.
 
 They share the seam and the conformance suite, so neither is a fork.
 
@@ -111,7 +111,7 @@ The runtime is `local`, composed in `internal/runtimes/builtin` beside `memory` 
 
 **Every defect had the same cause.** Every leaf here was written from documentation and reasoning, and every leaf passed its own tests, and a dozen defects were still present, each of them a fact about a real program that no fixture could have contained. srt refuses a wildcard, so the open network mode could not exist. Claude Code keeps its login in a keychain rather than a file, and needs a scratch directory or its shell tool fails before running anything. Codex is a Rust binary that will not trust an injected certificate authority. pip verifies through an operating-system service the sandbox does not open. `git` reads a global configuration the sandbox denies. A raw line that is not JSON cannot be stored in a `json.RawMessage`. A checkpoint derived from the caller's reference repeats while the journal moves.
 
-The leaves record them individually. The general lesson belongs here: a spec deck for a component that composes other people's programs is a set of hypotheses, and the first real run is the experiment. Nothing in this deck was reliable until it had been run.
+The leaves record them individually. The general lesson belongs here: a set of specs for a component that composes other people's programs is a set of hypotheses, and the first real run is the experiment. Nothing in the 045 series was reliable until it had been run.
 
 **What is still short**, each recorded on its leaf: evidence is not uploaded to the app and stays in the pushed repository; the container image is not published, so that driver is code without an artifact; no screen labels an imported session as locally executed; `environment.json` records where a run was allowed to go and not where it went; and the CI matrix this parent asked for is not configured, so the driver suites run where a developer has the tools and nowhere else.
 
@@ -139,7 +139,7 @@ Three things diverged from this parent.
 
 **A whole audit was run.** arXiv 2603.01795 (`PleaSQLarify`, CHI '26), on the default one-hour budget, `--runtime local` with `claude-code` on the operator's own login and no API key: 17m44s, 527 events, verdict `partial` on a boundary table of eight inner-loop components, five verified against a reimplementation the agent wrote and ran. The judge graded it `passed`. All seven output files were produced, and `verdict.json` and `instrument.json` both validated except for one field of the wrong shape, which is recorded below.
 
-That run found three things no test in this deck could have found, because all of them need a workspace that has installed something:
+That run found three things no test in the 045 series could have found, because all of them need a workspace that has installed something:
 
 - The workspace is the repository and the build directory, and nothing system-owned separated them. A 258 MB virtualenv sat in the repository root, kept out of the commit only because the agent chose to write a `.gitignore`. The rule now belongs to the repository (`.git/info/exclude`), the harvest skips the same trees, and `publish.VerifyTree` bars a tree that carries one.
 - The harvest copied 8200 files out of that workspace. Twenty-four were the reproduction.

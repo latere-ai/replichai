@@ -165,7 +165,7 @@ type Card struct {
 // its real price, on the tier chosen for being cheap. Any other model is
 // charged at the dearest rates, class by class: never at zero, which would make
 // a vendor's new model id free compute, and never by refusing to start, which
-// would make it an outage. The synthesised entry keeps the requested model's
+// would make it an outage. The synthesized entry keeps the requested model's
 // name, so a snapshot records what was asked for and the amount records what
 // it was charged as.
 //
@@ -226,7 +226,7 @@ func (c Card) ForRef(model managed.ModelRef) (Rates, error) {
 // entry or a dated snapshot of one, and reports whether it found any.
 //
 // It is For without the fail-expensive fallback. That fallback exists so an
-// unrecognised session model is charged the dearest rates rather than nothing.
+// unrecognized session model is charged the dearest rates rather than nothing.
 // A caller that must refuse an unknown model instead of charging it high, such
 // as 039's drafting, where the model is an operator's choice and may be a
 // cheap local one, uses Priced instead.

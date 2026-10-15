@@ -5,7 +5,7 @@ status: deferred
 
 # 016 — A paper that is not published yet
 
-**Status:** deferred (ideation). This file names the forks and resolves none of them. No code, schema, or terraform follows from it as written.
+**Status:** deferred (ideation). This file names the forks and resolves none of them. No code, schema, or infrastructure change follows from it as written.
 **Scope:** submitting a paper the world cannot fetch (a draft, or a manuscript under submission) and running sessions against it, including any folder of materials supplied with it. Three separate seams are involved: where the bytes live, what the *identity* of a mutable document is, and whether supplied materials change what a session measures.
 **Depends on:** [001](001-paper-identity-and-slugs.md) (`paper.Key`, `SchemeSHA256`), [006d](006d-pdf-ingestion.md) (the PDF reader; this spec **depends on it and does not absorb it**, see below), [012](012-a-project-holds-papers.md) (`project_papers`, and the paper-with-sessions rule this collides with), [007b](007b-experiments-over-instruments.md) (`experiment.ArtifactStore`, the blob seam already in the tree, and the uploaded-dataset precedent), [008](008-drive-data-plane.md) (the storage fork), [006i](006i-server-side-mount-and-publish.md) / [014c](014c-publication-requires-evidence.md) (what publishing does, and must not do here).
 
@@ -55,16 +55,16 @@ B and C are likely the pair to take, and C must be designed before A ships, beca
 
 The tree already has the right seam. `experiment.ArtifactStore` (`internal/experiment/store.go`) is `Put`/`Get`/`Delete`/`DeletePrefix` over string keys, with memory and filesystem implementations and prefix conventions per owning entity (`datasets/<id>`, `experiments/<id>/`). Uploaded papers are one more prefix behind it. Nothing above the seam depends on which branch below is taken, which is what makes deferring this cheap.
 
-**Branch 1: drive is the store.** `drive.latere.ai` already provides what is being asked for: S3/MinIO-backed user files, a Drive-style file-tree UI, ownership and sharing, quotas, provenance zones, and presigned browser multipart upload (the `dr-15` CORS rule in `terraform/storage.tf` exists for that). [008](008-drive-data-plane.md) already names drive as replichai's artifact data plane. Building a second project-scoped file manager inside replichai duplicates a shipped product and contradicts a spec on the map. The cost is that drive becomes a hard runtime dependency of replichai ahead of 008's own sequencing, and it inherits 008's unresolved question: does project membership ([006c](006c-identity-and-access.md)) delegate to drive's sharing model, or stay the source of truth with drive as plain storage?
+**Branch 1: drive is the store.** `drive.latere.ai` already provides what is being asked for: S3/MinIO-backed user files, a Drive-style file-tree UI, ownership and sharing, quotas, provenance zones, and presigned browser multipart upload (the shared bucket already carries a CORS rule for it). [008](008-drive-data-plane.md) already names drive as replichai's artifact data plane. Building a second project-scoped file manager inside replichai duplicates a shipped product and contradicts a spec on the map. The cost is that drive becomes a hard runtime dependency of replichai ahead of 008's own sequencing, and it inherits 008's unresolved question: does project membership ([006c](006c-identity-and-access.md)) delegate to drive's sharing model, or stay the source of truth with drive as plain storage?
 
-**Branch 2: replichai's own prefix in the shared bucket.** An S3 `ArtifactStore` against `latere-storage` under a `replichai/` prefix, following the product-namespaced pattern `cella/` and `lux/` already use. If taken, the infra changes are known and small. They are listed here so nobody has to rediscover them:
+**Branch 2: replichai's own prefix in the shared bucket.** An S3 `ArtifactStore` against the shared object-storage bucket under a `replichai/` prefix, following the product-namespaced pattern other services already use. If taken, the infra changes are known and small. They are listed here so nobody has to rediscover them:
 
-- a `replichai-*` lifecycle rule, which must slot **after** `lux-` in `storage.tf`; the block order is significant and alphabetical, per the 2026-06 drift incident recorded in that file's comment;
-- a second entry in `allowed_origins` on `digitalocean_spaces_bucket_cors_configuration.storage`, which today permits the drive origin only; needed **only** if the SPA PUTs presigned parts directly rather than proxying through the API;
-- a scoped `digitalocean_spaces_key` for the service, per the `images_catalog` precedent;
-- **not** the CDN. `cdn.latere.ai` serves public objects; see Embargo.
+- a lifecycle rule for the `replichai/` prefix, in its alphabetical place among the bucket's existing rules, because their order is significant;
+- a second allowed origin in the bucket's CORS configuration, which today permits the drive origin only; needed **only** if the SPA PUTs presigned parts directly rather than proxying through the API;
+- a storage access key scoped to the service, following an existing precedent;
+- **not** the CDN, which serves public objects; see Embargo.
 
-Terraform is a separate repository. This spec names what would change there and commits nothing to it.
+The infrastructure code is a separate repository. This spec names what would change there and commits nothing to it.
 
 **The UI, not the bucket, is the asymmetry between the branches.** What is being asked for is project-scoped file management: the project screen ([012](012-a-project-holds-papers.md)) gains a Files card beside its Papers card, or a paper row that lists its versions and lets one be replaced, plus upload progress, size and type refusals, a per-project quota, and a delete that removes the bytes. Branch 1 inherits all of that from drive, which ships a file tree, quotas, and browser multipart upload today. Branch 2 gets a bucket quickly and then has to build every one of those screens. Costed on the bucket alone, Branch 2 looks cheaper than it is, and that is probably the tie-breaker.
 
@@ -82,7 +82,7 @@ A manuscript under submission is confidential, and the product is built to publi
 
 - An uploaded paper is private, and its session is **unpublishable**: barred from the owner's public flip ([006f](006f-taking-a-reproduction-out.md)/[006n](006n-who-signed-off.md)), not merely private by default. A flip is one button and one signature away, and the material behind it is unpublished work.
 - The transcript ([005](005-transcript.md)) quotes the paper. Committed transcript evidence ([014c](014c-publication-requires-evidence.md)) would therefore contain the manuscript, which is a leak through the evidence layer rather than the artifact layer.
-- Bytes never land under a public-read prefix, and never behind `cdn.latere.ai`.
+- Bytes never land under a public-read prefix, and never behind the public CDN.
 - **Deletion collides with 012.** "Delete my manuscript" is a request this system must be able to honor, and 012 makes a paper with sessions permanently undeletable *on purpose*, because the record of what was reproduced is not editable. Both rules are right and they cannot both hold for uploaded content. Resolving that is part of taking this spec.
 
 This is a different concern from [BACKLOG](BACKLOG.md) item 4. There the risk is *standing*: a verdict naming authors who never agreed to it. Here the owner **is** the author, and the risk is *leakage*.

@@ -85,7 +85,7 @@ Examples:
 
 - Anthropic: upload A, upload B, create session, send kickoff. Failure at upload B removes A; failure at kickoff interrupts/archives the session and removes session-owned uploads.
 - OpenAI: create container, upload inputs, create response. Failure creating the response deletes the owned container and uploads.
-- Latere: create/attach Cella sandbox, begin Topos trace. Failure after attach stops the run and releases the sandbox/Drive claim through their owning APIs.
+- Latere: create/attach Cella sandbox, begin Topos trace (Cella is Latere's sandbox control plane, Topos its agent runtime, and Drive its file storage service). Failure after attach stops the run and releases the sandbox/Drive claim through their owning APIs.
 
 Pre-existing repositories, Drive workspaces, and caller-owned resources are references, not owned resources, and are never compensated. Ownership is encoded per locator entry and covered by adapter tests.
 

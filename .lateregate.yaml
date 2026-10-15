@@ -89,68 +89,19 @@ golangci:
             - G301
             - G306
         misspell:
-          # The locale is US because "artifact" is the domain term used by the
-          # research community, the backend API, and this project's documents,
-          # and it is the only word held to US spelling. The British forms the
-          # project writes everywhere else are listed below.
+          # Everything is written in American English (CONTRIBUTING.md), and
+          # the US locale enforces it. Four British forms are accepted because
+          # changing them would change stored data: `cancelled` (and `cancelling`
+          # beside it) is a terminal reason written into job rows and published
+          # manifests, and
+          # `authorised` and `organisation` sit in database migrations that
+          # have already been applied and are never edited.
           locale: US
-          # Prose is British English on purpose, so these are accepted spellings.
-          # `artefact` is deliberately absent so that "artifact" keeps being
-          # enforced.
           ignore-rules:
-            - analyse
-            - analyses
             - authorised
-            - authorises
-            - behaviour
-            - behavioural
-            - behaviours
             - cancelled
             - cancelling
-            - dialled
-            - catalogue
-            - catalogues
-            - centre
-            - centred
-            - favour
-            - favours
-            - honour
-            - honoured
-            - honouring
-            - honours
-            - initialise
-            - initialised
-            - initialises
-            - labelled
-            - labelling
-            - licence
-            - licences
-            - marshalling
-            - materialise
-            - materialised
-            - materialises
             - organisation
-            - organise
-            - organised
-            - organises
-            - recognisable
-            - recognise
-            - recognised
-            - recognises
-            - reorganises
-            - reorganising
-            - serialise
-            - serialised
-            - serialises
-            - summarise
-            - summarised
-            - summarises
-            - summarising
-            - synthesised
-            - synthesises
-            - travelled
-            - tunnelled
-            - unrecognised
       exclusions:
         rules:
           # Tests exercise error paths deliberately and read fixture files by
@@ -198,13 +149,14 @@ release:
     - file: deploy/prod/kustomization.yaml
       pattern: 'newTag: v\d+\.\d+\.\d+'
 
-# The identity shape of the family: specs/infrastructure/identity.md in latere-ai/specs
+# The identity shape every Latere service shares, checked by the identity gate.
 identity:
   role: service
   audience: replichai.latere.ai
   roles_only: true
 
-# The database shape of the family: specs/infrastructure/database-pooling.md in latere-ai/specs
+# The database shape every Latere service shares: a pooled endpoint for serving,
+# the direct one for migrations.
 postgres:
   # Serving traffic opens the pooled endpoint and falls back to the direct one;
   # migrations keep the direct endpoint.

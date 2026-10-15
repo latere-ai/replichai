@@ -8,9 +8,9 @@
 
 ## What the run must get right
 
-### 1. The repository is empty
+### 1. The repository holds no implementation
 
-There is a repository at `github.com/chanr0/pleasqlarify`, and it is **empty** — no usable implementation.
+There is a repository at `github.com/chanr0/pleasqlarify`. When this case was written (2026-07-22), it contained **no implementation** of the method.
 
 This is the discriminating fact for this case. A run **fails** if it:
 
@@ -36,11 +36,11 @@ Note the trap deliberately: the arXiv landing page carries **no** code or data a
 
 ### 4. The rate is not the regression target
 
-This paper has been audited more than once under the same method and produced very different overall rates — 40% over five components, 79% over seven — while every run agreed on the facts that matter: the verdict, the empty repository, the inner/outer boundary, and the component-level conclusion that the pragmatic-repair core is reproducible only by reimplementation and the visual interface is not. The scalar swings because the decomposition is a judgment, not a measurement. Grade this case on the component-level conclusions and the discriminating fact in §1; do not treat the rate as a value to reproduce.
+This paper has been audited more than once under the same method and produced very different overall rates — 40% over five components, 79% over seven — while every run agreed on the facts that matter: the verdict, the repository without an implementation, the inner/outer boundary, and the component-level conclusion that the pragmatic-repair core is reproducible only by reimplementation and the visual interface is not. The scalar swings because the decomposition is a judgment, not a measurement. Grade this case on the component-level conclusions and the discriminating fact in §1; do not treat the rate as a value to reproduce.
 
 ### 5. The instrument (007a)
 
-`instrument.json` is additive and does not move any conclusion above. The discriminating fact here is **servability**: the outer loop is a study *of the visual interface*, and the reproduction does not rebuild that interface (§1: the repository is empty; §3: the interface is outer-loop). So every outer-loop component fails the `apparatus_recovered` criterion — a study cannot be served without the thing being studied — and `all_servable` is `false`.
+`instrument.json` is additive and does not move any conclusion above. The discriminating fact here is **servability**: the outer loop is a study *of the visual interface*, and the reproduction does not rebuild that interface (§1: the repository holds no implementation; §3: the interface is outer-loop). So every outer-loop component fails the `apparatus_recovered` criterion — a study cannot be served without the thing being studied — and `all_servable` is `false`.
 
 A run **passes** the rubric's *Instrument* criterion by declaring this honestly: protocol extracted or null-with-reason, and servability marking the interface components not servable with `apparatus_recovered` among their failed criteria. A run **fails** if it marks the interface servable, which would claim the platform could host a study of an apparatus the reproduction never recovered.
 

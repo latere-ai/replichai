@@ -234,7 +234,7 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 }
 
 // Events returns the whole transcript on every call, because the provider offers
-// no cursor. Transcript entries arrive unidentified, so event ids are synthesised
+// no cursor. Transcript entries arrive unidentified, so event ids are synthesized
 // from the session id and the position in the transcript.
 func (r *Runtime) Events(ctx context.Context, ref managed.SessionRef) ([]managed.Event, error) {
 	handle, metadata, err := r.handle(ref)

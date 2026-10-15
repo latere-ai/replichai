@@ -5,6 +5,53 @@ pieces fit together, and why each layer is split where it is, is in
 [`docs/architecture.md`](docs/architecture.md); the design records are in
 [`specs/`](specs/README.md).
 
+## Getting set up
+
+You need Go 1.27 or newer, [bun](https://bun.sh) for the frontend, and Docker
+or Podman for the database tests and the local stack. Nothing else: no
+account, no API key, and no access to anything Latere runs.
+
+```bash
+git clone https://github.com/latere-ai/replichai
+cd replichai
+make hooks       # the pre-commit and pre-push checks
+make check       # every gate CI runs
+make up          # Postgres + the server on http://localhost:8080, on the free memory runtime
+```
+
+A real audit needs a model: an Anthropic API key for the `anthropic-managed`
+runtime, or a coding agent you are already logged in to for `--runtime
+local`. [`docs/local-runs.md`](docs/local-runs.md) covers the second.
+
+## Sending a change
+
+Fork the repository, work on a branch, and open a pull request. Keep one
+logical change per commit, stage the files explicitly, and write the subject
+as `scope: what changed`, in lowercase, for whoever reads the log. Maintainers
+push to `main` directly; CI runs the same gate on every push and pull
+request, and a `v*` tag cuts a release. A change people will notice gets an
+entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), written for whoever
+runs an audit or operates a deployment.
+
+Sign off every commit in a pull request with `git commit -s`. The sign-off
+certifies the [Developer Certificate of Origin](https://developercertificate.org/):
+that you wrote the change, or otherwise have the right to submit it under the
+project's license, [AGPL-3.0-or-later](LICENSE). A pull request whose commits
+are not signed off is not merged.
+
+If you are planning something large, open an issue first.
+
+## Specs first
+
+A feature starts as a spec in [`specs/`](specs/README.md), with acceptance
+criteria that are testable sentences. The implementation follows the spec, and
+a divergence is recorded in the spec's Outcome section rather than left in the
+code. Names in a spec (commands, flags, routes, configuration variables, JSON
+fields) are the names the code uses.
+
+Small fixes do not need a spec. A change to the CLI, the HTTP API, a
+configuration variable, a file an audit writes, or the method does.
+
 ## Where things are
 
 ```
@@ -43,7 +90,7 @@ internal/httpapi/    the HTTP surface: submit, stream, read, publish, pay (payme
                      holds the Stripe checkout and webhook routes)
 internal/seo/        the head the server writes, the sitemap, and the addresses Go knows
 internal/spa/        embeds and serves the built frontend
-internal/doccheck/   tests that example.env, README.md, and docs/architecture.md match the code
+internal/doccheck/   tests that example.env, docs/cli.md, and docs/architecture.md match the code
 internal/oteltest/   a recording tracer for tests that check the spans instrumentation produces
 frontend/            the researcher UI: bun + React + Vite
 method/              the audit itself: instructions, rubric, task template (data, not code)
@@ -248,3 +295,7 @@ records, so any edit to them, a typo fix included, makes later audits
 incomparable with earlier ones. `experiment.md` is kept outside the digest, so
 editing the experiment doctrine cannot change what an audit is comparable
 against.
+
+## Reporting a vulnerability
+
+Do not open an issue. [`SECURITY.md`](SECURITY.md) says where to send it.

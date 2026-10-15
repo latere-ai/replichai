@@ -17,7 +17,7 @@ The current model and price keys are bare strings. The default card contains onl
 
 `provider.Usage` has Anthropic's 5-minute and 1-hour cache-write classes. It has one generic cache-write bucket but no generic cache-write rate, so pricing falls back to the greater Anthropic lifetime rate. OpenAI's cached input is included in total input while Anthropic's cache tokens are adjacent; treating both the same double-counts one of them. Hosted containers and tools may introduce billable units that are not tokens.
 
-At event granularity the boundary is already broken: HTTP parses `raw.model_usage.cache_*` from Anthropic transcript JSON. An OpenAI or Lux event would display and aggregate zero unless UI code learned another vendor wire format.
+At event granularity the boundary is already broken: HTTP parses `raw.model_usage.cache_*` from Anthropic transcript JSON. An OpenAI or Lux (Latere's model gateway) event would display and aggregate zero unless UI code learned another vendor wire format.
 
 ## Model identity
 
@@ -112,7 +112,7 @@ Historical settlement fixture tests calculate the old and migrated price and req
 ## Out of scope
 
 - Changing the reserve amount or wallet semantics.
-- Billing a researcher directly from Lux/Cella records.
+- Billing a researcher directly from Lux/Cella records (Cella is Latere's sandbox control plane).
 - Guessing prices by scraping provider model-list endpoints.
 - User-entered exact model ids; [031](031-the-model-is-a-choice.md)'s three preferences remain the product surface.
 

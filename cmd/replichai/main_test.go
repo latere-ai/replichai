@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,37 @@ func TestHTTPFetcherDoesNotRetryNotFound(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("a 404 is not retryable, want 1 call, got %d", calls)
+	}
+}
+
+// TestTheMissingInstrumentLineNamesTheInstrumentCriterion checks that the line
+// printed for a run with no instrument.json points at the rubric criterion
+// that requires the file. It used to name criterion 7, which became Findings
+// as data when that criterion was inserted ahead of Instrument.
+func TestTheMissingInstrumentLineNamesTheInstrumentCriterion(t *testing.T) {
+	rubric, err := os.ReadFile(filepath.Join("..", "..", "method", "rubric.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	titles := map[string]string{}
+	for _, m := range regexp.MustCompile(`(?m)^(\d+)\. \*\*([^*]+?)\.\*\*`).FindAllStringSubmatch(string(rubric), -1) {
+		titles[m[1]] = m[2]
+	}
+	f := newTemp(t)
+	reportInstrument(f, false, nil)
+	got := readAll(t, f)
+	named := ""
+	if m := regexp.MustCompile(`criterion (\d+)`).FindStringSubmatch(got); m != nil {
+		named = titles[m[1]]
+	} else if m := regexp.MustCompile(`the rubric's (\w[\w ]*?) criterion`).FindStringSubmatch(got); m != nil {
+		for _, title := range titles {
+			if title == m[1] {
+				named = title
+			}
+		}
+	}
+	if named != "Instrument" {
+		t.Errorf("the line %q names the rubric criterion %q, want Instrument", strings.TrimSpace(got), named)
 	}
 }
 

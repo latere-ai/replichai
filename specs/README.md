@@ -6,6 +6,37 @@ Designs, and the record of what was built. One spec per tightly-scoped feature; 
 
 Feasibility questions and scope extensions that are not on the roadmap (multi-study papers, hard-to-replicate instruments, unpublished manuscripts) live in [`BACKLOG.md`](BACKLOG.md), deliberately unsequenced. One of them, [016](016-a-paper-that-is-not-published-yet.md), needed enough argument to get a deferred spec of its own.
 
+## How to read this
+
+A spec is one design: the problem, the decisions and why, testable acceptance
+criteria, and what it deliberately leaves out. When it is built, an Outcome
+section records what actually shipped and where it diverged.
+
+Start with [Decisions to audit](#decisions-to-audit) for the choices the whole
+system rests on, then [the spec map](#the-spec-map) for every spec and its
+state, and [What is left](#what-is-left) for what is next.
+
+Each spec's frontmatter carries one status:
+
+| Status | Meaning |
+|---|---|
+| `draft` | argued, not yet agreed |
+| `designed` | agreed, not built |
+| `built`, `implemented` | shipped; older specs say implemented, newer ones built. The map's Done and Half done groups say whether all of it shipped |
+| `deferred` | waiting, for the reason the spec states |
+| `superseded` | replaced by a later spec, and kept under [`.archive/`](.archive/) |
+
+Several specs mention services of the Latere platform that ReplicHAI can run
+on: Topos (its agent runtime), Lux (its model gateway), Cella (its sandbox
+control plane) and Auth (its identity provider). Latere AI operates the hosted
+service at replichai.latere.ai.
+
+**Proposing a spec.** Open an issue first, so the problem is agreed before the
+design. Then send a pull request adding `NNN-short-title.md`, numbered one
+above the highest in use, with `status: draft` in its frontmatter and a row in
+the map's Not built table. `go tool lateregate spec-lint` checks that the tree
+and this index agree.
+
 ## What replichai is
 
 Give it a paper. It resolves the paper's identity, runs an agent that reproduces the machine-runnable inner loop, publishes the reproduction as its own GitHub repository with the agent's commit history, and returns an independent verdict, recording every decision the paper left unwritten. It never simulates the outer loop (the human study); placing and defending that boundary is the point.
@@ -86,7 +117,7 @@ This has been run, which is the reason to believe any of it. A session driven by
 
 **Built:** [031](031-the-model-is-a-choice.md) lets whoever starts a session choose the model it runs on. Every managed session this product had ever run ran on Opus at $5/$25 per Mtok, not as a default but as the only value: `audit.WithModelPreference` existed and was called from exactly one place in the tree, a test. The three tiers were already vocabulary (`credit.Preferences`) and already priced (`Card.Covers`), reachable only from a boot log and a CLI report; what was missing was a way to choose. The tier is now a closed typed enum validated at the HTTP boundary. The adapter passes an unrecognised preference straight through as a literal model id, and a model the card cannot name is billed at the highest rates it holds, so an unchecked string was both a request for a model that may not exist and a bill at the top of the card. It is stored as a column rather than consumed at enqueue for a plain reason: `job.Submission` does not outlive `Enqueue`, and the worker that eventually runs the session, possibly a different process on a different pod, sees only the row, so a tier that stopped at the handler would reach no run at all. Both paths take one `auditOptions(j, observe)` that cannot be called without the job, though only the fresh one acts on it: `Resume` rejoins a session whose model was fixed when it was created. Prices come from a new `GET /models` and never from the client, for the reason 011 snapshots the card at all. What this does *not* touch is the gate: `takeReserveTx` reads the reserve with no model in hand, so a cheaper tier lowers burn rate, not what a project must hold to begin. This is asserted explicitly, so nobody later reads the change as having loosened admission.
 
-**Built (money comes in without an admin):** [022](022-money-comes-in-without-an-admin.md) (six leaves, 022a–022f) adds the front door 011 left locked. A person buys credits into their own wallet with a card: a Stripe hosted Checkout session creates the charge, a signed webhook is the one thing that posts the credit, and the ledger dedupes that post on an `external_ref` so a retried delivery cannot double it. Margin is a visible spread at purchase (you pay $20, your wallet gains $18), which keeps the rate card raw so a session's cost still reconciles against vendor rates. The checkout is created in **USD** (a credit is prepaid USD compute) and an EU customer pays the euro equivalent via Stripe Adaptive Pricing, a dashboard toggle, so no code charges, reads, or converts EUR; EU-consumer VAT is a flagged, deferred spec. Refunds are a negative `adjust` and may take a wallet negative, and a negative wallet **freezes the account** into view-only mode (every write refused `402 account_frozen` except the top-up that thaws it), with a one-shot admin override and a frozen/negative filter on the admin people table, so a chargeback-after-spend cannot quietly keep costing compute. Coupling a customer payment to the platform's own Anthropic account is a stated non-goal, replaced by a solvency number on the console. Supersedes only 011's closing line: admin top-up stays as the way a grant or comp enters a wallet.
+**Built (money comes in without an admin):** the six specs 022a to 022f add the front door 011 left locked. A person buys credits into their own wallet with a card: a Stripe hosted Checkout session creates the charge, a signed webhook is the one thing that posts the credit, and the ledger dedupes that post on an `external_ref` so a retried delivery cannot double it. The amount credited is the amount paid less a spread an admin sets, which keeps the rate card at vendor prices so a session's cost still reconciles against them. The checkout is created in **USD** (a credit is prepaid USD compute), and no code charges, reads, or converts another currency. Refunds are a negative `adjust` and may take a wallet negative, and a negative wallet **freezes the account** into view-only mode (every write refused `402 account_frozen` except the top-up that thaws it), with a one-shot admin override and a frozen/negative filter on the admin people table, so a chargeback-after-spend cannot quietly keep costing compute. Admin top-up stays as the way a grant or comp enters a wallet.
 
 **Built and deployed:** the project/session rework: 006g (projects as first-class records holding replication sessions, the double-trigger guard, the CLI backfill migrated into three one-session projects) and 006h (the session transcript viewer: trajectory + token usage, usage derived from the transcript for backfilled sessions).
 
@@ -134,7 +165,7 @@ This has been run, which is the reason to believe any of it. A session driven by
 | `internal/webauth` | the OIDC login, session cookie, gate policy, and dev bypass (006c) |
 | `internal/seo` | the head the server writes, the sitemap, and the addresses Go knows (042) |
 | `internal/spa` | embeds and serves the built frontend as the app shell (006e) |
-| `internal/doccheck` | tests that `example.env`, `README.md` and `docs/architecture.md` match the code |
+| `internal/doccheck` | tests that `example.env`, `docs/cli.md` and `docs/architecture.md` match the code |
 | `internal/oteltest` | a recording tracer for tests that check the spans instrumentation produces |
 | `frontend/` | the researcher UI — bun + React, i18n scaffolding (English only today) (006e) |
 | `cmd/replichai` | the CLI: `audit`, `run`, `resolve`, `publish`, `finish`, `login`, `whoami`, `logout`, `org`, `sessions`, `project`, `push`, `providers`, `rates` |
@@ -166,7 +197,7 @@ This has been run, which is the reason to believe any of it. A session driven by
 
 Three tables, by how finished the work is rather than by number. A spec's number tells you when it was written; this tells you what you can rely on. Within each table the order is numeric.
 
-### Done (91)
+### Done (90)
 
 Built, and every acceptance criterion it set itself holds.
 
@@ -214,7 +245,6 @@ Built, and every acceptance criterion it set itself holds.
 | 021c | [What the authors released](021c-what-the-authors-released.md) | built | 021a, 015, 002 |
 | 021d | [Watching a session run](021d-watching-a-session-run.md) | built (revised down) | 006a, 006s, 005, 011 |
 | 021e | [The project rail](021e-the-project-rail.md) | built | 021a, 021d, 018, 006n, 011 |
-| 022 | [Money comes in without an admin](022-money-comes-in-without-an-admin.md) | built (all six leaves) | 011, 006c, 006k, 010 |
 | 022a | [The idempotent paid top-up](022a-the-idempotent-paid-topup.md) | built | 011 |
 | 022b | [Checkout and the webhook](022b-checkout-and-the-webhook.md) | built | 022a |
 | 022c | [Refunds and the solvency read](022c-refunds-and-the-solvency-read.md) | built | 022b |
@@ -280,7 +310,7 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half done | 041a–041d |
 | 046 | [One run is one draw](046-one-run-is-one-draw.md) | runs per paper, findings schema 2, the run record, the first graded attempt kept, one paper copy, artifact snapshots and network profile per study, and the in-loop schema check built; system-decided matches and the study view designed | 045h, 021a, 003, 045f, 044, 005 |
 
-### Not built (17)
+### Not built (15)
 
 Designed, deferred, or still an argument. Nothing here is in the product; [What is left](#what-is-left) says why each one is waiting.
 
@@ -296,9 +326,7 @@ Designed, deferred, or still an argument. Nothing here is in the product; [What 
 | 023b | [The experiment HTTP surface](023b-the-experiment-http-surface.md) | draft | 023a, 006a, 006c |
 | 023c | [Running an experiment from the app](023c-running-an-experiment-from-the-app.md) | draft | 023b, 006e, 013, 021 |
 | 023d | [Ground truth for a cohort](023d-ground-truth-for-a-cohort.md) | draft | 023c, 007c |
-| 025 | [The solvency an operator can act on](025-the-solvency-an-operator-can-act-on.md) | designed | 022c, 006k, 022d |
 | 026 | [The people table at scale](026-the-people-table-at-scale.md) | designed | 006k, 022f, 011 |
-| 027 | [EU VAT, and the invoice that comes with it](027-eu-vat-and-the-invoice.md) | designed | 022b, 022c, 022e, 006k, 011 |
 | 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
 | 041g | [Latere runs a session](041g-latere-runs-a-session.md) | designed, durability-gated | 041e, Topos/Lux/Cella/Auth |
 | 045m | [The role reaches the agent](045m-the-role-reaches-the-agent.md) | draft | 045d, 045a, 005 |
@@ -318,7 +346,7 @@ Designed, deferred, or still an argument. Nothing here is in the product; [What 
 
 **The web application (006): built, deployed, and taking money.** A service that wraps the engine: sign in, put papers in a project, start a session per paper, watch it stream, read the verdict, take the repository out, publish it under your name, and pay for the compute it used. 006 itself is not open work: it is the container, and what it argued for now lives in nineteen children (006a–006s) and in the numbered specs from 011 up, each carrying its own status. The one child still unbuilt is **006d**, dropping a PDF to submit.
 
-Sign-in is open ([006q](006q-sign-in-is-open-budget-is-not.md)): anyone with a Latere account may sign in and is granted the ordinary user tier. What limits them is the meter, not a guest list, and they arrive with nothing to spend until they buy credits ([022](022-money-comes-in-without-an-admin.md)) or an admin grants them.
+Sign-in is open ([006q](006q-sign-in-is-open-budget-is-not.md)): anyone with a Latere account may sign in and is granted the ordinary user tier. What limits them is the meter, not a guest list, and they arrive with nothing to spend until they buy credits (022a to 022f) or an admin grants them.
 
 **Replication (007): the track past the inner loop.** It turns a reproduction into a re-runnable **instrument** (the study protocol, the analysis entrypoint, and a servability verdict, declared as data: **007a**), then generalizes the unit of work: an **experiment** binds one instrument to one **data source**, of which there are four. The paper's released data gives re-analysis; a researcher's uploaded dataset gives a new finding on the paper's instrument (**007b**); an LLM cohort gives a *pilot* that tests the apparatus and never becomes evidence about people (**007c**); real participants, through a page the platform hosts, give re-observation (**007d**). One generalization, four bindings: "run it on my own data" is a row in a table, not a feature of its own.
 
@@ -330,7 +358,7 @@ What 007 does **not** do is touch the audit: the never-simulate-the-outer-loop b
 
 Nothing on this list blocks the loop the product exists for: a paper goes in, a graded reproduction with its transcript comes out, and somebody pays for it. These are the next things worth building, and each one names why it is not built yet.
 
-**Measuring a paper with many runs ([046](046-one-run-is-one-draw.md)).** Forty-nine runs of three papers showed that one run is one draw, and that the agent system, the network and the agent's own labels moved the result more than the paper did ([the pilot](https://github.com/latere-ai/replichai-experiments/blob/main/docs/repeat-runs-pilot.md)). Runs per paper, a findings schema the agents' real output fits, and the run record are built: every manifest now says which run it was, what it ran on and how it ended, and a run that never started leaves one too. So are the first graded attempt, kept for every run as round 0's findings, with grading possible with no revision at all; the same inputs for every run of a study, which are one copy of each paper, a snapshot of each artifact the project lists for it, and one named network profile, all on the run's record; and a findings file the system cannot read never passing a grading round on the local runtime. What is left is the system rather than the agent deciding whether a number matched, blockers that name their cause, and the study view. What a study measures is decided: per-claim reproducibility given the released materials, with the environment recorded and varied as a facet.
+**Measuring a paper with many runs ([046](046-one-run-is-one-draw.md)).** Forty-nine runs of three papers showed that one run is one draw, and that the agent system, the network and the agent's own labels moved the result more than the paper did (a 49-run pilot in September 2026). Runs per paper, a findings schema the agents' real output fits, and the run record are built: every manifest now says which run it was, what it ran on and how it ended, and a run that never started leaves one too. So are the first graded attempt, kept for every run as round 0's findings, with grading possible with no revision at all; the same inputs for every run of a study, which are one copy of each paper, a snapshot of each artifact the project lists for it, and one named network profile, all on the run's record; and a findings file the system cannot read never passing a grading round on the local runtime. What is left is the system rather than the agent deciding whether a number matched, blockers that name their cause, and the study view. What a study measures is decided: per-claim reproducibility given the released materials, with the environment recorded and varied as a facet.
 
 **The outer loop as a product ([023](023-the-outer-loop-as-a-product.md), four children).** The experiment engine and the `KindExperiment` job seam exist; the Postgres stores, the routes, and the screen do not. 023a/023b/023c ship the two data sources that need only live input: `synthetic:generated` and `uploaded`. This is the largest unbuilt thing on the roadmap and the only one that moves the product past the inner loop. Its parent [007](007-from-reproduction-to-replication.md) stays a draft on purpose: it is the argument, and the 023 chain is what gets built from it.
 
@@ -344,6 +372,6 @@ Nothing on this list blocks the loop the product exists for: a paper goes in, a 
 
 **Deferred on a hard constraint.** [009](009-secret-containment-when-the-agent-commits-live.md)'s third commit, a per-repo token replacing the org PAT, shipped for runs on the operator's machine ([045l](045l-the-repository-comes-from-the-platform.md)), where the token lives for one push. For the hosted mount, which holds its credential for the whole run inside the sandbox, it cannot ship while a GitHub App installation token lives at most an hour and a real run took 53 minutes. It needs runs bounded under the hour or a backend that can refresh a mount credential mid-session.
 
-**Deferred on scale.** [025](025-the-solvency-an-operator-can-act-on.md), [026](026-the-people-table-at-scale.md), and [027](027-eu-vat-and-the-invoice.md) are the money follow-ups 022 named. The current surfaces are fine at today's numbers; the specs exist so the fix is known before the numbers force it. 027 waits on the operator (OSS registration, a Stripe Tax configuration, and one legal classification) rather than on code.
+**Deferred on scale.** [026](026-the-people-table-at-scale.md) makes the admin people table hold thousands of accounts. The current surface is fine at today's numbers; the spec exists so the fix is known before the numbers force it.
 
-**Deferred by choice.** [006d](006d-pdf-ingestion.md) (drop a PDF to submit), [008](008-drive-data-plane.md) (drive as the artifact data plane, behind the `Store` seam), and [016](016-a-paper-that-is-not-published-yet.md) (a manuscript with no public identity, at ideation level). Still owed and not yet specced: recovering a negative project *pot*; 022 closed negative wallets, not overrun pots.
+**Deferred by choice.** [006d](006d-pdf-ingestion.md) (drop a PDF to submit), [008](008-drive-data-plane.md) (drive as the artifact data plane, behind the `Store` seam), and [016](016-a-paper-that-is-not-published-yet.md) (a manuscript with no public identity, at ideation level). Still owed and not yet specced: recovering a negative project *pot*; 022a to 022f closed negative wallets, not overrun pots.

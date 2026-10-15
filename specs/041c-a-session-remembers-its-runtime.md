@@ -75,8 +75,8 @@ Credentials are provider-scoped constructor input:
 |---|---|
 | Anthropic managed | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_BASE_URL` |
 | OpenAI direct | `OPENAI_API_KEY`, optional `OPENAI_BASE_URL` |
-| Lux model access | `LUX_API_KEY` or a request-scoped Latere bearer, plus `LUX_BASE_URL` |
-| Cella sandbox | a token source / request-scoped delegated bearer, plus `CELLA_BASE_URL` |
+| Lux model access (Latere's model gateway) | `LUX_API_KEY` or a request-scoped Latere bearer, plus `LUX_BASE_URL` |
+| Cella sandbox (Latere's sandbox control plane) | a token source / request-scoped delegated bearer, plus `CELLA_BASE_URL` |
 
 During the transition the generic pair was readable only through the legacy `anthropic` alias, under a deprecation warning, and never shared between catalog entries. The transition is over: see the outcome below.
 

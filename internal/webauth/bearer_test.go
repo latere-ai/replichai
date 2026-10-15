@@ -54,13 +54,13 @@ func bearerRequest(token string) *http.Request {
 // laptop and the same person in a terminal.
 func TestBothCredentialsProduceOnePrincipal(t *testing.T) {
 	v := validator{claims: map[string]*jwt.Claims{
-		"good": {Sub: "user-1", Email: "changkun@latere.ai"},
+		"good": {Sub: "user-1", Email: "ada@example.org"},
 	}}
 	fromBearer, code := seen(t, Bearer(v), bearerRequest("good"))
 	if code != http.StatusOK {
 		t.Fatalf("a valid bearer was refused: %d", code)
 	}
-	fromCookie := httpapi.Identity{Sub: "user-1", Email: "changkun@latere.ai"}
+	fromCookie := httpapi.Identity{Sub: "user-1", Email: "ada@example.org"}
 	if fromBearer.Sub != fromCookie.Sub || fromBearer.Email != fromCookie.Email {
 		t.Fatalf("the two sources disagree: %+v vs %+v", fromBearer, fromCookie)
 	}
