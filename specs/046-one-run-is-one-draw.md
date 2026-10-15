@@ -13,7 +13,7 @@ status: implemented
 
 ## Problem
 
-A session's verdict is presented as the paper's verdict. It is one draw. Forty-nine runs of three papers on 10 and 11 September 2026 ([the pilot](https://github.com/latere-ai/replichai-experiments/blob/main/docs/repeat-runs-pilot.md)) showed how far apart draws land and why:
+A session's verdict is presented as the paper's verdict. It is one draw. In a pilot, forty-nine runs of three papers on 10 and 11 September 2026 showed how far apart draws land and why:
 
 - Two agent systems ran every paper under one method digest. Component counts varied about eight times more under one than the other, and the systems placed the inner/outer boundary differently. The manifest the registry reads records neither system.
 - Which copy of the paper a run could read depended on its network policy, so identical computations were compared against different reported values.
@@ -90,13 +90,13 @@ As built. A session's evaluation names its findings file, and a runtime declares
 
 ### 9. Report a study, not a run (designed)
 
-A study screen shows, per claim, how many runs reproduced it under each environment profile, the paper's instability (the chance two runs disagree about a claim), and the difference the environment made. A single session's verdict says it is one run. The statistics are in [the dispersion model](https://github.com/latere-ai/replichai-experiments/blob/main/docs/dispersion-model.md). The screen is prototyped and reviewed before it is wired.
+A study screen shows, per claim, how many runs reproduced it under each environment profile, the paper's instability (the chance two runs disagree about a claim), and the difference the environment made. A single session's verdict says it is one run. The statistics are defined in a separate dispersion model. The screen is prototyped and reviewed before it is wired.
 
 ## The construct
 
 Decided on 15 October 2026: a study's primary measure is per-claim reproducibility given the released materials. For each result a paper reports, the outcome is whether a run reproduced it from the paper and what its authors released. The environment (agent system, model, network, inputs) is recorded on every run and varied on purpose across a study, so its effect is measured rather than assumed. This is what a corpus of papers that released code and data, with outcomes verified by people, can validate.
 
-Underspecification of the prose is a secondary claim. It is made only through the designed contrasts in the model document (the same papers with one stated detail withheld, and with code withheld), never read off run-to-run spread.
+Underspecification of the prose is a secondary claim. It is made only through the designed contrasts of the dispersion model (the same papers with one stated detail withheld, and with code withheld), never read off run-to-run spread.
 
 For the platform, decisions 5 and 6 carry this measure: the released materials are snapshotted as part of every run's fixed inputs, and the outcome analyzed is the system's match against the claim list, not the agent's label.
 
@@ -106,7 +106,7 @@ For the platform, decisions 5 and 6 carry this measure: the released materials a
 2. Every pilot mismatch shape and `not_fetched` validate under schema 2; one malformed row is a problem at that row and the rest of the file survives; schema 1 files still validate. (Built. Of the 29 findings files the pilot runs published, 27 validate and all 214 mismatches are read; the other two record a search as found with no address, which is a rule the files break.)
 3. A manifest names system, model, network profile, prompt digest, project, run number, terminal reason and grading rounds, and one exists for a run that never started. (Built, for a session on the operator's machine; a hosted session's record is sparser. A run of a study also names its network profile, the digest of the paper copy it was handed, and each artifact snapshot's source, commit and digest.)
 4. A study can run with grading and zero revisions, and round 0's findings are on record for every run. (Built on the local runtime: `--max-revisions 0`, and `grade/findings-0.json` in the repository of every run that committed anything. The hosted runtime refuses zero revisions and keeps no rounds.)
-5. The pilot's analysis script in replichai-experiments reproduces its report from manifests alone, with no transcript reading. (Partly: it reads the agent system and how a run ended from the run record, and falls back to `environment.json` for runs finalized before the record.)
+5. The pilot's analysis script reproduces its report from manifests alone, with no transcript reading. (Partly: it reads the agent system and how a run ended from the run record, and falls back to `environment.json` for runs finalized before the record.)
 6. A study screen shows per-claim reproduction counts per profile, and a session verdict says it is one run.
 
 ## Not in scope

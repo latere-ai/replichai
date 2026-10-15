@@ -38,7 +38,7 @@ Open questions:
 - **Correction and supersession.** We ran the wrong commit, or missed a data file the authors would have pointed us to. Who can trigger a re-run: only the owner? Does a corrected verdict *replace* the wrong one, or supersede it with the original still reachable? 006o withdraws a publication; it does not revise one.
 - **What the artifact claims for itself.** A verdict nobody is obliged to accept still needs to state its own status precisely: what was run, on what, and what it does *not* assert. Closer to a lab notebook than a ruling, and the wording decides what it claims.
 
-This is not hypothetical caution. [The landscape notes](https://github.com/latere-ai/replichai-experiments/blob/main/docs/landscape.md) found it twice from independent directions: the frontier labs avoid audit products because being a researcher's co-pilot and their auditor are incompatible positions, and the incumbents' real advantage was **mandate**, the standing to be the entity whose verdict counts, rather than technology.
+This is not hypothetical caution. A review of the competitive landscape found it twice from independent directions: the frontier labs avoid audit products because being a researcher's co-pilot and their auditor are incompatible positions, and the incumbents' real advantage was **mandate**, the standing to be the entity whose verdict counts, rather than technology.
 
 Publishing is live ([006f](006f-taking-a-reproduction-out.md), [028](028-the-registry-opens.md)), so a verdict naming a paper's authors can already leave its owner's project, and nothing yet gives those authors a reply.
 

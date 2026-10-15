@@ -105,7 +105,7 @@ Rejected: a container runner inside the server. It is a second sandbox to secure
 
 ## The specs this spawns
 
-Each is tightly scoped and gets its own implementation pass. The order is deliberate and inverts the order these capabilities were first asked for; see below.
+Each is tightly scoped and gets its own implementation pass. The order is deliberate and inverts the order in which these capabilities were first proposed; see below.
 
 | Child | Scope | Depends on |
 |---|---|---|
@@ -114,7 +114,7 @@ Each is tightly scoped and gets its own implementation pass. The order is delibe
 | **[007c](007c-the-synthetic-pilot.md) — The synthetic pilot** | the `synthetic` source: an LLM cohort driven through `protocol`, its indelible labeling, and its calibration against papers that released real data | 007b |
 | **[007d](007d-hosting-a-study.md) — Hosting a study for participants** | the `human` source: the hosted page on its own origin, consent, the anonymous write path, per-project collection and export, retention | 007b, 006a, 006b, 006c, 006e |
 
-**Sequence, and why it is not the order these were asked for.** The synthetic pilot was the first capability requested and is third here. A synthetic cohort is only *checkable* where the paper released real participant data: you validate it against the paper's own reported effect, which is ground truth you have. Before the experiment machinery and a `released` baseline exist, a synthetic pilot emits numbers nobody can falsify, which is the failure mode this whole spec is built to avoid. So: protocol extraction, then the offline bindings, then synthetic against a known answer, then human cohorts last, because they carry the compliance and public-write surface.
+**Sequence, and why it is not the order these were proposed in.** The synthetic pilot was the first capability proposed and is third here. A synthetic cohort is only *checkable* where the paper released real participant data: you validate it against the paper's own reported effect, which is ground truth you have. Before the experiment machinery and a `released` baseline exist, a synthetic pilot emits numbers nobody can falsify, which is the failure mode this whole spec is built to avoid. So: protocol extraction, then the offline bindings, then synthetic against a known answer, then human cohorts last, because they carry the compliance and public-write surface.
 
 Against the project's existing plan, 007a–007c slot in as engine work after 005 and before the web shell; 007d comes after 006e:
 
