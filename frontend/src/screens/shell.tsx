@@ -24,6 +24,7 @@ import { AdminScreen } from './admin'
 import { SettingsScreen } from './settings'
 import { SubmitScreen } from './submit'
 import { ProjectsScreen, PublicScreen, TrashScreen } from './projects'
+import { SourceLink } from '../source'
 
 export function AuthUnavailable({ i18n, onRetry }: { i18n: I18n; onRetry: () => void }) {
   return (
@@ -290,6 +291,7 @@ export function Shell({
           )}
         </div>
         <div className="rail-foot">
+          <SourceLink i18n={i18n} className="nav-label rail-source" />
           {signedIn ? (
             <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} data-tip-side="right" onClick={() => goto({ name: 'settings' })}>
               {/* Sized to the meta stack of name, address and tier beside it, not

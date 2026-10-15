@@ -211,6 +211,9 @@ const en = {
     lpDemoFootnote: 'Derived from all nine components, three of them shown above: 5 verified, 2 partial, 2 blocked (72%).',
     lpPlateBlocked: 'Blocked',
     lpNavRegistry: 'Registry',
+    // The offer of the app's source that the AGPL asks a network service to
+    // make (source.tsx). Shown only once the repository is public.
+    sourceCode: 'Source code (AGPL-3.0)',
     signInTitle: 'Sign in',
     signInBody: 'Sign in to submit a paper, watch the audit run, and sign the verdict.',
     signInNote: 'Built for research with human participants.',

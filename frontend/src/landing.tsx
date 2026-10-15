@@ -12,6 +12,7 @@ import { Ico } from './icons'
 import { listCitation } from './papers'
 import type { ThemeMode } from './theme'
 import { Seams } from './ui'
+import { SourceLink } from './source'
 import './landing.css'
 
 // The landing (029, rebuilt by 033, set like a paper by 047): a full page
@@ -787,7 +788,12 @@ export function Landing({
             or more. */}
         <div className="lp-footer-wrap">
           <SiteFooter
-            brand={<HomeLockup />}
+            brand={
+              <span className="lp-footer-brand">
+                <HomeLockup />
+                <SourceLink i18n={i18n} className="lp-footer-source" />
+              </span>
+            }
             theme={theme.mode}
             onThemeChange={(m) => theme.setMode(m as ThemeMode)}
             locale="en"
