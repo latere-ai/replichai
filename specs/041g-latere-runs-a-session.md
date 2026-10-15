@@ -94,7 +94,7 @@ No forge credential ever reaches the platform. The host (the command line, or th
 
 ## Usage and cost
 
-Each `model.request` event carries the model that served the call, its token counts and its cost in micro-USD. The adapter normalizes each into an event usage delta: input excludes cached input on this wire, so fresh input is `input_tokens`, cached input `cache_read_input_tokens`, cache write `cache_write_input_tokens`, output `output_tokens`, and reasoning tokens a detail of output. Cost is carried as the extra meter `platform.cost_usd_micro`, which no rate card prices: a Latere job is paid by the person (048), its settlement never calls the card, and the job records the meter as the session's reported cost. Status usage is the cumulative sum, which is monotonic by construction; `Status.Model` is the model of the first call.
+Each `model.request` event carries the model that served the call, its token counts and its cost in micro-USD. The adapter normalizes each into an event usage delta: input excludes cached input on this wire, so fresh input is `input_tokens`, cached input `cache_read_input_tokens`, cache write `cache_write_input_tokens`, output `output_tokens`, and reasoning tokens a detail of output. Cost is carried as the extra meter `charged.cost_usd_micro`, which no rate card prices: a Latere job is paid by the person (048), its settlement never calls the card, and the job records the meter as the session's reported cost. Status usage is the cumulative sum, which is monotonic by construction; `Status.Model` is the model of the first call.
 
 The platform charges the person's wallet for every call (048). ReplicHAI does not price the session; it records what the platform reported.
 

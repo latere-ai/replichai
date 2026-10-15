@@ -140,7 +140,7 @@ down:
 	$(COMPOSE) down -v
 
 # Run the store contracts that need a real Postgres against the running compose
-# database: job, access, platform, credit and project. In job, SELECT ... FOR
+# database: job, access, platform, credit, project and signin. In job, SELECT ... FOR
 # UPDATE SKIP LOCKED gets a real disjointness assertion and settling a charge a
 # real concurrency one. job and access run directly against the database in the URL
 # and migrate and truncate it. platform, credit and project each create a
@@ -164,7 +164,7 @@ down:
 # as `make db-contract TEST_DB=foo` still wins over both.
 TEST_DB := replichai_test
 TEST_DATABASE_URL := postgres://replichai:replichai@localhost:5432/$(TEST_DB)?sslmode=disable
-DB_CONTRACT_PKGS ?= ./internal/job/ ./internal/access/ ./internal/platform/ ./internal/credit/ ./internal/project/
+DB_CONTRACT_PKGS ?= ./internal/job/ ./internal/access/ ./internal/platform/ ./internal/credit/ ./internal/project/ ./internal/signin/
 
 .PHONY: db-contract
 db-contract:

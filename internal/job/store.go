@@ -31,6 +31,15 @@ type Submission struct {
 	// onto the job rather than read here, because the worker that runs the
 	// session sees only the row, and this struct does not outlive Enqueue.
 	Tier credit.Preference
+	// Runtime is the runtime the submitter chose (048), canonical; empty is
+	// the deployment's default at the time the worker runs it.
+	Runtime string
+	// Model is one exact model the submitter chose, provider/id, or empty
+	// when they chose a tier.
+	Model string
+	// Payer is who pays for the session, from the runtime's entry. A
+	// person-paid session takes no reserve and is never settled.
+	Payer Payer
 }
 
 // Import is a session somebody executed on their own machine, submitted as a
