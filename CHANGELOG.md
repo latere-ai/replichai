@@ -29,6 +29,25 @@ committed. The commit log already holds that.
 - "What the authors released" marks a place the run could not look at, because
   the sandbox refused the address or the fetch failed, as NOT FETCHED. It used
   to have no way to say so, apart from reporting that nothing was found.
+- Every run of a paper in `replichai run` reads the same copy of it. Before any
+  run starts, each paper is fetched once (arXiv's PDF, the PDF the paper's page
+  names, or an open-access copy), kept in `papers/` beside the project file,
+  and handed to every run read-only and outside the repository. A paper whose
+  publisher refuses automated downloads can name its copy with `file:` in the
+  project file. A project with a paper that has no copy stops before anything
+  runs and names the paper, and a resumed project hands its remaining runs the
+  copies its first runs read.
+- Every run of a project is given a named network profile: `artifacts`, the
+  list of places papers and their code and data live, which is the default, or
+  `open`. Set it with `network:` in the project file, for the file or for one
+  paper, or with `--network`. A sandbox that cannot enforce the profile refuses
+  the run rather than running it under another.
+- `replication.json` names the network profile a run was given and the digest
+  of the paper copy it read, as `network_profile` and `paper_digest`.
+- A run on your own machine keeps `verdict.json` as each grading round left it,
+  and what replichai found when it read it. A published run commits them
+  beside the grades as `grade/findings-<n>.json` and `grade/checks-<n>.json`;
+  round 0 is the run's first attempt, before any revision.
 
 ### Changed
 
@@ -39,11 +58,23 @@ committed. The commit log already holds that.
   written under schema 1 still read, and the app shows them the same way.
 - The method changed with the schema, so its digest moved. A reproduction made
   from this release on is not comparable under one digest with an earlier one.
+- On your own machine, replichai reads `verdict.json` against its schema before
+  each grading round, and tells the judge and the next revision what it found.
+  A round whose findings replichai cannot read no longer passes, whatever the
+  judge wrote: the run is revised, or fails once it has no revision left.
+- The method's first step reads the paper copy a run was given instead of
+  fetching another, so the method's digest moved again.
+- `replichai run` needs a runtime that can hand a run a file it cannot change,
+  which the local runtime can and the hosted one cannot. On the hosted runtime
+  its runs are refused before a session starts.
 - The footer links the product catalog at `latere.ai/products` under Company,
   and lists the chat as Latere Chat under Applications.
 
 ### Fixed
 
+- `--max-revisions 0` grades a run once and never revises it. It used to be
+  read as the default of three. A negative value is refused, and the hosted
+  runtime, whose grader cannot be told zero, refuses a run that asks for none.
 - Menus and select lists open in front of the whole page against the control
   that opened them, flip above it where there is no room below, and stay
   inside the window, so no box around them cuts them off.
