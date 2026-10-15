@@ -77,9 +77,12 @@ type Run struct {
 	// Sandbox is the boundary the work ran behind. Network is its egress
 	// policy; under an allowlist, NetworkAllowed counts the hosts on it and
 	// NetworkDigest identifies the list, so two runs can be seen to have had
-	// the same reach without the list being repeated here.
+	// the same reach without the list being repeated here. NetworkProfile
+	// names the profile a study fixed the policy to; a run with none had
+	// whatever its runtime could enforce.
 	Sandbox        string `json:"sandbox,omitempty"`
 	Network        string `json:"network,omitempty"`
+	NetworkProfile string `json:"network_profile,omitempty"`
 	NetworkAllowed int    `json:"network_allowed,omitempty"`
 	NetworkDigest  string `json:"network_digest,omitempty"`
 
@@ -89,6 +92,12 @@ type Run struct {
 	// the revision of this program that ran the session.
 	PromptDigest string `json:"prompt_digest,omitempty"`
 	Build        string `json:"build,omitempty"`
+
+	// PaperDigest identifies the copy of the paper the run was handed, as
+	// "sha256:<hex>". Every run of a study is handed the same copy, so two
+	// runs with one digest read the same text. Empty means the run found its
+	// own copy, and which one it read is not on record.
+	PaperDigest string `json:"paper_digest,omitempty"`
 
 	// StartedAt and FinishedAt bound the session. State and Reason say how it
 	// ended; Reason is ReasonNotStarted for a run that failed before a session
