@@ -17,8 +17,8 @@ import (
 const crossrefFull = `{"message":{
   "title":["Effects of Semantic Segmentation Visualization on Trust"],
   "author":[
-    {"given":"Changkun","family":"Ou"},
-    {"given":"Robin","family":"Welsch"},
+    {"given":"Ada","family":"Lovelace"},
+    {"given":"Grace","family":"Hopper"},
     {"name":"The Working Group"}
   ],
   "container-title":["Proceedings of the ACM on Human-Computer Interaction"],
@@ -38,7 +38,7 @@ func TestResolveDOIKeepsTheCrossrefRecord(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	want := Record{
-		Authors:   []string{"Changkun Ou", "Robin Welsch", "The Working Group"},
+		Authors:   []string{"Ada Lovelace", "Grace Hopper", "The Working Group"},
 		Venue:     "Proceedings of the ACM on Human-Computer Interaction",
 		Year:      2024,
 		Volume:    "8",
@@ -140,8 +140,8 @@ func TestArXivWithADOIPrefersCrossrefAndKeepsTheRest(t *testing.T) {
 func TestResolveURLReadsTheCitationTags(t *testing.T) {
 	page := []byte(`<html><head>
   <meta name="citation_title" content="A Study of Something">
-  <meta name="citation_author" content="Ou, Changkun">
-  <meta name="citation_author" content="Welsch, Robin">
+  <meta name="citation_author" content="Lovelace, Ada">
+  <meta name="citation_author" content="Hopper, Grace">
   <meta name="citation_journal_title" content="Interacting with Computers">
   <meta name="citation_publication_date" content="2022/03/14">
   <meta name="citation_volume" content="34">
@@ -158,7 +158,7 @@ func TestResolveURLReadsTheCitationTags(t *testing.T) {
 	want := Record{
 		// Kept as the page spells them. Inverting a name is a guess about a
 		// real person's name, and the owner can correct it.
-		Authors:   []string{"Ou, Changkun", "Welsch, Robin"},
+		Authors:   []string{"Lovelace, Ada", "Hopper, Grace"},
 		Venue:     "Interacting with Computers",
 		Year:      2022,
 		Volume:    "34",

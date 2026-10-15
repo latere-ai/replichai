@@ -20,7 +20,7 @@ import (
 // A Go byte slice is sent as bytea. When the driver knows the parameter's
 // type it encodes correctly, but when parameters travel in the text format the
 // value arrives as a hex literal and `\x7b22...`::jsonb fails with SQLSTATE
-// 22P02. The family's pooled DSNs carry cache_describe, which learns the types
+// 22P02. The deployment's pooled DSN carries cache_describe, which learns the types
 // from the server, so this pins the stricter default_query_exec_mode=exec: it
 // is the only setting that makes the Go type behind a jsonb parameter
 // observable, so passing under it proves the binding is right under any mode.
