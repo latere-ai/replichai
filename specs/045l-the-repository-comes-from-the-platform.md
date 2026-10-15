@@ -9,7 +9,7 @@ status: built
 
 **Scope:** how a session run on somebody's machine gets a GitHub repository and the credential to push it, without that person holding an organization credential. Closes [009](009-secret-containment-when-the-agent-commits-live.md)'s deferred commit 3 for the local path only; the mounted path keeps the PAT and the constraint that deferred it stands.
 
-**Depends on:** [045g](045g-the-host-pushes.md), [045j](045j-a-bearer-the-api-accepts.md), [045k](045k-a-local-session-reaches-the-cloud.md), [009](009-secret-containment-when-the-agent-commits-live.md), [006f](006f-taking-a-reproduction-out.md), [003](003-the-registry-of-reproductions.md).
+**Depends on:** [045g](045g-the-host-pushes.md), [045j](045j-a-bearer-the-api-accepts.md), [045k](045k-a-local-session-reaches-the-cloud.md), [009](009-secret-containment-when-the-agent-commits-live.md), [006f](006f-taking-a-reproduction-out.md), [003](003-reproduction-registry.md).
 
 ## Problem
 

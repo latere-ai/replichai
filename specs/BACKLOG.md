@@ -40,7 +40,7 @@ Open questions:
 
 This is not hypothetical caution. [The landscape notes](https://github.com/latere-ai/replichai-experiments/blob/main/docs/landscape.md) found it twice from independent directions: the frontier labs avoid audit products because being a researcher's co-pilot and their auditor are incompatible positions, and the incumbents' real advantage was **mandate**, the standing to be the entity whose verdict counts, rather than technology.
 
-Backlog rather than roadmap because nothing is public yet, so nothing is currently wrong. It becomes blocking the first time a run naming a third party leaves the owner's project.
+Publishing is live ([006f](006f-taking-a-reproduction-out.md), [028](028-the-registry-opens.md)), so a verdict naming a paper's authors can already leave its owner's project, and nothing yet gives those authors a reply.
 
 ## 5. A paper the world cannot fetch
 
@@ -57,4 +57,4 @@ Storage itself is the easy part and is already forked cleanly: `experiment.Artif
 
 ## Why these are backlog, not roadmap
 
-1–3 are end-to-end "get the auditing/replication model right" concerns: valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). 4 is a different kind of deferral: not hard to reason about, just not yet live, and it turns from a design question into an incident the day it is skipped. 5 is deferred for a third reason: it is wanted, and the storage half is a week's work, but the identity half rewrites indexes the whole product keys on, so building the obvious part first would mean discovering the model by migration.
+1–3 are end-to-end "get the auditing/replication model right" concerns: valuable, but far past what the MVP needs to prove. Validating them means test papers the golden set does not yet contain (multi-study, hard-instrument). 4 is a different kind of deferral: not hard to reason about, and already live, because every published verdict that names third parties is exposed to it. 5 is deferred for a third reason: it is wanted, and the storage half is a week's work, but the identity half rewrites indexes the whole product keys on, so building the obvious part first would mean discovering the model by migration.

@@ -54,4 +54,4 @@ status: built
 
 ## Out of scope
 
-The OIDC login itself (006c): until it lands, production is reachable but admits nobody, which is the point. A CI staging deploy (the overlay is a stub). Autoscaling, multi-replica HA, and blue-green: a low-volume single-tenant beta does not need them, and the job store's `SKIP LOCKED` already makes a surge pod safe. A frontend build in the pipeline (there is no frontend yet; 006e). Per-user backend credentials and multi-tenancy, deferred with the rest of 006's single-tenant scoping. Secret rotation and disaster recovery beyond what the shared cluster already provides.
+A CI staging deploy (the overlay is a stub). Autoscaling and blue-green: a low-volume beta does not need them, and the job store's `SKIP LOCKED` already makes a surge pod safe. Per-user backend credentials and multi-tenancy, deferred with the rest of 006's single-tenant scoping. Secret rotation and disaster recovery beyond what the shared cluster already provides.
