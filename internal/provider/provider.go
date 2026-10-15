@@ -235,6 +235,11 @@ type RunStatus struct {
 	Model          string `json:"model,omitempty"`
 	ModelProvider  string `json:"model_provider,omitempty"`
 	BillingVariant string `json:"billing_variant,omitempty"`
+	// ChargedCost is the micro-USD the runtime's own platform reported having
+	// charged for the session, as the Latere platform charges the person who
+	// started it (048). It is the cost of a session this deployment does not
+	// bill, and is zero for every session it does.
+	ChargedCost int64 `json:"charged_cost_micro,omitempty"`
 }
 
 // Passed reports whether the run finished and met the rubric. A run with no

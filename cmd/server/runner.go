@@ -376,6 +376,7 @@ func providerStatus(status managed.Status) provider.RunStatus {
 			CacheWriteTokens: status.Usage.CacheWrite, CacheWrite5mTokens: status.Usage.CacheWrite5m,
 			CacheWrite1hTokens: status.Usage.CacheWrite1h, OutputTokens: status.Usage.Output,
 		},
+		ChargedCost: status.Usage.Extra[managed.MeterChargedCost],
 	}
 	if status.Verdict != nil {
 		result.Verdict = &provider.Verdict{Grade: providerGrade(status.Verdict.Grade), Explanation: status.Verdict.Explanation}

@@ -221,6 +221,12 @@ func (v Verdict) Passed() bool { return v.Grade == GradePassed }
 // using it can settle.
 type Meter string
 
+// MeterChargedCost is the micro-USD a runtime's own platform has already
+// charged someone for the session, such as the Latere platform charging the
+// person who started it. It is reported, never priced: a rate card that
+// priced it would charge the same money a second time.
+const MeterChargedCost Meter = "charged.cost_usd_micro"
+
 // Usage is the cumulative, provider-neutral cost of a session so far. The six
 // token buckets are mutually exclusive so that each is priced exactly once.
 // Extra holds billable non-token meters, and Details holds a non-billable

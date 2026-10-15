@@ -14,7 +14,7 @@ import (
 // the micro-USD the platform reported for each model call and each paid tool
 // call. No rate card prices it. The person's own Latere wallet is what the
 // platform charged, and a job paid by the person records it as reported.
-const CostMeter managed.Meter = "platform.cost_usd_micro"
+const CostMeter = managed.MeterChargedCost
 
 // freeVariant is the billing variant of a model the platform serves at no
 // charge, named free/<vendor>/<model>.
