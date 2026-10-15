@@ -306,6 +306,9 @@ papers:
     model: fast
     runs: 3
     file: papers/uist-2024.pdf
+    artifacts:
+      - https://github.com/authors/system
+      - https://zenodo.org/records/1234567/files/study-data.zip
 ```
 
 Each paper gets its own session, its own sandbox and its own repository.
@@ -325,6 +328,19 @@ anything runs and names the paper. The copies are kept in `papers/` beside the
 project file and listed in `papers.json`, and each run's `replication.json`
 cites its copy by digest in `run.paper_digest`.
 
+**Every run of a paper reproduces from the same released materials.** List
+what the authors released under `artifacts:`, and each is snapshotted once
+before any run starts. A repository (on GitHub, GitLab, Bitbucket or Codeberg,
+or any address ending in `.git`) is kept as a git bundle with the commit its
+default branch pointed at; the run clones the bundle and works from the clone.
+Anything else is kept as the file its address serves, so give the direct
+download address: an address that serves a web page, such as a data
+repository's landing page, is refused. A run can be handed up to 64 MB per
+snapshot. The snapshots sit beside the paper's copy, and each run's
+`replication.json` lists them in `run.artifacts` with their source, commit and
+digest. The run still hunts for anything else the authors released and scores
+it, as any run does.
+
 Two files are written beside the project file and kept current as it runs:
 `batch.json`, the state, and `report.md`, the table of what passed, what it
 cost, and what did not happen. Interrupt it with Ctrl-C and nothing is lost:
@@ -337,8 +353,9 @@ Resume skips what finished and retries what failed, into the repository the
 first attempt created. A retry whose recorded repository no longer exists is
 refused rather than given a new one: edit `repo` in `batch.json`, or run
 without `--resume`. A retry that fails early keeps the repository on record.
-A resumed project hands its remaining runs the copies its first runs read, and
-refuses to start if a copy, or a file the project names, has changed since.
+A resumed project hands its remaining runs the copies and snapshots its first
+runs read, and refuses to start if one of them, a file the project names, or
+the list of artifacts has changed since.
 
 ## Putting the results in the app
 
