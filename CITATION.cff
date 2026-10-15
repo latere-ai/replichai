@@ -17,8 +17,6 @@ authors:
 repository-code: https://github.com/latere-ai/replichai
 url: https://replichai.latere.ai
 license: AGPL-3.0-or-later
-version: 0.30.3
-date-released: 2026-10-08
 keywords:
   - reproducibility
   - replication
