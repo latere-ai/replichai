@@ -78,9 +78,13 @@ The local runtime runs `verdict.Validate` after the worker stage and gives the p
 
 A study screen shows, per claim, how many runs reproduced it under each environment profile, the paper's instability (the chance two runs disagree about a claim), and the difference the environment made. A single session's verdict says it is one run. The statistics are in [`docs/dispersion-model.md`](../docs/dispersion-model.md). The screen is prototyped and reviewed before it is wired.
 
-## The construct (awaiting the owner)
+## The construct
 
-The proposal: the primary measure is per-claim reproducibility given the released materials, with the environment recorded and varied as a facet. This is what a corpus of papers that released code and data, labeled by people, can validate, and it is where the environment's effect is measured rather than assumed. Underspecification of the prose is a secondary claim, made only through the designed contrasts in the model document (the same papers with one stated detail withheld, and with code withheld), never read off run-to-run spread.
+Decided on 15 October 2026: a study's primary measure is per-claim reproducibility given the released materials. For each result a paper reports, the outcome is whether a run reproduced it from the paper and what its authors released. The environment (agent system, model, network, inputs) is recorded on every run and varied on purpose across a study, so its effect is measured rather than assumed. This is what a corpus of papers that released code and data, with outcomes verified by people, can validate.
+
+Underspecification of the prose is a secondary claim. It is made only through the designed contrasts in the model document (the same papers with one stated detail withheld, and with code withheld), never read off run-to-run spread.
+
+For the platform, decisions 5 and 6 carry this measure: the released materials are snapshotted as part of every run's fixed inputs, and the outcome analyzed is the system's match against the claim list, not the agent's label.
 
 ## Acceptance criteria
 
