@@ -83,8 +83,9 @@ type SessionAuditor struct {
 	// profile fixes the session's egress to a named profile, and paper is the
 	// copy of the paper the session is handed. Both are set for every run of
 	// a study, so its runs have the same inputs (046).
-	profile NetworkProfile
-	paper   *paper.Copy
+	profile   NetworkProfile
+	paper     *paper.Copy
+	artifacts []paper.Artifact
 	// workspaceIsARepository reports that the runtime gives the session a git
 	// repository without mounting one. This is the local path, where the host
 	// pushes what was committed once the session has ended.
@@ -241,6 +242,14 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 		}
 		resources = append(resources, input)
 		instructions += paperProtocol(path)
+	}
+	if len(a.artifacts) > 0 {
+		inputs, handed, err := a.artifactInputs(capabilities)
+		if err != nil {
+			return managed.SessionSpec{}, ctx, err
+		}
+		resources = append(resources, inputs...)
+		instructions += artifactsProtocol(handed)
 	}
 	switch {
 	case mount.Set():

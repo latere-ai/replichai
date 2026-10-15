@@ -114,3 +114,46 @@ func TestThePaperCopyIsNamedForItsKind(t *testing.T) {
 		t.Errorf("a PDF is named %q", got)
 	}
 }
+
+// A run of a study is handed the snapshots of what the authors released as
+// read-only inputs, each under a name of its own, and its instructions say
+// where each is and how to use it.
+func TestARunIsHandedTheStudysArtifactSnapshots(t *testing.T) {
+	runtime := managedmemory.NewWithStore(nil, managedmemory.Config{InputDir: "/inputs"})
+	snapshots := []paper.Artifact{
+		paper.SnapshotOf("https://github.com/authors/system", paper.ArtifactGit, "c0ffee", "system.bundle", []byte("bundle")),
+		paper.SnapshotOf("https://gitlab.com/lab/system", paper.ArtifactGit, "beef", "system.bundle", []byte("other bundle")),
+		paper.SnapshotOf("https://osf.io/abcd/download", paper.ArtifactFile, "", "", []byte("data")),
+	}
+	auditor := NewSessionAuditor(sessionController(t, runtime), testMethod, WithArtifacts(snapshots))
+	if _, err := auditor.Run(context.Background(), "paper", t.TempDir()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	spec := runtime.Specs()[0]
+	var paths []string
+	for _, resource := range spec.Resources {
+		if resource.Kind != managed.ResourceInput {
+			t.Fatalf("resource = %+v, want an input", resource)
+		}
+		paths = append(paths, resource.Input.Path)
+	}
+	if !slices.Equal(paths, []string{"artifacts/system.bundle", "artifacts/2-system.bundle", "artifacts/3-artifact"}) {
+		t.Fatalf("paths = %v", paths)
+	}
+	for _, want := range []string{
+		"The released materials you were given",
+		`git clone /inputs/artifacts/system.bundle "$TMPDIR/system"`, "commit c0ffee",
+		"https://osf.io/abcd/download: the file as it was downloaded, at /inputs/artifacts/3-artifact",
+		`"released" list of verdict.json`,
+	} {
+		if !strings.Contains(spec.Instructions, want) {
+			t.Errorf("the instructions do not say %q:\n%s", want, spec.Instructions)
+		}
+	}
+
+	// A runtime that cannot mount an input read-only refuses the run.
+	refused := NewSessionAuditor(sessionController(t, managedmemory.New()), testMethod, WithArtifacts(snapshots))
+	if _, err := refused.Run(context.Background(), "paper", t.TempDir()); !errors.Is(err, managed.ErrUnsupported) {
+		t.Fatalf("Run on a runtime with no inputs = %v", err)
+	}
+}
