@@ -273,14 +273,14 @@ co-pilot and the researcher's auditor, and the incumbents' real advantage is
 ## 7. Ranked next steps
 
 Ordered in August by how much each step unblocks for how little. The last
-column is what the repository shows on 9 October 2026.
+column is what the repository shows on 15 October 2026.
 
 | # | Step | Unblocks | Status |
 |---|---|---|---|
 | 1 | Measure model degradation across tiers on `evals/` | the budget **and** the DGX plan | no result recorded |
-| 2 | Choose one study, one venue, one corpus | everything below | not decided; what a study measures is the open question in [046](../specs/046-one-run-is-one-draw.md) |
+| 2 | Choose one study, one venue, one corpus | everything below | partly: what a study measures is decided in [046](../specs/046-one-run-is-one-draw.md#the-construct), and §8 keeps the 76-paper set as the corpus; no venue is chosen |
 | 3 | Add a negative-control case to `evals/` | credibility at any venue | not done |
-| 4 | Make repeat-run variance an output | what three people asked for | partly: runs per paper and the pilot analysis; the rest is [046](../specs/046-one-run-is-one-draw.md) |
+| 4 | Make repeat-run variance an output | what three people asked for | partly: runs per paper, the run record and the pilot analysis; the rest is [046](../specs/046-one-run-is-one-draw.md) |
 | 5 | Split the rate; separate conclusion survival from number movement | Study 2's real result | not done; 046 designs the per-claim match |
 | 6 | Spec author right-of-reply and correction | publishing safely | not done ([BACKLOG 4](../specs/BACKLOG.md)) |
 | 7 | Build the checklist people fill in | Study 1's human half | not done; it is the claim list coded by two people in 046 |
@@ -378,12 +378,16 @@ the agent system and the environment together.
   claim and per paper, how many runs that needs, and the tests that would show
   it describes the paper.
 - [Spec 046](../specs/046-one-run-is-one-draw.md): what the platform has to
-  record and control first. Runs per paper and a findings schema that fits what
-  agents write are built; the rest is designed.
-- **Open:** what a study measures. The proposal in 046 is per-claim
-  reproducibility given the released materials, with the environment as a
-  recorded and varied facet. A paper's framing depends on that decision, so none
-  is drafted here.
+  record and control first. Runs per paper, a findings schema that fits what
+  agents write, and the record of what each run ran under are built; the rest
+  is designed.
+- **Decided on 15 October 2026:** what a study measures. The primary measure
+  is per-claim reproducibility given the released materials, with the
+  environment recorded on every run and varied on purpose
+  ([046](../specs/046-one-run-is-one-draw.md#the-construct)). Underspecification
+  of the prose is a secondary claim, made only through the designed contrasts
+  in [`dispersion-model.md`](dispersion-model.md), never read off run-to-run
+  spread. A paper's framing follows from this and is not drafted yet.
 
 ## 9. What a study needs besides the platform
 
