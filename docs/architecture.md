@@ -17,7 +17,7 @@ flowchart TD
     runtime --> finalize["finalize, outside the sandbox<br/>verify the committed tree, write replication.json,<br/>commit the transcript, invite"]
 ```
 
-An audit without publishing stops at the agent runtime and collects artifacts into a local directory. Everything above and below the runtime is the publishing path. It is optional per run, not a separate program. The CLI reaches it with `--publish`; the server reaches the same `publish.FinalizeLive` from its worker, so the two paths cannot drift.
+An audit without publishing stops at the agent runtime and collects artifacts into a local directory. Everything above and below the runtime is the publishing path. It is optional per run, not a separate program. The CLI reaches it with `--publish`; the server reaches the same `publish.FinalizeLive` from its worker, so both write the same manifest. The server also commits what a session left in its output directory, through the same `VerifyTree` gate.
 
 ## The application
 
@@ -36,8 +36,9 @@ flowchart LR
 ```
 
 Postgres holds `jobs`, `projects`, `project_papers`, `project_members`,
-`access_grants`, `platform_settings`, `credit_entries`, `profiles`, and
-`forge_links`.
+`access_grants`, `freeze_overrides`, `platform_settings`, `profiles`, and the
+ledger's `ledger_entries`, whose schema `latere.ai/x/pay` owns. The older
+`credit_entries` is kept, unread, until the copied balances are trusted.
 
 One binary. The HTTP server and the worker run in the same process; the database lets a session outlive the request, the connection, and a restart. A submitted session becomes a row before anything is spent, and the worker claims it with `SELECT … FOR UPDATE SKIP LOCKED`, so two pods do not run the same audit twice.
 
@@ -53,7 +54,7 @@ One binary. The HTTP server and the worker run in the same process; the database
 
 Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Direct OpenAI and Latere adapters are designed separately and are not built.
 
-**The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed`, held to the same conformance suite, and the choices that vary inside it are not part of its name:
+**The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed` behind the same contract, passes the contract tests in `internal/managed/contracttest` as the memory runtime does, and the choices that vary inside it are not part of its name:
 
 ```mermaid
 flowchart LR
@@ -66,7 +67,7 @@ flowchart LR
 - **The sandbox is a driver** (`sandbox/`, `host/`, `container/`). The default is `srt` (Seatbelt on macOS, bubblewrap with seccomp on Linux) around the harness already installed and logged in on the machine: no image, no virtual machine, and an allow-only network policy that the container driver cannot enforce. The container driver is opt-in, for a toolchain pinned identically everywhere.
 - **The harness is an adapter** (`harness/`). Claude Code and Codex contribute argv, environment, configuration and a decoder from their own stream to normalized events. Neither owns any lifecycle.
 - **The model is an endpoint** (`catalog.go`). The operator declares gateways and models in `models.yaml`; with no file, the default is the harness's own login. An open-weights model behind an OpenAI-compatible gateway is a row in that file.
-- **The session directory is the durable state.** `workspace/` becomes the repository; `tmp/` and `venv/` are what the agent needs and must not publish; `session/` is host-authored evidence no stage can write. A detached run is recovered from the directory and a process handle alone.
+- **The session directory is the durable state.** `workspace/` becomes the repository; `inputs/` is what the session was handed to read, such as a study's copy of the paper and its snapshots of the released artifacts, mounted read-only into every stage; `tmp/` and `venv/` are what the agent needs and must not publish; `session/` is host-authored evidence no stage can write, including each grading round's findings as the round left them. A detached run is recovered from the directory and a process handle alone.
 - **Nothing local touches the ledger.** The compute was bought from the vendor by the person who ran it.
 
 **Batching** (`internal/batch/`) runs a whole project: a list of papers, a concurrency cap, one isolated session each, resumable state, and a report. Preparation is serialized and execution is not, because allocating a repository name is a read of what exists followed by a decision.
@@ -77,7 +78,7 @@ flowchart LR
 
 **The registry** (`internal/registry/`) derives the set of published reproductions by reading their manifests, so there is no second source of truth to drift. It answers three questions: has this paper been reproduced before, what slug did its first reproduction fix, and what unique name should the next one get. Reproductions of one paper are related by identity, never by slug or title. It reads through a `Source`: an organization on GitHub, or a directory on disk.
 
-**GitHub** (`internal/github/`) is a small hand-written client for the few operations publishing needs: create a private repository, read the head commit and its tree, put a file, invite a collaborator, change visibility. It runs server-side, and none of it belongs inside the sandbox.
+**GitHub** (`internal/github/`) is a small hand-written client for the few operations publishing needs: create a private repository, read the head commit and its tree, put a file, invite a collaborator, change visibility, and mint or revoke a token for one repository. It runs on the server and in the CLI's push from the host, and none of it belongs inside the sandbox.
 
 **The findings as data** (`internal/verdict/`, `internal/instrument/`) are the two schemas the agent writes beside its prose. `verdict.json` carries the boundary rows, the hidden decisions, the open-science scorecard, and what the authors released: the same content as `REPRODUCIBILITY.md`, but readable by a program. `instrument.json` carries the study protocol, the analysis entrypoint contract for `src/`, and a per-component servability assessment. Both are graded by the rubric. The app renders the verdict screen from `verdict.json` alone (`GET /jobs/{id}/verdict`), never from markdown; `instrument.json` is published with the reproduction and nothing in the app reads it yet.
 
@@ -164,7 +165,7 @@ Ownership is granted by invitation (the organization invites a GitHub login as a
 
 The backend credential is read from the environment and travels only in a request header. It is never placed in a URL, a log line, or a payload, and a test asserts that. Every server-side GitHub operation runs as a GitHub App installation rather than an organization PAT. The one remaining exception is the mount credential the sandbox itself holds: an installation token lives at most an hour, shorter than a long run, so the mount keeps a non-expiring token until runs are bounded under that or the backend can refresh one mid-session. That is [009](../specs/009-secret-containment-when-the-agent-commits-live.md)'s open commitment, and it is recorded rather than assumed away.
 
-The app fails closed by the same rule. An empty grants table admits nobody, the gate resolves per request, and the router's own gated set is asserted in a test so a new route cannot ship open. The release smoke (`test/release-smoke.sh`) drives the deployed gate after every tagged deploy and fails if `/projects` answers anything but a refusal, so the dev bypass reaching production is a failed release rather than a silent hole.
+The app fails closed by the same rule. A request with no grant behind it is refused, the gate resolves per request, and the router's own gated set is asserted in a test so a new route cannot ship open. The release smoke (`test/release-smoke.sh`) drives the deployed gate after every tagged deploy and fails if `/projects` answers anything but a refusal, so the dev bypass reaching production is a failed release rather than a silent hole.
 
 ## What is not here
 

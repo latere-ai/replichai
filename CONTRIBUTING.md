@@ -49,7 +49,7 @@ frontend/            the researcher UI: bun + React + Vite
 method/              the audit itself: instructions, rubric, task template (data, not code)
 evals/               the golden set: papers with known answers, used as a regression check
 deploy/              Kubernetes manifests for the hosted deployment
-docs/                the guides, the procedure, the architecture, and strategy notes
+docs/                the guides, the procedure, and the architecture
 specs/               designs, and the record of what got built
 ```
 

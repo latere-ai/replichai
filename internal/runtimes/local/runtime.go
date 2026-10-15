@@ -116,10 +116,10 @@ func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error
 	if err != nil {
 		return managed.Capabilities{}, err
 	}
-	return r.capabilities(workspacePath(r.config.Root, id)), nil
+	return r.capabilities(workspacePath(r.config.Root, id), inputsPath(r.config.Root, id)), nil
 }
 
-func (r *Runtime) capabilities(outputDir string) managed.Capabilities {
+func (r *Runtime) capabilities(outputDir, inputDir string) managed.Capabilities {
 	driver := r.config.Sandbox.Capabilities()
 	networks := make(map[managed.NetworkMode]bool, len(driver.NetworkModes))
 	for mode, supported := range driver.NetworkModes {
@@ -130,7 +130,11 @@ func (r *Runtime) capabilities(outputDir string) managed.Capabilities {
 		limit = 64 << 20
 	}
 	return managed.Capabilities{
-		OutputDir:       outputDir,
+		OutputDir: outputDir,
+		// Every session has a directory of inputs beside its workspace,
+		// mounted read-only, so what it is given cannot become part of the
+		// reproduction.
+		InputDir:        inputDir,
 		PackageManagers: driver.PackageManagers,
 		NetworkModes:    networks,
 		// The local runtime mounts no writable remote: the host pushes
@@ -143,6 +147,9 @@ func (r *Runtime) capabilities(outputDir string) managed.Capabilities {
 		Cancellation:       true,
 		MaxAttachmentBytes: limit,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
+		// The runtime runs the grading loop itself, so it can keep and
+		// check the findings of every round between the stages.
+		FindingsRounds: true,
 	}
 }
 
@@ -154,7 +161,7 @@ func (r *Runtime) Models(context.Context) ([]managed.Model, error) {
 // Validate refuses a specification this runtime cannot execute, before
 // anything is created. It is pure and is repeated defensively in Start.
 func (r *Runtime) Validate(spec managed.SessionSpec) error {
-	if err := managed.ValidateCapabilities(Name, r.capabilities("/workspace"), spec); err != nil {
+	if err := managed.ValidateCapabilities(Name, r.capabilities("/workspace", "/inputs"), spec); err != nil {
 		return err
 	}
 	model, gateway, err := r.config.Catalog.Resolve(r.config.Harness.Name(), spec.Model)
@@ -218,6 +225,9 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (ref mana
 	}()
 
 	if err = r.writeAttachments(session, spec); err != nil {
+		return managed.SessionRef{}, err
+	}
+	if err = r.writeInputs(session, spec); err != nil {
 		return managed.SessionRef{}, err
 	}
 	// The spec persisted for Poll drops the attachment bytes. They are already
@@ -387,6 +397,18 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 		r.recordPackages(session)
 		return r.launch(ctx, session, locator, spec, model, gateway, harness.StageWorker, spec.Task)
 	case harness.StageWorker, harness.StageRevision:
+		round := currentRound(*locator)
+		// The findings are kept and checked as the stage left them, whatever
+		// its exit, before anything else reads them: round 0 is what the run
+		// produced before a rubric pushed it, and it is kept for every run.
+		var checks Checks
+		if spec.Evaluation != nil && spec.Evaluation.Findings != "" {
+			kept, err := session.keepRound(round, spec.Evaluation.Findings)
+			if err != nil {
+				return err
+			}
+			checks = kept
+		}
 		if *current.Exit != 0 {
 			r.finish(status, managed.StateFailed, managed.ReasonRuntimeFailed,
 				fmt.Sprintf("the %s stage exited %d", current.Role, *current.Exit))
@@ -396,22 +418,34 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 			r.finish(status, managed.StateDone, managed.ReasonSucceeded, "")
 			return nil
 		}
-		round := currentRound(*locator)
-		task := judgeTask(spec.Evaluation.Rubric, session.Workspace(), session.Grade(), round, model)
+		task := judgeTask(spec.Evaluation.Rubric, session.Workspace(), session.Grade(), round, model) + checksSection(checks)
 		return r.launch(ctx, session, locator, spec, model, gateway, harness.StageJudge, task)
 	case harness.StageJudge:
 		round := currentRound(*locator)
+		// A later poll may run in another process, so what the system found
+		// is read back from the session rather than carried in memory.
+		checks, err := session.readChecks(round)
+		if err != nil {
+			return err
+		}
 		verdict, err := ReadVerdict(session.Grade(), round)
 		if err != nil {
 			// One retry: a judge can fail to produce a parsable verdict
 			// once. A session that still cannot be graded ends failed with
 			// that reason, never done with no verdict.
 			if judgeAttempts(*locator, round) < 2 {
-				task := judgeTask(spec.Evaluation.Rubric, session.Workspace(), session.Grade(), round, model)
+				task := judgeTask(spec.Evaluation.Rubric, session.Workspace(), session.Grade(), round, model) + checksSection(checks)
 				return r.launch(ctx, session, locator, spec, model, gateway, harness.StageJudge, task)
 			}
 			r.finish(status, managed.StateFailed, managed.ReasonRuntimeFailed, "grading failed: "+err.Error())
 			return nil
+		}
+		// A pass is the judge's reading of the rubric. Findings the system
+		// cannot read fail that rubric whatever the judge read, so a round
+		// with problems is held back for revision instead of passing.
+		heldBackRound := verdict.Passed() && len(checks.Problems) > 0
+		if heldBackRound {
+			verdict = managed.Verdict{Grade: managed.GradeNeedsRevision, Explanation: heldBack(verdict.Explanation, checks)}
 		}
 		locator.Stages[len(locator.Stages)-1].Verdict = &verdict
 		status.Verdict = &verdict
@@ -422,6 +456,12 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 		revisions := revisionsSpent(*locator)
 		if verdict.Grade == managed.GradeNeedsRevision && revisions < spec.Evaluation.MaxRevisions {
 			task := spec.Task + harness.RevisionHeader + verdict.Explanation
+			if !heldBackRound {
+				// A held-back verdict already lists the problems; any
+				// other rejection is given them beside the grader's
+				// reasoning.
+				task += revisionProblems(checks)
+			}
 			return r.launch(ctx, session, locator, spec, model, gateway, harness.StageRevision, task)
 		}
 		if verdict.Grade == managed.GradeNeedsRevision {
@@ -611,12 +651,18 @@ func defaultVendorHosts(dialect harness.Dialect) []string {
 // workspace read-only and grade/ read-write, so a grader cannot edit what it
 // grades. session/ is in neither list, so the agent cannot rewrite the
 // transcript.
+//
+// The inputs are read-only to every stage, and seen at the path the instructions
+// name, which is the host path: the audit tells the agent where its inputs are
+// before any stage runs, and the path must be the same under either driver.
 func (r *Runtime) stagePaths(session *Session, role harness.Stage) []hostsandbox.Path {
 	workspace := hostsandbox.Path{Host: session.Workspace(), Guest: "/workspace", Access: hostsandbox.ReadWrite}
+	inputs := hostsandbox.Path{Host: session.Inputs(), Access: hostsandbox.ReadOnly}
 	if role == harness.StageJudge {
 		workspace.Access = hostsandbox.ReadOnly
 		return []hostsandbox.Path{
 			workspace,
+			inputs,
 			{Host: session.Grade(), Guest: "/grade", Access: hostsandbox.ReadWrite},
 			{Host: session.Home(), Guest: "/home", Access: hostsandbox.ReadWrite},
 			{Host: session.Tmp(), Guest: "/tmp-session", Access: hostsandbox.ReadWrite},
@@ -624,6 +670,7 @@ func (r *Runtime) stagePaths(session *Session, role harness.Stage) []hostsandbox
 	}
 	return []hostsandbox.Path{
 		workspace,
+		inputs,
 		{Host: session.Tmp(), Guest: "/tmp-session", Access: hostsandbox.ReadWrite},
 		{Host: session.Venv(), Guest: "/venv", Access: hostsandbox.ReadWrite},
 		{Host: session.Home(), Guest: "/home", Access: hostsandbox.ReadWrite},
@@ -955,6 +1002,26 @@ func (r *Runtime) writeAttachments(session *Session, spec managed.SessionSpec) e
 	return nil
 }
 
+// writeInputs places a specification's inputs under the session's input
+// directory, refusing one whose path escapes it. The files are written
+// read-only as well as mounted so: the mount is what a stage cannot get past,
+// and the mode says the same to anything else that opens the directory.
+func (r *Runtime) writeInputs(session *Session, spec managed.SessionSpec) error {
+	for _, resource := range spec.Resources {
+		if resource.Kind != managed.ResourceInput {
+			continue
+		}
+		target, err := containedPath(session.Inputs(), resource.Input.Path)
+		if err != nil {
+			return err
+		}
+		if err := writeFileMode(target, resource.Input.Content, 0o400); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // harnessVersion records the version of the harness that produced the work.
 // It is best effort: if the version cannot be read the field is left empty
 // rather than failing the run, since it only describes the harness.
@@ -1019,6 +1086,11 @@ func withoutAttachmentBytes(spec managed.SessionSpec) managed.SessionSpec {
 			attachment := *resource.Attachment
 			attachment.Content = nil
 			resource.Attachment = &attachment
+		}
+		if resource.Kind == managed.ResourceInput && resource.Input != nil {
+			input := *resource.Input
+			input.Content = nil
+			resource.Input = &input
 		}
 		lean.Resources[index] = resource
 	}

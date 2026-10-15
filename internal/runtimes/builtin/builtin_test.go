@@ -81,3 +81,43 @@ func TestAnthropicRequiresExplicitCredential(t *testing.T) {
 		t.Fatal("Anthropic runtime accepted no explicit credential")
 	}
 }
+
+// The host sandbox needs no image and no engine, so the local runtime composes
+// over it on any machine; a models file that does not read, or declares what
+// the installed harnesses cannot run, is refused at composition.
+func TestLocalComposesOverTheHostSandboxAndRefusesABadModelsFile(t *testing.T) {
+	config := LocalConfig{Sandbox: hostsandbox.Host, Root: t.TempDir(), Home: t.TempDir(), Lookup: os.LookupEnv}
+	catalog, _ := Catalog(Config{Local: config})
+	if runtime, err := catalog.Build(context.Background(), "local"); err != nil || runtime.Name() != "local" {
+		t.Fatalf("Build(local) over the host sandbox = %v, %v", runtime, err)
+	}
+	for name, body := range map[string]string{
+		"unparsable":      "models: [",
+		"undeclared gate": "models:\n  - provider: anthropic\n    id: m\n    gateway: nowhere\n    harness: claude-code\n",
+	} {
+		path := t.TempDir() + "/models.yaml"
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		bad := config
+		bad.ModelsFile = path
+		catalog, _ := Catalog(Config{Local: bad})
+		if _, err := catalog.Build(context.Background(), "local"); err == nil {
+			t.Errorf("a %s models file was accepted", name)
+		}
+	}
+}
+
+// The in-process runtime takes inputs, as a study's runs hand them, so the
+// command that runs a study can run on it.
+func TestTheMemoryRuntimeTakesInputs(t *testing.T) {
+	catalog, _ := Catalog(Config{})
+	runtime, err := catalog.Build(context.Background(), "memory")
+	if err != nil {
+		t.Fatalf("Build(memory): %v", err)
+	}
+	capabilities, err := runtime.Capabilities(context.Background())
+	if err != nil || capabilities.InputDir != memory.InputDir {
+		t.Fatalf("capabilities = %+v, %v", capabilities, err)
+	}
+}

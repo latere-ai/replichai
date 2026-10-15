@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -49,6 +50,11 @@ type Script struct {
 	// and the line a harness writes last is its result event, which carries
 	// the run's total cost.
 	FinalLineOnExit bool
+	// Findings are the verdict.json bodies successive worker-side stages
+	// write into the workspace, in order: the worker's first, then each
+	// revision's. A stage past the end of the slice writes the last one, and
+	// an empty slice writes no findings at all.
+	Findings []string
 	// WorkerCommits makes the worker commit what it wrote, as a real worker
 	// does. Without a commit the push path has nothing to send, so a test
 	// that reaches the push needs a workspace with history in it.
@@ -122,8 +128,11 @@ func (s *Sandbox) Launch(_ context.Context, spec hostsandbox.StageSpec) (hostsan
 	defer s.mu.Unlock()
 	role, _, _ := strings.Cut(spec.Name, "-")
 	entry := &stage{spec: spec, running: true, role: role}
-	if role == "judge" {
-		entry.round = s.judgeRoundLocked()
+	switch role {
+	case "judge":
+		entry.round = s.roundLocked("judge")
+	case "worker", "revision":
+		entry.round = s.roundLocked("worker", "revision")
 	}
 	id := fmt.Sprintf("fake:%d", s.next)
 	s.next++
@@ -151,10 +160,12 @@ func (e *stage) writeFinalLine() error {
 	return nil
 }
 
-func (s *Sandbox) judgeRoundLocked() int {
+// roundLocked counts the stages of the given roles launched so far, which is
+// the round a new stage of one of them belongs to.
+func (s *Sandbox) roundLocked(roles ...string) int {
 	round := 0
 	for _, existing := range s.stages {
-		if existing.role == "judge" {
+		if slices.Contains(roles, existing.role) {
 			round++
 		}
 	}
@@ -200,6 +211,12 @@ func (s *Sandbox) produce(entry *stage) error {
 		if err := os.WriteFile(filepath.Join(workspace, "REPRODUCIBILITY.md"),
 			[]byte("# Reproduction\n\nWritten by "+entry.spec.Name+".\n"), 0o600); err != nil {
 			return err
+		}
+		if findings := s.script.Findings; len(findings) > 0 {
+			body := findings[min(entry.round, len(findings)-1)]
+			if err := os.WriteFile(filepath.Join(workspace, "verdict.json"), []byte(body), 0o600); err != nil {
+				return err
+			}
 		}
 		if !s.script.WorkerCommits {
 			return nil
@@ -374,3 +391,17 @@ func commit(workspace string, environ map[string]string, stage string) error {
 	}
 	return nil
 }
+
+// ReadableFindings is a verdict.json the system reads in full: every field
+// decodes and no rule is broken. A scripted worker writes it where a test needs
+// a run whose findings pass the system's check, as a real worker's must.
+const ReadableFindings = `{"schema":2,"verdict":"partial","summary":"One claim checked.",` +
+	`"graded_at":"2026-10-15T09:00:00Z","components":{"verified":1,"partial":0,"blocked":0,"total":1},` +
+	`"boundary":[{"claim":"The model reaches 91%","loop":"inner","outcome":"verified","citation":"§6","evidence":"Retrained; 91%"}],` +
+	`"decisions":[],` +
+	`"scorecard":[{"criterion":"code","found":true,"url":"https://github.com/authors/x"},` +
+	`{"criterion":"data","found":false,"searched":["OSF"]},` +
+	`{"criterion":"license","found":false,"searched":["the repository"]},` +
+	`{"criterion":"preregistration","found":false,"searched":["OSF registries"]},` +
+	`{"criterion":"supplement","found":false,"searched":["the publisher page"]}],` +
+	`"released":[]}`

@@ -15,6 +15,9 @@ a prepared stub (see `staging/`).
   with an `images` entry.
 - `staging/`: a stub for a future `latere-staging` environment, with its own
   placeholders for the same values.
+- `bootstrap/`: the identity the release pipeline deploys with, bounded to the
+  `latere` namespace and to the kinds `prod/` contains. An operator applies it;
+  the pipeline never does, so the identity cannot widen its own grant.
 
 ## One-time prerequisites (terraform owns these)
 
@@ -23,7 +26,8 @@ infrastructure repository, which is not part of this one:
 
 - `dns.tf`: the `replichai.latere.ai` A record → the ingress load balancer.
 - `database.tf`: the `replichai` database on the shared cluster, and the
-  `replichai-db` Kubernetes secret (`DATABASE_URL`) in the `latere` namespace.
+  `replichai-db` Kubernetes secret in the `latere` namespace, carrying
+  `DATABASE_URL` and, where the cluster has a pooler, `DATABASE_POOL_URL`.
 
 Apply them there (`tofu apply`) before the first deploy.
 
@@ -57,9 +61,9 @@ STRIPE_WEBHOOK_SECRET=...
 Everything else is set by the manifests. In Kubernetes a container's own `env`
 entry takes precedence over the same key arriving through `envFrom`, so a
 policy value put in the secret is not an override; it is ignored. The base
-sets what every environment shares: `DATABASE_URL` (from the terraform-owned
-`replichai-db` secret), `ADDR`, `REPLICHAI_RUNTIME`, `AUTH_ISSUER`,
-`MAILGUN_DOMAIN`, `MAILGUN_REGION`. Each overlay sets what is its own:
+sets what every environment shares: `DATABASE_URL` and `DATABASE_POOL_URL`
+(from the terraform-owned `replichai-db` secret), `ADDR`, `REPLICHAI_RUNTIME`,
+`AUTH_ISSUER`, `AUTH_AUDIENCE`, `MAILGUN_DOMAIN`, `MAILGUN_REGION`. Each overlay sets what is its own:
 `BASE_URL`, `AUTH_CLIENT_ID`, `AUTH_REDIRECT_URL`, `ADMIN_EMAILS`. Change those
 in the overlay, where the change is reviewed, not in `.env`.
 
@@ -96,8 +100,8 @@ Since [006q](../specs/006q-sign-in-is-open-budget-is-not.md), anyone who
 completes the OIDC login is granted `user`; the deployment no longer keeps a
 guest list. What limits them is **money** ([011](../specs/011-what-a-session-costs.md)):
 a new account arrives with no credits, so it can sign in and read what it may,
-and cannot run a replication session until an admin adds credits to its wallet
-or it is invited into a project somebody else has funded.
+and cannot run a replication session until it buys credits, an admin adds some
+to its wallet, or it is invited into a project somebody else has funded.
 
 `ADMIN_EMAILS` is how a platform admin exists before there is anyone to promote
 them: it seeds the grant before their first login, and a self-grant never

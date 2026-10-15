@@ -15,7 +15,7 @@ What was missing, and what landed: **a running row said nothing about how long i
 
 **Scope:** make a running session watchable. The server polls the provider's transcript for a live run and relays new events onto the SSE stream the frontend already consumes; the session screen renders them through the existing viewer and converges on the committed transcript when the run finalizes; the Sessions list shows a running session's elapsed time, spend, and event count, and opens the live view when clicked.
 
-**Depends on:** [006a](006a-http-api-and-streaming.md) (the SSE stream), [006s](006s-reading-a-session-in-time.md) (the transcript viewer this feeds), [005](005-the-transcript-is-the-evidence.md) (the committed transcript it converges on), [011](011-what-a-session-costs.md) (the spend it shows).
+**Depends on:** [006a](006a-http-api-and-streaming.md) (the SSE stream), [006s](006s-reading-a-session-in-time.md) (the transcript viewer this feeds), [005](005-transcript.md) (the committed transcript it converges on), [011](011-what-a-session-costs.md) (the spend it shows).
 
 ## Problem
 

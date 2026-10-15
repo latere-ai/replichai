@@ -17,6 +17,8 @@ import (
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/paper"
+	"github.com/latere-ai/replichai/internal/verdict"
 )
 
 const repositoryCredentialRef = "audit-repository"
@@ -78,6 +80,12 @@ type SessionAuditor struct {
 	unbounded    bool
 	mount        SessionMount
 	hooks        managed.Hooks
+	// profile fixes the session's egress to a named profile, and paper is the
+	// copy of the paper the session is handed. Both are set for every run of
+	// a study, so its runs have the same inputs (046).
+	profile   NetworkProfile
+	paper     *paper.Copy
+	artifacts []paper.Artifact
 	// workspaceIsARepository reports that the runtime gives the session a git
 	// repository without mounting one. This is the local path, where the host
 	// pushes what was committed once the session has ended.
@@ -92,11 +100,13 @@ func WithSessionModel(preference string) SessionOption {
 	return func(a *SessionAuditor) { a.model = preference }
 }
 
-// WithSessionMaxRevisions overrides how many times the worker may revise. A
-// value of zero or less is ignored, leaving DefaultMaxRevisions in place.
+// WithSessionMaxRevisions overrides how many times the worker may revise. Zero
+// grades the first attempt and never revises it, which is how a study keeps
+// what a run produced before the rubric pushed it (046). A negative value is
+// ignored, leaving DefaultMaxRevisions in place.
 func WithSessionMaxRevisions(maximum int) SessionOption {
 	return func(a *SessionAuditor) {
-		if maximum > 0 {
+		if maximum >= 0 {
 			a.maxRevisions = maximum
 		}
 	}
@@ -219,7 +229,28 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 	if mount.Set() {
 		outputDir = mount.MountPath
 	}
+	network, err := a.network(capabilities)
+	if err != nil {
+		return managed.SessionSpec{}, ctx, err
+	}
 	instructions := a.method.InstructionsFor(outputDir)
+	var resources []managed.Resource
+	if a.paper != nil {
+		input, path, err := a.paperInput(capabilities)
+		if err != nil {
+			return managed.SessionSpec{}, ctx, err
+		}
+		resources = append(resources, input)
+		instructions += paperProtocol(path)
+	}
+	if len(a.artifacts) > 0 {
+		inputs, handed, err := a.artifactInputs(capabilities)
+		if err != nil {
+			return managed.SessionSpec{}, ctx, err
+		}
+		resources = append(resources, inputs...)
+		instructions += artifactsProtocol(handed)
+	}
 	switch {
 	case mount.Set():
 		instructions += mountProtocol(mount.MountPath)
@@ -232,9 +263,17 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 		Model: managed.ModelSelector{Preference: a.model}, Instructions: instructions, Task: task,
 		Sandbox: managed.SandboxSpec{
 			Packages: []managed.Package{{Manager: "pip", Name: "pypdf"}, {Manager: "pip", Name: "requests"}},
-			Network:  networkFor(capabilities),
+			Network:  network,
 		},
+		Resources:  resources,
 		Evaluation: &managed.EvaluationSpec{Rubric: a.method.Rubric, MaxRevisions: a.maxRevisions},
+	}
+	// A runtime that runs the grading loop itself keeps each round's
+	// findings and checks them before the grader reads them. One that grades
+	// on a vendor's side cannot, and its findings are checked once, when the
+	// run is finalized.
+	if capabilities.FindingsRounds {
+		spec.Evaluation.Findings = verdict.File
 	}
 	if mount.Set() {
 		destination := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(mount.MountPath)), "/workspace/")
