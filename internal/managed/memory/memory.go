@@ -27,6 +27,11 @@ const Name managed.RuntimeName = "memory"
 // accident.
 const OutputDir = "/workspace/outputs/"
 
+// InputDir is the input directory a memory runtime declares when it is built to
+// accept inputs, as the one the CLI and the server compose is. It is beside the
+// workspace, as a real runtime's is, and the runtime keeps nothing there.
+const InputDir = "/workspace/inputs/"
+
 // FailurePoint names a runtime method that can be made to fail. Keying
 // Config.Failures by one lets a test drive the error path of a single call
 // without wrapping the runtime in a fake.
@@ -146,9 +151,11 @@ func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error
 // Validate to discard an error it cannot return.
 func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
-		OutputDir:          OutputDir,
-		PackageManagers:    map[string]bool{"pip": true},
-		NetworkModes:       map[managed.NetworkMode]bool{managed.NetworkNone: true, managed.NetworkOpen: true},
+		OutputDir:       OutputDir,
+		PackageManagers: map[string]bool{"pip": true},
+		NetworkModes: map[managed.NetworkMode]bool{
+			managed.NetworkNone: true, managed.NetworkAllowlist: true, managed.NetworkOpen: true,
+		},
 		RepositoryModes:    map[managed.AccessMode]bool{managed.AccessReadOnly: true, managed.AccessReadWrite: true},
 		Evaluation:         true,
 		DurableEvents:      true,
