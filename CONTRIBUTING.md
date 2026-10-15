@@ -33,6 +33,12 @@ request, and a `v*` tag cuts a release. A change people will notice gets an
 entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), written for whoever
 runs an audit or operates a deployment.
 
+Sign off every commit in a pull request with `git commit -s`. The sign-off
+certifies the [Developer Certificate of Origin](https://developercertificate.org/):
+that you wrote the change, or otherwise have the right to submit it under the
+project's license, [AGPL-3.0-or-later](LICENSE). A pull request whose commits
+are not signed off is not merged.
+
 If you are planning something large, open an issue first.
 
 ## Specs first

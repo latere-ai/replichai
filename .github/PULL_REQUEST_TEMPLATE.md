@@ -8,6 +8,8 @@
 
 ## Checklist
 
+- [ ] Every commit is signed off (`git commit -s`), certifying the
+      [Developer Certificate of Origin](https://developercertificate.org/).
 - [ ] `make check` passes locally.
 - [ ] A bug fix carries a test that fails without it.
 - [ ] A change to the CLI, a configuration variable, the HTTP API, or a file an
