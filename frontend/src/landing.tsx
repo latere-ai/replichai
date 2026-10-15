@@ -743,51 +743,56 @@ export function Landing({
         </div>
       </header>
 
-      <Hero i18n={i18n} href={href} />
-      <LoopsBand i18n={i18n} />
-      <WalkBand i18n={i18n} />
-      <ShipsBand i18n={i18n} />
-      <VerdictBand i18n={i18n} />
-      <WhoBand i18n={i18n} />
-      <CostBand i18n={i18n} />
-      <PublishedStrip i18n={i18n} />
+      {/* Everything under the sticky header, as one body: a trackpad pull past
+          the top or the end of the page stretches this and leaves the header
+          where it is (elastic.ts). */}
+      <div className="lp-body">
+        <Hero i18n={i18n} href={href} />
+        <LoopsBand i18n={i18n} />
+        <WalkBand i18n={i18n} />
+        <ShipsBand i18n={i18n} />
+        <VerdictBand i18n={i18n} />
+        <WhoBand i18n={i18n} />
+        <CostBand i18n={i18n} />
+        <PublishedStrip i18n={i18n} />
 
-      <section className="lp-close-wrap" ref={closeRef}>
-        <div className="lp-close">
-          <Mark size={40} className="lp-close-mark" />
-          <h2>
-            <Seams i18n={i18n} k="lpCloseTitle" />
-          </h2>
-          <p>{t('lpCloseBody')}</p>
-          <div className="lp-cta">
-            <a className="btn lg" data-signin-inline href={href}>
-              <LatereMark height={12} /> {t('signInWith')}
-            </a>
-            <a className="btn ghost lg" href="/registry">
-              {t('browseRegistry')} <Ico name="arrowRight" size={14} />
-            </a>
+        <section className="lp-close-wrap" ref={closeRef}>
+          <div className="lp-close">
+            <Mark size={40} className="lp-close-mark" />
+            <h2>
+              <Seams i18n={i18n} k="lpCloseTitle" />
+            </h2>
+            <p>{t('lpCloseBody')}</p>
+            <div className="lp-cta">
+              <a className="btn lg" data-signin-inline href={href}>
+                <LatereMark height={12} /> {t('signInWith')}
+              </a>
+              <a className="btn ghost lg" href="/registry">
+                {t('browseRegistry')} <Ico name="arrowRight" size={14} />
+              </a>
+            </div>
+            <span className="landing-note">{t('signInNote')}</span>
           </div>
-          <span className="landing-note">{t('signInNote')}</span>
+        </section>
+
+        {/* The footer every Latere site ends in, from latere-ui, in the one
+            shape every site shares. It is the product's place in the lineup,
+            the legal links and the appearance control, none of which this page
+            implements itself. The page passes its own lockup and its theme, and
+            nothing else; the wrapper places the footer and joins the app's
+            palette to the names the footer reads.
+
+            No language menu: the app ships English only, and the footer offers
+            one only to a site that passes a language change and two languages
+            or more. */}
+        <div className="lp-footer-wrap">
+          <SiteFooter
+            brand={<HomeLockup />}
+            theme={theme.mode}
+            onThemeChange={(m) => theme.setMode(m as ThemeMode)}
+            locale="en"
+          />
         </div>
-      </section>
-
-      {/* The footer every Latere site ends in, from latere-ui, in the one
-          shape every site shares. It is the product's place in the lineup,
-          the legal links and the appearance control, none of which this page
-          implements itself. The page passes its own lockup and its theme, and
-          nothing else; the wrapper places the footer and joins the app's
-          palette to the names the footer reads.
-
-          No language menu: the app ships English only, and the footer offers
-          one only to a site that passes a language change and two languages
-          or more. */}
-      <div className="lp-footer-wrap">
-        <SiteFooter
-          brand={<HomeLockup />}
-          theme={theme.mode}
-          onThemeChange={(m) => theme.setMode(m as ThemeMode)}
-          locale="en"
-        />
       </div>
     </div>
   )
