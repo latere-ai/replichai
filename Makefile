@@ -123,7 +123,7 @@ e2e:
 # the only tests that can catch one. Skips cleanly when no Chrome is installed.
 .PHONY: web-e2e
 web-e2e:
-	cd frontend && npm run test:browser
+	cd frontend && bun run test:browser
 
 # The compose smoke test: the real Postgres-backed stack, memory provider.
 .PHONY: smoke
