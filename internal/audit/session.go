@@ -17,6 +17,7 @@ import (
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/verdict"
 )
 
@@ -79,6 +80,11 @@ type SessionAuditor struct {
 	unbounded    bool
 	mount        SessionMount
 	hooks        managed.Hooks
+	// profile fixes the session's egress to a named profile, and paper is the
+	// copy of the paper the session is handed. Both are set for every run of
+	// a study, so its runs have the same inputs (046).
+	profile NetworkProfile
+	paper   *paper.Copy
 	// workspaceIsARepository reports that the runtime gives the session a git
 	// repository without mounting one. This is the local path, where the host
 	// pushes what was committed once the session has ended.
@@ -222,7 +228,20 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 	if mount.Set() {
 		outputDir = mount.MountPath
 	}
+	network, err := a.network(capabilities)
+	if err != nil {
+		return managed.SessionSpec{}, ctx, err
+	}
 	instructions := a.method.InstructionsFor(outputDir)
+	var resources []managed.Resource
+	if a.paper != nil {
+		input, path, err := a.paperInput(capabilities)
+		if err != nil {
+			return managed.SessionSpec{}, ctx, err
+		}
+		resources = append(resources, input)
+		instructions += paperProtocol(path)
+	}
 	switch {
 	case mount.Set():
 		instructions += mountProtocol(mount.MountPath)
@@ -235,8 +254,9 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 		Model: managed.ModelSelector{Preference: a.model}, Instructions: instructions, Task: task,
 		Sandbox: managed.SandboxSpec{
 			Packages: []managed.Package{{Manager: "pip", Name: "pypdf"}, {Manager: "pip", Name: "requests"}},
-			Network:  networkFor(capabilities),
+			Network:  network,
 		},
+		Resources:  resources,
 		Evaluation: &managed.EvaluationSpec{Rubric: a.method.Rubric, MaxRevisions: a.maxRevisions},
 	}
 	// A runtime that runs the grading loop itself keeps each round's
