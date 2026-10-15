@@ -58,8 +58,9 @@ committed. The commit log already holds that.
 - One field of the wrong type in `verdict.json` no longer costs the whole
   file. The findings are read row by row, the problem names the row, and the
   rest is kept. Before, such a file was reported as not valid JSON, which was
-  false, and nothing in it was read: 14 of the 27 findings files from a 49-run
-  pilot were lost this way, and 27 of the 29 files those runs wrote now read.
+  false, and nothing in it was read. In a 49-run pilot, 14 of the 27 findings
+  files read when the runs were finalized were lost this way; of the 29 files
+  those runs published, 27 now read.
 
 ### Security
 
