@@ -67,11 +67,11 @@ The trait the platform has that this spec does not take is its monospace, upper-
 
 ### Type: a serif to state, a sans to read
 
-**Inter ships.** Its four woff2 files are copied from the platform byte for byte, under the same paths, so a reader who has visited either site already has them cached. 400 and 500 are preloaded. Instrument Serif is already self-hosted (040); the regular face is now preloaded too.
+**Inter ships.** Its 400, 500 and 600 woff2 files are copied from the platform byte for byte, under the same paths, so a reader who has visited either site already has them cached. 400 and 500 are preloaded. Instrument Serif is already self-hosted (040); the regular face is now preloaded too. Every face is `font-display: block`, as on the platform: the faces are preloaded with the document, and a swap reflows text a reader is already looking at, which is a layout shift.
 
 **Instrument Serif regular sets everything that states something.** That is the landing's h1 and section headings, the figure titles, a paper's title on the project screen, and the console's page titles. The second half of the hero claim is italic, as the platform sets "Build with *Latere.*". Inter sets everything that is read: body, controls, tables, captions.
 
-**No monospace label, and no upper-case label, anywhere.** Eyebrows, table heads, rail groups, status and role badges are Inter, sentence case, 12 to 13px, in `--fg-2`. Monospace stays for what is literally code or an identifier: a file name, a commit hash, a paper key.
+**No monospace label, and no upper-case label, anywhere.** Eyebrows, table heads, rail groups, status and role badges are Inter, sentence case, 12 to 14px, in `--fg-2`. Monospace stays for what is literally code or an identifier: a file name, a commit hash, a paper key.
 
 **Numbers are tabular.** Counts, money and rates use `font-variant-numeric: tabular-nums`, so a column of figures lines up.
 
@@ -98,6 +98,8 @@ The trait the platform has that this spec does not take is its monospace, upper-
 - Both are annotated with leader lines and set on the platform's dotted ground.
 
 **The figure moves like an instrument, not like weather.** On entrance it draws its rings once, as strokes. After that a single marker travels the inner loop at constant speed, which is the re-run. Each station fills as the marker passes it, and a run count beside the loop advances on each lap. The outer loop never moves and never closes. There is no sway and no easing inside a lap.
+
+**A run count is the reader's.** Pausing and resuming, or scrolling away and back, keeps the count where it was, because the figure stopped rather than restarted. Only reduced motion shows a fixed count, the finished frame's.
 
 **The figure runs only when it should.** As on the platform's figure, it runs only while it is in view, the tab is visible, reduced motion is off, and the reader has not paused it with the control under the figure. Otherwise it rests on its finished frame: both rings drawn, every station named, the marker parked on "record".
 
@@ -150,7 +152,7 @@ These are recorded here rather than edited into the older files. When this spec 
 - **029:** the three drawn figures become one hero figure, the walkthrough, and the verdict table. Their meaning is unchanged.
 - **033:** the WebGL scene, its chunk, and the hero slab are gone. Its criterion 3 (degrade when WebGL fails) and criterion 4 (`three` in its own chunk) retire with the scene. The slab-ground assertion retires with the slab.
 - **034:** the inset card, the deep-ground rail and the pill segmented control go. The primitives move to the platform's.
-- **040:** the light and dark `--slab-*` material is gone, because there are no slabs. The footer wrapper stays.
+- **040:** the light and dark `--slab-*` material is gone, because there are no slabs. The footer wrapper stays. The faces move from `swap` to `block`, for the reason under Type.
 
 ## Acceptance criteria
 
