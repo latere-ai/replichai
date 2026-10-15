@@ -270,6 +270,13 @@ func TestTheDriverMeetsTheSandboxContract(t *testing.T) {
 			Wait: func(d time.Duration) []string {
 				return []string{"/bin/sh", "-c", fmt.Sprintf("sleep %d", int(d.Seconds()))}
 			},
+			// A stage whose main process exits at once and leaves a child
+			// writing behind it, which Stop and Discard must end.
+			Orphan: func(d time.Duration) []string {
+				return []string{"/bin/sh", "-c", fmt.Sprintf(
+					"(i=0; while [ $i -lt %d ]; do echo tick; sleep 0.1; i=$((i+1)); done) & exit 0",
+					int(d/(100*time.Millisecond)))}
+			},
 		}
 	})
 }
