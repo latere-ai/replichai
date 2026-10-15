@@ -1,0 +1,1213 @@
+/* The landing (029, rebuilt by 033, set like a paper by 047).
+
+   The page is set the way research is set. Sections are numbered under a rule,
+   with the number and name in a margin column that stays beside the reader,
+   instead of being boxed in tinted slabs: on paper a block of color around a
+   section says "advertisement", and a rule says "next section". Instrument
+   Serif states (the claim, every heading, a figure's numeral), and Inter is
+   read. Figure 1 is captioned underneath and the tables above, as a journal
+   sets them, and a table has three rules and nothing else.
+
+   Every color is a token from the ink ladder or the product azure, so the page
+   holds in both themes with no second palette. */
+
+.landing {
+  /* The platform landing's container: 1200px, with 48px either side until the
+     page is narrower than that. */
+  --lp-w: min(1200px, calc(100% - 96px));
+  --lp-margin: 220px;
+  --lp-gutter: 40px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg-1);
+}
+
+/* ── The header ───────────────────────────────────────────────────────────── */
+
+/* Sticky, so the sign-in is on screen at every scroll position (029). The
+   platform's header: 56px, the page's own ground, and a hairline under it. */
+.lp-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 56px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.lp-bar-in {
+  width: var(--lp-w);
+  height: 100%;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.lp-bar-brand {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  border-radius: var(--radius-action);
+}
+.lp-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* A navigation link: never underlined, a tint on hover, as on the platform. */
+.lp-bar-link {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-action);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-2);
+  transition: color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease);
+}
+.lp-bar-link:hover {
+  color: var(--fg-1);
+  background: var(--bg-raised);
+}
+
+/* ── The page's controls ──────────────────────────────────────────────────── */
+
+/* The platform landing's calls to action: an 8px corner rather than the
+   console's capsule, ink for the one primary action, a hairline for the rest. */
+.landing .btn {
+  height: 36px;
+  padding: 0 14px;
+  gap: 8px;
+  border-radius: var(--radius-action);
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--accent);
+  color: var(--lu-preset-on-accent);
+  border: 1px solid transparent;
+  transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
+}
+.landing .btn:hover {
+  background: var(--accent-hover);
+}
+.landing .btn:active {
+  transform: translateY(1px);
+}
+.landing .btn.lg {
+  height: 44px;
+  padding: 0 18px;
+  font-size: 15px;
+}
+.landing .btn.ghost {
+  background: transparent;
+  color: var(--fg-1);
+  border-color: var(--border-strong);
+}
+.landing .btn.ghost:hover {
+  background: var(--bg-raised);
+  border-color: var(--border-control);
+}
+.landing .btn svg {
+  flex: none;
+}
+.landing .btn.ghost svg {
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+.landing .btn.ghost:hover svg {
+  transform: translateX(2px);
+}
+
+/* ── The hero ─────────────────────────────────────────────────────────────── */
+
+.lp-hero {
+  width: var(--lp-w);
+  margin: 0 auto;
+  padding: 72px 0 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 56px;
+  align-items: center;
+}
+.lp-hero-copy .lp-eyebrow {
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+/* The platform's display: Instrument Serif at up to 84px, the second clause in
+   italic, as the platform sets "Build with Latere.". */
+.lp-hero h1 {
+  margin: 18px 0 26px;
+  font: 400 clamp(52px, 6.2vw, 84px) / 0.98 var(--font-serif);
+  letter-spacing: -0.025em;
+  color: var(--fg-1);
+}
+.lp-hero h1 .seam ~ .seam,
+.lp-close h2 .seam ~ .seam {
+  font-style: italic;
+}
+.landing-lead {
+  margin: 0;
+  max-width: 31em;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+.lp-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 32px;
+}
+.landing-note {
+  margin: 16px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
+/* ── Figure 1 ─────────────────────────────────────────────────────────────── */
+
+.hf {
+  margin: 0;
+  min-width: 0;
+}
+/* The platform figure's board: a hairline, the card corner, and a dotted
+   ground, the grid an instrument is read against. */
+.hf-board {
+  --hf-dot: color-mix(in srgb, var(--fg-1) 12%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background-color: var(--bg);
+  background-image: radial-gradient(circle at 1px 1px, var(--hf-dot) 1px, transparent 1.3px);
+  background-size: 18px 18px;
+  background-position: 8px 8px;
+  padding: 4px;
+}
+/* The box is the viewBox's ratio from the first frame, so the figure arriving
+   moves nothing around it. */
+.hf-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 680 / 560;
+}
+.hf-outer {
+  fill: none;
+  stroke: var(--fg-1);
+  stroke-width: 1.4;
+}
+.hf-gap line {
+  stroke: var(--fg-3);
+  stroke-width: 1;
+}
+.hf-gap circle {
+  fill: var(--fg-3);
+}
+.hf-gap-end {
+  stroke: var(--fg-1);
+  stroke-width: 1.4;
+}
+.hf-gap-label {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 19px;
+  fill: var(--fg-2);
+}
+.hf-ticks line {
+  stroke: var(--fg-3);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.hf-inner {
+  fill: none;
+  stroke: var(--azure);
+  stroke-width: 1.6;
+}
+.hf-trail {
+  fill: none;
+  stroke: var(--azure);
+  stroke-width: 6;
+  stroke-linecap: round;
+  opacity: 0.16;
+}
+.hf-node {
+  fill: var(--bg);
+  stroke: var(--azure);
+  stroke-width: 1.6;
+  transition: fill 700ms var(--motion-ease);
+}
+.hf-label {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  fill: var(--fg-2);
+  transition: fill 700ms var(--motion-ease);
+}
+.hf-station[data-lit='1'] .hf-node {
+  fill: var(--azure);
+  transition-duration: var(--motion-fast);
+}
+.hf-station[data-lit='1'] .hf-label {
+  fill: var(--fg-1);
+  transition-duration: var(--motion-fast);
+}
+.hf-dot {
+  fill: var(--azure);
+}
+.hf-halo {
+  fill: var(--azure);
+  opacity: 0.14;
+}
+.hf-run-label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  fill: var(--fg-2);
+}
+/* Numerals are Inter's: the serif's 1 is a bare stroke that reads as an l. */
+.hf-run-n {
+  font-family: var(--font-sans);
+  font-size: 50px;
+  letter-spacing: -0.02em;
+  fill: var(--fg-1);
+  font-variant-numeric: tabular-nums;
+}
+.hf-panel {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--fg-1);
+}
+.hf-caption {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 14px;
+}
+.hf-caption p {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+.hf-caption b {
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.hf-pause {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease);
+}
+.hf-pause:hover {
+  color: var(--fg-1);
+  background: var(--bg-raised);
+}
+
+/* ── Each section ─────────────────────────────────────────────────────────── */
+
+/* A section is a rule, a margin column with its number and name, and a body
+   column. The margin label stays beside the reader while the section scrolls,
+   the way a running head does. */
+.lp-section {
+  width: var(--lp-w);
+  margin: 120px auto 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--border-strong);
+  display: grid;
+  grid-template-columns: var(--lp-margin) minmax(0, 1fr);
+  column-gap: var(--lp-gutter);
+}
+.lp-section > * {
+  grid-column: 2;
+}
+.lp-head {
+  display: contents;
+}
+.lp-head > .lp-eyebrow {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: start;
+  position: sticky;
+  top: 80px;
+}
+.lp-head-main {
+  grid-column: 2;
+  margin-bottom: 44px;
+}
+.lp-eyebrow {
+  display: flex;
+  gap: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+.lp-n {
+  min-width: 1.2ch;
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.lp-head h2 {
+  margin: -6px 0 16px;
+  max-width: 17em;
+  font: 400 clamp(34px, 3.6vw, 46px) / 1.08 var(--font-serif);
+  letter-spacing: -0.015em;
+  color: var(--fg-1);
+}
+.lp-head p {
+  margin: 0;
+  max-width: 38em;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+/* ── 1 The boundary ───────────────────────────────────────────────────────── */
+
+.landing-points {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 36px;
+}
+.lp-point-glyph {
+  display: block;
+  margin-bottom: 14px;
+}
+.landing-point h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.landing-point p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+/* ── 2 A session, step by step ────────────────────────────────────────────── */
+
+.lp-walk-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 48px;
+}
+.lp-walk-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 10vh;
+}
+.lp-step {
+  padding: 26px 0 30px;
+  border-top: 1px solid var(--border);
+  transition: opacity var(--motion-enter) var(--motion-ease);
+}
+.lp-step:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.lp-step-n {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-3);
+}
+.lp-step h3 {
+  margin: 6px 0 8px;
+  font: 400 26px / 1.15 var(--font-serif);
+  color: var(--fg-1);
+}
+.lp-step p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+.lp-step-artifact {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.lp-step-artifact svg {
+  color: var(--azure);
+}
+/* The artifacts each step leaves, beside the steps: a panel that stays in view
+   while the steps scroll past it. */
+.lp-walk-panel {
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--bg-surface);
+}
+.lp-plates {
+  display: grid;
+  gap: 10px;
+}
+.lp-plate {
+  padding: 13px 16px 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-action);
+  background: var(--bg);
+  overflow: hidden;
+  transition: max-height var(--motion-enter) var(--motion-ease), opacity var(--motion-enter) var(--motion-ease);
+}
+.lp-plate-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.lp-plate-key {
+  font: 14px/1.4 var(--font-mono);
+  color: var(--fg-1);
+}
+.lp-plate-note {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+.lp-plate-rows {
+  display: grid;
+  gap: 6px;
+}
+.lp-plate-rows span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
+  color: var(--fg-1);
+}
+.lp-plate-rows b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+.lp-plate-rows b::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.lp-plate-rows b.ok {
+  color: var(--ok);
+}
+.lp-plate-rows b.warn {
+  color: var(--warn);
+}
+.lp-plate-rows b.err {
+  color: var(--danger);
+}
+.lp-plate-log {
+  display: grid;
+  gap: 5px;
+  font: 12.5px/1.45 var(--font-mono);
+  color: var(--fg-1);
+}
+.lp-plate-log b {
+  font-weight: 400;
+  color: var(--fg-3);
+  margin-right: 6px;
+}
+.lp-plate-rate {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.lp-rate-n {
+  font: 400 34px / 1 var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--fg-1);
+}
+.lp-rate-of {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+/* The rate as a bar: what verified, what partly verified, and, as the unfilled
+   track, what did not. */
+.lp-meter {
+  display: flex;
+  width: 100%;
+  max-width: 220px;
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+.lp-meter-ok {
+  background: var(--ok);
+}
+.lp-meter-warn {
+  background: var(--warn);
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+
+/* A table's caption sits above it, as a journal sets one. */
+.lp-table-caption {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+.lp-table-caption b {
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+/* ── 3 What comes back ────────────────────────────────────────────────────── */
+
+/* Three rules: a heavier one above and below the table, and a light one under
+   its head. No fills, no vertical rules, no rule between rows. */
+.lp-stack {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px;
+  border-top: 1.5px solid var(--fg-1);
+  border-bottom: 1.5px solid var(--fg-1);
+}
+.lp-file {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  padding: 9px 0;
+}
+.lp-file-head {
+  margin-bottom: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-strong);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.lp-file-name {
+  font: 13px/1.6 var(--font-mono);
+  color: var(--fg-1);
+}
+.lp-file-body {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+/* The file that lists what could not be confirmed is marked as such, because
+   it is the one a skeptical reader opens first. */
+.lp-file.warn .lp-file-name {
+  color: var(--warn);
+}
+
+/* ── 4 A verdict you can check ────────────────────────────────────────────── */
+
+.lp-window {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.lp-window-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 500;
+}
+.lp-window-ico {
+  display: inline-flex;
+  color: var(--azure);
+}
+.lp-window-title {
+  margin-right: auto;
+}
+/* A tag is a word with a dot in its tone, so the tone is never the only
+   signal. Sentence case, in the page's sans. */
+.lp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-chip);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: var(--fg-2);
+  background: var(--bg-raised);
+}
+.lp-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.lp-tag.example {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 11%, transparent);
+}
+.lp-tag.pub,
+.lp-tag.inner {
+  color: var(--azure);
+  background: var(--azure-soft);
+}
+.lp-tag.ok {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 11%, transparent);
+}
+.lp-tag.warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 11%, transparent);
+}
+.lp-tag.none,
+.lp-tag.outer {
+  color: var(--fg-2);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.lp-tag.outer::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+.lp-window-body {
+  padding: 24px 24px 22px;
+}
+.lp-verdict-head {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.lp-verdict-rate {
+  display: grid;
+  gap: 4px;
+}
+.lp-verdict-outcome {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.lp-verdict-n b {
+  font: 400 44px / 1 var(--font-sans);
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+.lp-verdict-n .lp-meter {
+  margin-top: 12px;
+}
+.lp-verdict-tally {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.lp-verdict-summary {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+/* The table is wider than a phone. It scrolls inside its own box, so the page
+   never scrolls sideways. */
+.lp-table-scroll {
+  margin-top: 24px;
+  overflow-x: auto;
+}
+.lp-verdict-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  border-top: 1.5px solid var(--fg-1);
+  border-bottom: 1.5px solid var(--fg-1);
+  font-size: 14px;
+}
+.lp-verdict-table th {
+  padding: 10px 16px 9px 0;
+  border-bottom: 1px solid var(--border-strong);
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.lp-verdict-table td {
+  padding: 11px 16px 11px 0;
+  vertical-align: top;
+  line-height: 1.5;
+}
+.lp-verdict-table tbody tr:first-child td {
+  padding-top: 13px;
+}
+.lp-td-claim {
+  color: var(--fg-1);
+}
+.lp-td-ev {
+  color: var(--fg-2);
+}
+/* The verdict's three parts. */
+.lp-anatomy {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px;
+  margin-top: 40px;
+}
+.lp-part {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 6px;
+}
+.lp-part-ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-control);
+  background: var(--azure-soft);
+  color: var(--azure);
+}
+.lp-part-copy h3 {
+  margin: 4px 0 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.lp-part-copy p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+.lp-part-by {
+  grid-column: 2;
+  font: italic 400 16px / 1.3 var(--font-serif);
+  color: var(--fg-2);
+}
+
+/* ── 5 Who it is for ──────────────────────────────────────────────────────── */
+
+.lp-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 40px;
+}
+.lp-field {
+  padding: 20px 0 24px;
+  border-top: 1px solid var(--border);
+}
+.lp-field h3 {
+  margin: 0 0 8px;
+  font: 400 24px / 1.2 var(--font-serif);
+}
+.lp-field.accent h3 {
+  font-style: italic;
+}
+.lp-field p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+/* ── 6 What it costs ──────────────────────────────────────────────────────── */
+
+.lp-costs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 36px;
+}
+.lp-cost-n {
+  display: block;
+  font: 400 32px / 1 var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.lp-cost h3 {
+  margin: 14px 0 6px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.lp-cost p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+/* ── 7 The registry, as a list of references ──────────────────────────────── */
+
+.lp-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.lp-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 18px 12px 18px 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+.lp-card:hover {
+  background: var(--bg-surface);
+}
+.lp-card-n {
+  padding-top: 1px;
+  font-size: 14px;
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.lp-card-n::before {
+  content: '[';
+}
+.lp-card-n::after {
+  content: ']';
+}
+.lp-card-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.lp-card-cite {
+  font-size: 14px;
+  color: var(--fg-1);
+}
+.lp-card-more {
+  margin-left: 6px;
+  color: var(--fg-2);
+}
+.lp-card-title {
+  font: italic 400 20px / 1.3 var(--font-serif);
+  color: var(--fg-1);
+}
+.lp-card-by {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.lp-card-go {
+  margin-top: 4px;
+  color: var(--fg-3);
+  transition: transform var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+.lp-card:hover .lp-card-go {
+  color: var(--fg-1);
+  transform: translateX(3px);
+}
+.lp-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  margin-top: 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-1);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 4px;
+  transition: text-decoration-color var(--motion-fast) var(--motion-ease);
+}
+.lp-more:hover {
+  text-decoration-color: currentColor;
+}
+
+/* ── The close ────────────────────────────────────────────────────────────── */
+
+.lp-close-wrap {
+  width: var(--lp-w);
+  margin: 128px auto 0;
+  padding-top: 72px;
+  border-top: 1px solid var(--border-strong);
+}
+.lp-close {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+}
+.lp-close-mark {
+  margin: 0 auto 22px;
+}
+.lp-close h2 {
+  margin: 0 0 16px;
+  font: 400 clamp(36px, 4.4vw, 56px) / 1.05 var(--font-serif);
+  letter-spacing: -0.02em;
+}
+.lp-close p {
+  margin: 0 auto;
+  max-width: 46ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+.lp-close .lp-cta {
+  justify-content: center;
+  margin: 30px 0 16px;
+}
+.lp-close .landing-note {
+  display: block;
+}
+
+/* ── The shared footer ────────────────────────────────────────────────────────
+   latere-ui's SiteFooter is one shape on every Latere site and ships its own
+   stylesheet, which this app does not restyle. That sheet reads --text and
+   its two quieter steps, which the ink ladder names --fg-1 to --fg-3, so the
+   wrapper around the footer joins the two by aliasing, and the footer and its
+   menus inherit the names from it. --accent needs no alias: the ink ladder
+   defines it. The wrapper also sets the footer's distance from the close.
+
+   The alternative, importing `latere-ui/tokens`, is not used: that sheet
+   defines --bg, --bg-surface and --bg-raised at :root for the whole page. */
+.lp-footer-wrap {
+  --text: var(--fg-1);
+  --text-secondary: var(--fg-2);
+  --text-muted: var(--fg-3);
+  /* The footer sets its type in --font-ui, so the lockup at its head is set
+     in the same face as the header's, and the links in the app's sans. */
+  --font-ui: var(--font-sans);
+  margin-top: 96px;
+}
+
+/* ── Narrower ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .lp-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    padding-top: 48px;
+  }
+  /* One column: the margin label sits above its heading. */
+  .lp-section {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 88px;
+  }
+  .lp-section > *,
+  .lp-head-main {
+    grid-column: 1;
+  }
+  .lp-head > .lp-eyebrow {
+    grid-column: 1;
+    grid-row: auto;
+    position: static;
+    margin-bottom: 14px;
+  }
+  .lp-head-main {
+    margin-bottom: 32px;
+  }
+  .landing-points,
+  .lp-anatomy,
+  .lp-costs,
+  .lp-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+  .lp-fields {
+    gap: 0;
+  }
+  /* One column: there is no second column for a plate to be sticky in, so the
+     artifacts sit under the steps and every one of them is open. The scroll
+     driver in landing.tsx is disabled at this width for the same reason. */
+  .lp-walk-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+  .lp-walk-steps {
+    padding-bottom: 0;
+  }
+  .lp-walk-panel {
+    position: static;
+  }
+  .lp-verdict-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .lp-file {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .lp-file-head {
+    display: none;
+  }
+}
+
+/* The app's phone breakpoint (030). */
+@media (max-width: 760px) {
+  .landing {
+    --lp-w: calc(100% - 32px);
+  }
+  .lp-hero h1 {
+    font-size: clamp(44px, 12vw, 56px);
+  }
+  .lp-bar-registry {
+    display: none;
+  }
+  .lp-close-wrap {
+    margin-top: 96px;
+    padding-top: 56px;
+  }
+  /* Figure 1 is drawn in its own units and scales with the column. At phone
+     width that would set its labels at seven pixels, so the labels grow in
+     the figure's units to stay at a reading size on the screen. */
+  .hf-label {
+    font-size: 23px;
+  }
+  .hf-gap-label {
+    font-size: 25px;
+  }
+  .hf-run-label {
+    font-size: 21px;
+  }
+  .hf-panel {
+    font-size: 23px;
+  }
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────── */
+
+/* With the driver disabled every artifact is open at once, which is taller
+   than the panel it sits in. Without motion there is nothing to cap. */
+@media (prefers-reduced-motion: reduce) {
+  .hf-pause {
+    display: none;
+  }
+}
+
+/* Motion, for readers who have not asked for less of it. Everything above is
+   already the resting state, so this adds movement and never removes content.
+   The platform's tokens: 150ms for a hover, 220ms for a thing arriving, one
+   curve. A section arrives once, rising 8px. */
+@media (prefers-reduced-motion: no-preference) {
+  .lp-hero,
+  .lp-section,
+  .lp-close-wrap {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 480ms var(--motion-ease), transform 480ms var(--motion-ease);
+  }
+  .lp-hero.in,
+  .lp-section.in,
+  .lp-close-wrap.in {
+    opacity: 1;
+    transform: none;
+  }
+  /* Inside a revealed section the rows appear in reading order. The
+     walkthrough's steps are not in this list: their opacity belongs to the
+     scroll driver, and two writers on one property left a step stuck at a
+     third of its opacity. */
+  .lp-file,
+  .lp-part,
+  .lp-strip > li {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity var(--motion-enter) var(--motion-ease), transform var(--motion-enter) var(--motion-ease);
+    transition-delay: calc(var(--i, 0) * 60ms + 120ms);
+  }
+  .in .lp-file,
+  .in .lp-part,
+  .in .lp-strip > li {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Figure 1 draws itself once: the outer arc, then the inner ring, then its
+     graduation, its stations in order, and last the marker that will travel
+     it. After that the only motion is the marker's. */
+  .hf-outer,
+  .hf-inner {
+    stroke-dasharray: 1 1;
+    stroke-dashoffset: 1;
+    animation: hf-draw 1100ms var(--motion-ease) 120ms forwards;
+  }
+  .hf-inner {
+    animation-duration: 900ms;
+    animation-delay: 300ms;
+  }
+  .hf-ticks,
+  .hf-gap,
+  .hf-gap-end,
+  .hf-panel,
+  .hf-run-label,
+  .hf-station,
+  .hf-marker,
+  .hf-trail {
+    opacity: 0;
+    animation: hf-fade var(--motion-enter) var(--motion-ease) forwards;
+  }
+  .hf-ticks {
+    animation-duration: 500ms;
+    animation-delay: 700ms;
+  }
+  .hf-gap,
+  .hf-gap-end,
+  .hf-panel,
+  .hf-run-label {
+    animation-delay: 900ms;
+  }
+  .hf-station {
+    animation-delay: calc(800ms + var(--i, 0) * 80ms);
+  }
+  .hf-marker,
+  .hf-trail {
+    animation-delay: 1250ms;
+  }
+  /* The trail is drawn at its own opacity, so it fades in to that. */
+  .hf-trail {
+    animation-name: hf-fade-trail;
+  }
+  /* A new run number arrives rather than flips. */
+  .hf-run-n {
+    animation: hf-count var(--motion-enter) var(--motion-ease);
+  }
+}
+@keyframes hf-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes hf-fade {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes hf-fade-trail {
+  to {
+    opacity: 0.16;
+  }
+}
+@keyframes hf-count {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}

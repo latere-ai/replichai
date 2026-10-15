@@ -19,8 +19,8 @@ import ts from 'typescript'
 // date, time or number formatted in the browser's locale rather than the app's.
 
 // brand.tsx holds the wordmark, which is not translated. i18n.ts is the strings
-// themselves. hero-scene.ts is WebGL, and its shader source is not copy.
-const EXEMPT = new Set(['brand.tsx', 'i18n.ts', 'hero-scene.ts'])
+// themselves.
+const EXEMPT = new Set(['brand.tsx', 'i18n.ts'])
 
 // Literals that are not translatable text and so ride around t():
 //   HAI: the brand wordmark
