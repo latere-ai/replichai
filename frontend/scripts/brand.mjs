@@ -48,8 +48,8 @@ const favicon = renderToStaticMarkup(h(Mark, { size: 16 }))
 // depend on what the machine running this has installed.
 const face = (family, file, style = 'normal', weight = 400) =>
   `@font-face{font-family:'${family}';font-style:${style};font-weight:${weight};src:url(data:font/woff2;base64,${readFileSync(`public/fonts/${file}`).toString('base64')}) format('woff2')}`
-const FACES = [face('Inter', 'inter-400.woff2'), face('Inter', 'inter-500.woff2', 'normal', 500), face('Instrument Serif', 'instrument-serif-regular.woff2'), face('Instrument Serif', 'instrument-serif-italic.woff2', 'italic')].join('')
-const PAINT = (t) => `.mark-outer{stroke:${INK[t].outer}}.mark-inner{stroke:${INK[t].inner}}.wordmark{width:3.537em;height:.948em;fill:currentColor}.lockup{display:inline-flex;align-items:center;gap:.4em;line-height:1}`
+const FACES = [face('Inter', 'inter-400.woff2'), face('Inter', 'inter-500.woff2', 'normal', 500), face('Inter', 'inter-600.woff2', 'normal', 600)].join('')
+const PAINT = (t) => `.mark-outer{stroke:${INK[t].outer}}.mark-inner{stroke:${INK[t].inner}}.wordmark{font-weight:600;letter-spacing:-.03em}.wordmark-seam{margin-left:.055em}.lockup{display:inline-flex;align-items:center;gap:.4em;line-height:1}`
 
 // The touch icon is the mark on an ink tile, drawn square and full-bleed: iOS
 // applies its own corner mask, and a tile that rounds itself first comes out a
@@ -60,10 +60,10 @@ const icon = `<style>${PAINT('dark')}body{margin:0}</style>
 // The social card is the landing's lockup and claim at card scale, set as the
 // landing sets them. A link preview is the first screen for anybody who arrives
 // through somebody else, so it says what the page says.
-const card = `<style>${FACES}${PAINT('light')}body{margin:0}</style>
+const card = `<style>${FACES}${PAINT('light')}body{margin:0;font-family:Inter}</style>
   <div style="width:1200px;height:630px;background:#ffffff;color:#0d0d0d;font-family:Inter;display:flex;flex-direction:column;justify-content:center;padding:0 96px;box-sizing:border-box">
     <div style="margin-bottom:48px">${renderToStaticMarkup(h(Lockup, { size: 44 }))}</div>
-    <div style="font:400 104px/0.98 'Instrument Serif';letter-spacing:-0.02em">Does the paper <i>reproduce?</i></div>
+    <div style="font:600 84px/1.04 Inter;letter-spacing:-0.035em">Does the paper reproduce?</div>
     <div style="margin-top:36px;font-size:27px;line-height:1.5;color:#525252;max-width:44ch">
       ReplicHAI re-runs the part of a paper a machine can run. The study with people is named, marked out of scope, and never simulated.
     </div>

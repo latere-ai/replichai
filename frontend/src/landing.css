@@ -3,10 +3,10 @@
    The page is set the way research is set. Sections are numbered under a rule,
    with the number and name in a margin column that stays beside the reader,
    instead of being boxed in tinted slabs: on paper a block of color around a
-   section says "advertisement", and a rule says "next section". Instrument
-   Serif states (the claim and every heading), and Inter is read, numerals
-   included. Figure 1 is captioned underneath and the tables above, as a journal
-   sets them, and a table has three rules and nothing else.
+   section says "advertisement", and a rule says "next section". One face,
+   Inter, upright throughout: headings in its semibold, text in its regular.
+   Figure 1 is captioned underneath and the tables above, as a journal sets
+   them, and a table has three rules and nothing else.
 
    Every color is a token from the ink ladder or the product azure, so the page
    holds in both themes with no second palette. */
@@ -136,17 +136,16 @@
   font-weight: 500;
   color: var(--fg-2);
 }
-/* The platform's display: Instrument Serif at up to 84px, the second clause in
-   italic, as the platform sets "Build with Latere.". */
+/* The claim, in the page's own face at a size that states it without
+   shouting: semibold, upright, tracked in a little as Inter is at display
+   sizes. */
 .lp-hero h1 {
-  margin: 18px 0 26px;
-  font: 400 clamp(52px, 6.2vw, 84px) / 0.98 var(--font-serif);
-  letter-spacing: -0.025em;
+  margin: 18px 0 24px;
+  font-size: clamp(42px, 4.8vw, 62px);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
   color: var(--fg-1);
-}
-.lp-hero h1 .seam ~ .seam,
-.lp-close h2 .seam ~ .seam {
-  font-style: italic;
 }
 .landing-lead {
   margin: 0;
@@ -211,9 +210,9 @@
   stroke-width: 1.4;
 }
 .hf-gap-label {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 19px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
   fill: var(--fg-2);
 }
 .hf-ticks line {
@@ -363,10 +362,12 @@
   font-variant-numeric: tabular-nums;
 }
 .lp-head h2 {
-  margin: -6px 0 16px;
-  max-width: 17em;
-  font: 400 clamp(34px, 3.6vw, 46px) / 1.08 var(--font-serif);
-  letter-spacing: -0.015em;
+  margin: -4px 0 14px;
+  max-width: 20em;
+  font-size: clamp(26px, 2.6vw, 34px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
   color: var(--fg-1);
 }
 .lp-head p {
@@ -429,7 +430,10 @@
 }
 .lp-step h3 {
   margin: 6px 0 8px;
-  font: 400 26px / 1.15 var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
   color: var(--fg-1);
 }
 .lp-step p {
@@ -691,7 +695,9 @@
   max-width: 72ch;
 }
 .lp-verdict-outcome {
-  font: 400 26px / 1.2 var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--fg-1);
 }
 .lp-verdict-summary {
@@ -788,8 +794,8 @@
 }
 .lp-part-by {
   grid-column: 2;
-  font: italic 400 16px / 1.3 var(--font-serif);
-  color: var(--fg-2);
+  font-size: 13px;
+  color: var(--fg-3);
 }
 
 /* ── 5 Who it is for ──────────────────────────────────────────────────────── */
@@ -804,11 +810,10 @@
   border-top: 1px solid var(--border);
 }
 .lp-field h3 {
-  margin: 0 0 8px;
-  font: 400 24px / 1.2 var(--font-serif);
-}
-.lp-field.accent h3 {
-  font-style: italic;
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 .lp-field p {
   margin: 0;
@@ -892,8 +897,12 @@
   margin-left: 6px;
   color: var(--fg-2);
 }
+/* An article's title is upright in a reference list. */
 .lp-card-title {
-  font: italic 400 20px / 1.3 var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
   color: var(--fg-1);
 }
 .lp-card-by {
@@ -944,9 +953,11 @@
   margin: 0 auto 22px;
 }
 .lp-close h2 {
-  margin: 0 0 16px;
-  font: 400 clamp(36px, 4.4vw, 56px) / 1.05 var(--font-serif);
-  letter-spacing: -0.02em;
+  margin: 0 0 14px;
+  font-size: clamp(30px, 3.4vw, 42px);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
 }
 .lp-close p {
   margin: 0 auto;
@@ -1047,7 +1058,7 @@
     --lp-w: calc(100% - 32px);
   }
   .lp-hero h1 {
-    font-size: clamp(44px, 12vw, 56px);
+    font-size: clamp(36px, 10vw, 44px);
   }
   .lp-bar-registry {
     display: none;
