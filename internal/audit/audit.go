@@ -131,8 +131,8 @@ type Result struct {
 	InstrumentPresent bool
 	// InstrumentViolations is the result of the finalize-time schema check of
 	// instrument.json, and is empty when the file validates. It is a report to
-	// the caller and is never folded into the verdict or the manifest; rubric
-	// criterion 7 is what drives revision.
+	// the caller and is never folded into the verdict or the manifest; the
+	// rubric's Instrument criterion is what drives revision.
 	InstrumentViolations []instrument.Violation
 }
 
@@ -422,7 +422,8 @@ func (a *Auditor) finish(ctx context.Context, h provider.RunHandle, paper, dst s
 
 // validateInstrument reads the collected instrument.json and checks it against
 // the 007a schema. A missing file is reported as absent rather than as an
-// error: failing on it is criterion 7's job in the grade-and-revise loop, and
+// error: failing on it is the rubric's Instrument criterion's job in the
+// grade-and-revise loop, and
 // this is only a finalize-time report. Content that is not JSON is reported as
 // one violation rather than failing the whole audit over a malformed file.
 func validateInstrument(dir string) (present bool, violations []instrument.Violation, err error) {
