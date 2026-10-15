@@ -60,8 +60,13 @@ func (s SessionSpec) Validate() error {
 		if strings.TrimSpace(s.Evaluation.Rubric) == "" {
 			return invalid("evaluation.rubric", "must not be empty")
 		}
-		if s.Evaluation.MaxRevisions <= 0 {
-			return invalid("evaluation.max_revisions", "must be positive")
+		if s.Evaluation.MaxRevisions < 0 {
+			return invalid("evaluation.max_revisions", "must not be negative")
+		}
+		if s.Evaluation.Findings != "" {
+			if err := safeRelativePath(s.Evaluation.Findings); err != nil {
+				return invalid("evaluation.findings", err.Error())
+			}
 		}
 	}
 	if err := s.Sandbox.validate(); err != nil {
@@ -298,6 +303,9 @@ func ValidateCapabilities(runtime RuntimeName, capabilities Capabilities, spec S
 	}
 	if spec.Evaluation != nil && !capabilities.Evaluation {
 		return &UnsupportedError{Runtime: runtime, Field: "evaluation", Capability: "evaluation"}
+	}
+	if spec.Evaluation != nil && spec.Evaluation.Findings != "" && !capabilities.FindingsRounds {
+		return &UnsupportedError{Runtime: runtime, Field: "evaluation.findings", Capability: "findings_rounds"}
 	}
 	for i, resource := range spec.Resources {
 		if resource.Kind == ResourceRepository && !capabilities.RepositoryModes[resource.Repository.Access] {

@@ -134,11 +134,21 @@ type Resource struct {
 
 // EvaluationSpec makes a session graded. A nil *EvaluationSpec on SessionSpec
 // is the only way to say "ungraded", which is why a present one must carry a
-// non-empty rubric and a positive revision budget: a zero value must not be
-// readable as grading against nothing.
+// non-empty rubric: a zero value must not be readable as grading against
+// nothing. MaxRevisions may be zero, which grades the first attempt and never
+// revises it, so a study can keep what a run produced before a rubric pushed
+// it (046).
+//
+// Findings names the workspace file that holds the run's findings as data,
+// verdict.json for an audit (021a). A runtime that declares FindingsRounds
+// copies it after every worker-side stage, checks it against its schema, and
+// gives the problems to the grader and to the revision, so a file the system
+// cannot read is never passed on a model's reading of the rubric. Empty asks
+// for none of this.
 type EvaluationSpec struct {
 	Rubric       string `json:"rubric"`
 	MaxRevisions int    `json:"max_revisions"`
+	Findings     string `json:"findings,omitempty"`
 }
 
 // SessionSpec is the complete product intent for one managed session,
@@ -349,6 +359,11 @@ type Capabilities struct {
 	Cancellation       bool
 	MaxAttachmentBytes int64
 	MaxLocatorBytes    int
+	// FindingsRounds reports that the runtime keeps the findings file of
+	// every grading round and checks it before the grader reads it, which an
+	// EvaluationSpec asks for by naming Findings. A runtime that grades on a
+	// vendor's side cannot reach inside that loop and declares false.
+	FindingsRounds bool
 }
 
 // Runtime is one backend able to execute a managed session. The interface is

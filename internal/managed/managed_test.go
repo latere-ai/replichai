@@ -51,7 +51,8 @@ func TestSessionSpecValidate(t *testing.T) {
 		{"empty instructions", func(s *SessionSpec) { s.Instructions = " " }, "instructions"},
 		{"empty task", func(s *SessionSpec) { s.Task = "" }, "task"},
 		{"empty rubric", func(s *SessionSpec) { s.Evaluation.Rubric = "" }, "evaluation.rubric"},
-		{"zero revision budget", func(s *SessionSpec) { s.Evaluation.MaxRevisions = 0 }, "evaluation.max_revisions"},
+		{"negative revision budget", func(s *SessionSpec) { s.Evaluation.MaxRevisions = -1 }, "evaluation.max_revisions"},
+		{"findings outside the workspace", func(s *SessionSpec) { s.Evaluation.Findings = "../verdict.json" }, "evaluation.findings"},
 		{"shell fragment", func(s *SessionSpec) { s.Sandbox.Bootstrap = [][]string{{}} }, "sandbox.bootstrap[0]"},
 		{"open with secrets", func(s *SessionSpec) { s.Sandbox.Network.Mode = NetworkOpen }, "sandbox.network"},
 		{"noncanonical domain", func(s *SessionSpec) { s.Sandbox.Network.AllowedDomains[0] = "API.Example.com" }, "sandbox.network.allowed_domains[0]"},
@@ -70,6 +71,36 @@ func TestSessionSpecValidate(t *testing.T) {
 				t.Fatalf("error = %v, want InvalidSpecError field %q", err, test.field)
 			}
 		})
+	}
+}
+
+// A study may grade a run without revising it, so zero revisions is a budget
+// and not a missing one. Only a negative budget is refused.
+func TestAnEvaluationMayAllowNoRevision(t *testing.T) {
+	spec := validSpec()
+	spec.Evaluation.MaxRevisions = 0
+	if err := spec.Validate(); err != nil {
+		t.Fatalf("zero revisions: %v", err)
+	}
+}
+
+// A runtime that cannot check the findings of each round refuses a session
+// that asks for it, rather than grading without the check.
+func TestAFindingsCheckNeedsARuntimeThatKeepsRounds(t *testing.T) {
+	capabilities := Capabilities{
+		PackageManagers: map[string]bool{"pip": true},
+		NetworkModes:    map[NetworkMode]bool{NetworkAllowlist: true},
+		Evaluation:      true, MaxAttachmentBytes: 1 << 20,
+	}
+	spec := validSpec()
+	spec.Evaluation.Findings = "verdict.json"
+	var unsupported *UnsupportedError
+	if err := ValidateCapabilities("memory", capabilities, spec); !errors.As(err, &unsupported) || unsupported.Field != "evaluation.findings" {
+		t.Fatalf("error = %v, want unsupported evaluation.findings", err)
+	}
+	capabilities.FindingsRounds = true
+	if err := ValidateCapabilities("memory", capabilities, spec); err != nil {
+		t.Fatalf("a runtime that keeps rounds: %v", err)
 	}
 }
 

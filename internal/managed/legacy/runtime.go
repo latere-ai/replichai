@@ -102,6 +102,13 @@ func (r *Runtime) Validate(spec managed.SessionSpec) error {
 	if spec.Model.Exact != nil {
 		return &managed.UnsupportedError{Runtime: r.Name(), Field: "model.exact", Capability: "exact_model"}
 	}
+	// The vendor's grader revises until it passes or its own budget runs out,
+	// and a budget of zero is not one it takes: an unset budget is its
+	// default of three. A session asking to be graded and never revised is
+	// refused rather than revised anyway.
+	if spec.Evaluation != nil && spec.Evaluation.MaxRevisions == 0 {
+		return &managed.UnsupportedError{Runtime: r.Name(), Field: "evaluation.max_revisions", Capability: "evaluation_without_revision"}
+	}
 	return nil
 }
 

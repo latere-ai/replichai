@@ -129,6 +129,16 @@ func TestModelsCapabilitiesValidationAndReferenceErrors(t *testing.T) {
 		t.Fatalf("exact model = %v", err)
 	}
 	spec = baseSpec()
+	spec.Evaluation = &managed.EvaluationSpec{Rubric: "passes", MaxRevisions: 0}
+	if err := runtime.Validate(spec); !errors.Is(err, managed.ErrUnsupported) {
+		t.Fatalf("graded with no revision = %v", err)
+	}
+	spec = baseSpec()
+	spec.Evaluation = &managed.EvaluationSpec{Rubric: "passes", MaxRevisions: 1, Findings: "verdict.json"}
+	if err := runtime.Validate(spec); !errors.Is(err, managed.ErrUnsupported) {
+		t.Fatalf("findings rounds = %v", err)
+	}
+	spec = baseSpec()
 	spec.Sandbox.Network.Mode = managed.NetworkAllowlist
 	spec.Sandbox.Network.AllowedDomains = []string{"api.example.com"}
 	if err := runtime.Validate(spec); !errors.Is(err, managed.ErrUnsupported) {
