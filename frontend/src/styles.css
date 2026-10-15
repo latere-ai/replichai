@@ -1,46 +1,56 @@
-/* Latere v2 design system.
+/* The design system (047).
 
-   Text is set in ink; color carries meaning. One brand hue marks what the
-   operator can act on: the primary button, the current page, a focus ring. A
-   five-tone semantic ramp marks what the system reports: running, passed,
-   needs attention, failed, published. Everything else stays ink on paper, so
-   any color present has a meaning.
+   The palette is latere-ui's ink ladder, the one the platform and its identity
+   pages read: a white page, neutral grays with no hue, and ink as the accent.
+   It is imported in main.tsx and switched on by `data-design="ink"` on <html>,
+   so this sheet names no ground, text, border or status color of its own. It
+   adds only what the ladder has no name for.
 
-   Retinting the product is a two-line change: --brand and its dark variant. */
+   Text is set in ink, and color carries meaning. The primary action, the
+   current page and the focus ring are ink, as everywhere in the family. The
+   product's azure is its drawing color: the inner ring of the mark and the
+   inner loop in every figure, the part a machine re-runs, and the published
+   state, which is what the product makes. It is never spent on a control.
 
-/* Instrument Serif, self-hosted. These are the same two faces latere.ai serves
-   from the same paths, as byte-identical files, so a reader who has visited
-   either site already has them cached.
-
-   Until 040 this app named the family and shipped no files, so `--font-serif`
-   always rendered in Georgia. Its use is the serif `<em>` in a screen's
-   description; the shared footer opens with replichai's own lockup and sets no
-   serif. 033 drew replichai's identity rather than setting it in a face, which
-   is why the wordmark depends on no font and must stay that way.
-
-   `swap` rather than latere.ai's `block`, because this is an app and that is a
-   marketing site: `block` blanks the text for up to three seconds, and the
-   `<em>` sits above the fold inside the console. With the preload
-   in index.html the face is in flight with the document, so no swap is visible;
-   `swap` only takes effect when that download is slow or fails, which is the
-   correct behavior then.
-
-   Both faces are declared and only the italic is preloaded. A declared face is
-   not downloaded until a rule uses it: nothing sets this family upright today,
-   so the regular woff2 is never fetched. It is declared so that the first rule
-   which does need it does not silently fall back to Georgia. */
+   Two faces, as on the platform: Instrument Serif for what a screen states (a
+   title, a heading, a paper's name), Inter for what is read. Both are the
+   platform's files, byte for byte, under the same paths, so a reader who has
+   visited either site already has them. `block` rather than `swap`, as on the
+   platform: the faces are preloaded with the document, and a swap reflows text
+   a reader is already looking at, which is a layout shift. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/fonts/inter-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+  src: url('/fonts/inter-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
+  src: url('/fonts/inter-600.woff2') format('woff2');
+}
 @font-face {
   font-family: 'Instrument Serif';
   font-style: normal;
   font-weight: 400;
-  font-display: swap;
+  font-display: block;
   src: url('/fonts/instrument-serif-regular.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Instrument Serif';
   font-style: italic;
   font-weight: 400;
-  font-display: swap;
+  font-display: block;
   src: url('/fonts/instrument-serif-italic.woff2') format('woff2');
 }
 
@@ -53,94 +63,49 @@
   --gap-row: 18px;
   --gap-inline: 10px;
 
-  --bg: #fafaf9;
-  --bg-deep: #f0f0ee;
-  --bg-surface: #ffffff;
-  --bg-raised: #f4f4f3;
-  --bg-code: rgba(0, 0, 0, 0.045);
+  /* The product's drawing color: latere-ui's registered replichai azure
+     (`--lu-brand-replichai`). */
+  --azure: #2369bd;
+  --azure-soft: color-mix(in srgb, var(--azure) 9%, transparent);
+  --azure-line: color-mix(in srgb, var(--azure) 34%, transparent);
 
-  /* The brand hue: the cool pole of seaborn's vlag palette, a clear azure. It
-     marks what the operator acts on: buttons, links, the current page. The warm
-     pole, vlag's crimson, is used for danger and failure through --err, so blue
-     means an action and red means a warning. */
-  --brand: #2369bd;
-  --brand-hover: #1d5aa1;
-  --brand-fg: #ffffff;
-  --brand-soft: rgba(35, 105, 189, 0.1);
-  --brand-line: rgba(35, 105, 189, 0.28);
-  --brand-ring: rgba(35, 105, 189, 0.3);
+  /* What the operator acts on. The names predate 047, when they were the azure;
+     they are the ink now, so every screen that reads them follows the family. */
+  --brand: var(--accent);
+  --brand-hover: var(--accent-hover);
+  --brand-fg: var(--lu-preset-on-accent);
+  --brand-soft: var(--bg-hover);
+  --brand-line: var(--border-strong);
+  --brand-ring: var(--accent);
 
-  --fg-1: #0c0a09;
-  --fg-2: #5c5b58;
-  --fg-3: #9a9895;
+  /* The status tones ink does not name, mapped onto the ones it does. Running
+     is informational; failed is the ladder's danger. Published is the product's
+     own color: it is what the product makes, and the violet it used to be sat
+     within a few degrees of ink's admin tone, which the admin console shows. */
+  --run: var(--info);
+  --err: var(--danger);
+  --pub: var(--azure);
 
-  --border: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.13);
-
-  /* Semantic ramp. These also drive syntax highlighting, so they stay legible
-     as body-sized text, not just as badge fills.
-
-     Muted rather than saturated (021b). Five states appear together on one
-     screen, for example a running session beside a passed one beside a failed
-     one, and at full saturation they compete for attention instead of ranking
-     themselves. The dark values are the operator design's; the light ones are
-     the same hues adjusted to a usable contrast on a light background rather
-     than the dark values reused. */
-  --ok: #3f7a55;
-  --warn: #96631f;
-  --run: #0f766e;
-  --err: #a9373b;
-  --pub: #6b4fa8;
-
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-serif: 'Instrument Serif', Georgia, serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --radius-sm: 7px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* The ladder's radii, under the names this sheet already uses. */
+  --radius-sm: var(--radius-control);
   --radius-pill: 999px;
 
-  --shadow-pop: 0 10px 30px rgba(12, 10, 9, 0.13), 0 1px 2px rgba(12, 10, 9, 0.06);
+  --shadow-pop: var(--shadow-menu);
 
-  --ease-fluid: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-hover: 0.16s;
+  /* The platform's motion: hover and press, a thing arriving, and one curve. */
+  --motion-fast: 150ms;
+  --motion-enter: 220ms;
+  --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-fluid: var(--motion-ease);
+  --dur-hover: var(--motion-fast);
 }
 
 :root[data-theme='dark'] {
-  /* Lifted off pure black. The old base was #0a0a0c with #fafafa text, close to
-     the maximum contrast a screen can produce, which reads as glare in a dark
-     room. The surfaces are a soft charcoal and the text sits just below white,
-     so the page keeps the same hierarchy at a comfortable contrast. */
-  --bg: #17171b;
-  --bg-deep: #101013;
-  --bg-surface: #1f1f25;
-  --bg-raised: #2a2a32;
-  --bg-code: rgba(255, 255, 255, 0.055);
-
-  /* The azure lightened so it reads as an accent against the charcoal rather
-     than as a dark patch. */
-  --brand: #6fa3e6;
-  --brand-hover: #8fb8ec;
-  --brand-fg: #0a1524;
-  --brand-soft: rgba(111, 163, 230, 0.16);
-  --brand-line: rgba(111, 163, 230, 0.4);
-  --brand-ring: rgba(111, 163, 230, 0.42);
-
-  --fg-1: #e9e9ef;
-  --fg-2: #a8a8b4;
-  --fg-3: #7c7c88;
-
-  --border: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(255, 255, 255, 0.15);
-
-  --ok: #8fb894;
-  --warn: #e0bb8c;
-  --run: #45b8ab;
-  --err: #db8385;
-  --pub: #b9a6e6;
-
-  --shadow-pop: 0 14px 38px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.38);
+  --azure: #78b1ed;
 }
 
 * {
@@ -178,15 +143,15 @@ select,
 textarea {
   font-family: inherit;
 }
-/* One focus ring for every control, brand-colored, so keyboard focus is
-   consistent across the app rather than styled per widget. */
+/* One focus ring for every control, the family's 2px ink outline, so keyboard
+   focus is the same across the app rather than styled per widget. */
 :where(input, button, select, a, [tabindex]):focus-visible {
   outline: 2px solid var(--brand-ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
 ::selection {
-  background: var(--brand-soft);
+  background: var(--azure-soft);
 }
 @keyframes om-pulse {
   0%,
