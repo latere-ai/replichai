@@ -67,9 +67,9 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	}
 
 	// Every run of the study gets the same inputs (046): the network profile
-	// each run is given is settled, and a copy of every paper fetched, before
-	// any run starts, so a study that cannot give its runs the same inputs
-	// spends nothing finding out.
+	// each run is given is settled, and a copy of every paper and a snapshot of
+	// every artifact it lists taken, before any run starts, so a study that
+	// cannot give its runs the same inputs spends nothing finding out.
 	entries, err := file.Entries()
 	if err != nil {
 		return err
@@ -78,7 +78,8 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if err != nil {
 		return err
 	}
-	papers, err := batch.Papers(ctx, batch.Root(positional[0]), entries, fetchStudyPaper, *resume)
+	inputs, err := batch.Inputs(ctx, batch.Root(positional[0]), entries,
+		batch.Sources{Paper: fetchStudyPaper, Artifact: fetchStudyArtifact}, *resume)
 	if err != nil {
 		return err
 	}
@@ -89,7 +90,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		interval: *interval, timeout: *timeout, maxRevisions: *maxRevisions,
 		stdout: stdout, stderr: stderr,
 		publishers: make(map[int]*publisher), project: file.Project,
-		profiles: profiles, papers: papers,
+		profiles: profiles, inputs: inputs,
 	}
 	statePath := filepath.Join(batch.Root(positional[0]), "batch.json")
 	reportPath := filepath.Join(batch.Root(positional[0]), "report.md")
@@ -195,10 +196,11 @@ type projectRunner struct {
 	// project names the project the runs belong to, for each run's record.
 	project string
 	// profiles is the network profile each run is given, by the run's index,
-	// and papers the copy of each paper every run of it is handed, by the
-	// paper's reference. Both are settled before any run starts.
+	// and inputs the copy of each paper and the snapshots of its artifacts
+	// every run of it is handed, by the paper's reference. Both are settled
+	// before any run starts.
 	profiles map[int]audit.NetworkProfile
-	papers   map[string]paper.Copy
+	inputs   map[string]batch.StudyInputs
 
 	mu         sync.Mutex
 	publishers map[int]*publisher
@@ -306,12 +308,15 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		audit.WithSessionMaxRevisions(r.maxRevisions),
 		audit.WithSessionTimeout(r.timeout),
 	}
-	profile, copied, given := r.inputs(entry)
+	profile, given, handed := r.given(entry)
 	if profile != "" {
 		opts = append(opts, audit.WithNetworkProfile(profile))
 	}
-	if given {
-		opts = append(opts, audit.WithPaperCopy(copied))
+	if handed {
+		opts = append(opts, audit.WithPaperCopy(given.Paper))
+		if len(given.Artifacts) > 0 {
+			opts = append(opts, audit.WithArtifacts(given.Artifacts))
+		}
 	}
 
 	// retained reports that the session reached the hook that finalizes it.
@@ -355,8 +360,13 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 				}
 				record := r.placed(runRecord(runtime, evidence.Status, model, audit.PromptDigest(ctx), r.stderr), entry)
 				record.NetworkProfile = string(profile)
-				if given {
-					record.PaperDigest = copied.Digest()
+				if handed {
+					record.PaperDigest = given.Paper.Digest()
+					for _, snapshot := range given.Artifacts {
+						record.Artifacts = append(record.Artifacts, publish.RunArtifact{
+							Source: snapshot.Source, Commit: snapshot.Commit, Digest: snapshot.Digest(),
+						})
+					}
 				}
 				return finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, r.method.Digest(),
 					grade, record, providerEventsFromManaged(evidence.Events), r.invite, r.stdout)
@@ -387,12 +397,13 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 	return outcome, nil
 }
 
-// inputs is what a run of the study is given: its network profile and the copy
-// of its paper. A runner built without them gives a run neither, and the run
-// has what its runtime allows and finds its own copy.
-func (r *projectRunner) inputs(entry batch.Resolved) (audit.NetworkProfile, paper.Copy, bool) {
-	copied, given := r.papers[entry.Reference()]
-	return r.profiles[entry.Index], copied, given
+// given is what a run of the study is handed: its network profile, and the copy
+// of its paper with the snapshots of its artifacts. A runner built without
+// them gives a run none, and the run has what its runtime allows and finds its
+// own copy.
+func (r *projectRunner) given(entry batch.Resolved) (audit.NetworkProfile, batch.StudyInputs, bool) {
+	inputs, handed := r.inputs[entry.Reference()]
+	return r.profiles[entry.Index], inputs, handed
 }
 
 // placed adds where a run sits in its project to its record: the project, and
