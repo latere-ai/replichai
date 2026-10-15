@@ -11,7 +11,7 @@ Four things came out of the build. `.legend-swatch.empty` also matched the app's
 
 **Scope:** the signed-in console takes the same design pass 033 gave the landing. The shell is restyled: the rail loses its border and sits on the deep ground, and the content is an inset card floating on it. The shared primitives every screen is built from (the card, the button, the icon button, the segmented control) move to the design's radii and fills. The projects screen is rebuilt: three counters that restated the list become two cards that decompose the one number this product exists to produce, owner and date leave the column grid for the title's meta line, and the room that frees goes to a **Published** column and a filter row. Frontend only. No route, no schema.
 
-**Depends on:** [033](033-the-landing-rebuilt-from-the-design.md) (the same design system, applied to the front door), [030](030-the-app-on-a-phone.md) (the drawer, the breakpoint, and every guarantee at 390px), [018](018-one-list-of-projects.md) (the one merged list and its owner column), [021e](021e-what-a-project-costs.md) (the windowed spend), [020](020-taking-the-work-out.md) (what a download is offered on).
+**Depends on:** [033](033-the-landing-rebuilt-from-the-design.md) (the same design system, applied to the front door), [030](030-the-app-on-a-phone.md) (the drawer, the breakpoint, and every guarantee at 390px), [018](018-one-list-of-projects.md) (the one merged list and its owner column), [021e](021e-the-project-rail.md) (the windowed spend), [020](020-download-the-whole-project.md) (what a download is offered on).
 
 ## Problem
 
