@@ -153,7 +153,15 @@ Inside the card the primitives are the platform's:
 
 The mechanisms are untouched: 030's drawer and breakpoint, the fold and its persistence, the tooltips on a folded rail, and 034's two evidence cards and filter row.
 
-**Elastic scrolling stays inside the pane.** The console is a fixed frame whose rail and main pane scroll on their own. On a trackpad or a phone the whole frame, rail and bar included, used to rubber-band at either end. The root's overscroll is now off while the frame is mounted (`overscroll-behavior: none` on `html` and `body`). Every pane that scrolls sets `overscroll-behavior: contain`: the rail, the main pane, the transcript's panes, a modal and a rendered file. Each still bounces at its own ends, and the bounce never carries to the frame. The landing scrolls as one document and keeps the browser's own behavior.
+**Elastic scrolling stays inside the pane.** A trackpad pull past the end of the main pane or the rail stretches that pane, and a pull past either end of the landing stretches the page under its sticky header. The frame, the rail beside the pane, the top bar and the landing's header never move.
+
+Browsers disagree on who stretches. Chromium rubber-bands only the page itself, which moved the whole frame and the landing's sticky header. Safari and Firefox stretch an inner pane on their own. So the page's own bounce is turned off (`overscroll-behavior: none` under the console's fixed frame, and on the landing for a fine pointer), and every pane that scrolls contains its overscroll. A small module, `elastic.ts`, draws the stretch where the browser no longer does: on the landing's body in every browser, and on the console's panes in Chromium only.
+
+The stretch follows the wheel while the pull lasts, with a rubber band's resistance (it gives at first and stiffens toward a reach of 160px). It springs back over 480ms once the wheel goes quiet, and ignores the momentum that follows. At rest nothing carries a `translate`, so no pane becomes a containing block for the menus and dialogs inside it. Touch keeps the platform's own bounce, and reduced motion gets no stretch.
+
+### The source, offered
+
+ReplicHAI is AGPL-3.0, and section 13 asks a service run over a network to offer every user the source of the version they are using. The offer is a "Source code (AGPL-3.0)" link under the lockup at the head of the landing's footer, and at the foot of the console's rail. It is built and switched off behind one constant, `SOURCE.published` in `source.tsx`, because the repository is private: a link to it would answer 404 to everybody it is offered to. Turning it on is that one value.
 
 ## What stays
 
@@ -194,5 +202,6 @@ These are recorded here rather than edited into the older files. When this spec 
 10. The wordmark reads "ReplicHAI", in Inter, with its seam.
 11. Every guarantee in "What stays" still holds, at 1440×900 and 390×844.
 11a. At the top of the landing, a third of the way down and at the bottom, exactly one sign-in button is visible and reachable by Tab.
-11b. With the console mounted, `html` and `body` compute `overscroll-behavior: none`, and the rail and the main pane compute `contain`.
+11b. With the console mounted, `html` and `body` compute `overscroll-behavior: none`, and the rail and the main pane compute `contain`. In Chromium a pixel wheel pull at the top of the main pane, of the rail, and of the landing stretches that pane and springs back to no translate. The top bar, the rail's head and the landing's header do not move.
+11c. With `SOURCE.published` false, no source link is rendered. With it true, the footer and the rail each link to the repository.
 12. The whole browser suite, the unit tests and the repository's full check (`make check`, which runs `go tool lateregate`) pass.
