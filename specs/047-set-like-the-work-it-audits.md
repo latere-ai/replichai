@@ -5,7 +5,7 @@ status: drafted
 
 # 047 — Set like the work it audits
 
-**Status:** drafted. A prototype is on the `redesign` branch for the owner's review: the landing, the hero figure, the mark, the projects list, a session with its verdict, and the registry. Nothing past the prototype is wired until the owner approves the direction.
+**Status:** drafted. A prototype covers the landing, the hero figure, the mark, the projects list, a session with its verdict, and the registry. The remaining screens follow once the direction is approved.
 
 **Scope:** the look of the whole website, as one visual system built on latere-ui. Type, color, layout, motion, the mark and the wordmark. Frontend only: no route, no API, no schema, no copy that changes what the product claims. Every surface is in scope:
 
@@ -16,17 +16,19 @@ status: drafted
 - the admin console;
 - sign-in, the failure screens and the 404.
 
+**The family** in this spec means Latere's products and the shared design system they are built on, latere-ui. **The platform** is the family's developer product at platform.latere.ai, whose landing and console are the nearest reference this spec follows.
+
 **Depends on:** [017](017-the-first-screen.md) (the mark and what it means), [029](029-the-landing-is-a-place.md) (the landing's guarantees), [030](030-the-app-on-a-phone.md) (the phone), [033](033-the-landing-rebuilt-from-the-design.md) and [034](034-the-console-rebuilt-from-the-design.md) (the landing and console this restyles), [040](040-the-landing-in-light.md) (light mode and the shared footer), latere-ui v2.2.0 (the ink palette and the footer).
 
 ## Problem
 
-The owner's review of the live site, in their words: it looks "low design fashion" and does not fit academic taste; its style is very different from the Latere platform's; the animation on the first screen feels like low-precision design; and the logo can be better.
+A design review of the live site found four problems. The site does not look like academic work, which is what its readers produce and read. Its style differs from the rest of the family. The animation on its first screen looks imprecise. And its mark could be better.
 
 Each of those has a concrete cause in the code.
 
 **The type reads as a developer tool and as startup marketing at once.** Every label on the landing and in the console is monospace, letter-spaced and upper case: "REPRODUCIBILITY AUDITS", "STEP 01", "PUBLISHED EVIDENCE", the table heads "PAPER / STATUS", the status badges "DONE" and "FAILED", the role badge "USER". The display type is heavy Inter with tight tracking. The app names Inter and never ships it, so every reader on a machine without Inter installed sees the system face, which the platform does not.
 
-**The palette and shapes are replichai's own.** The platform and its identity pages read latere-ui's ink ladder: a white page, neutral grays with no hue, ink as the accent, the primary action an ink fill. replichai paints a warm stone ground, spends its azure on buttons, the current page and the focus ring, sets every button as a pill, and floats the console's content in an inset card with a shadow. A reader moving from platform.latere.ai to replichai.latere.ai crosses a seam the family does not have anywhere else.
+**The palette and shapes are replichai's own.** The platform and its sign-in pages use latere-ui's ink ladder, the shared palette: a white page, neutral grays with no hue, ink as the accent, the primary action an ink fill. replichai paints a warm stone ground, spends its azure on buttons, the current page and the focus ring, sets every button as a pill, and floats the console's content in an inset card with a shadow. A reader moving from platform.latere.ai to replichai.latere.ai crosses a seam the family does not have anywhere else.
 
 **The hero animation has nothing exact in it.** It is a three.js particle field (733 kB, 188 kB gzipped): soft points that sway, a bloom, no edge anywhere. It was meant as the mark at material scale (033), and the argument is right. But a product whose whole job is to check numbers opens on an image in which nothing can be measured, and that is the opposite of what an audit should say about itself.
 
@@ -48,7 +50,7 @@ Each of those has a concrete cause in the code.
 - LaTeX's *booktabs* convention: a table has three horizontal rules and nothing else, with no vertical rules and no fills.
 - The reference list of a paper (APA or ACM): a list of works set as citations, with authors, year, title and venue, in a hanging indent.
 
-The trait the platform has that this spec does not take is its monospace, upper-case eyebrow. The owner rejected that style for consumer surfaces, and replichai's audience is researchers, not engineers.
+The trait the platform has that this spec does not take is its monospace, upper-case eyebrow. That style reads as a developer tool, and replichai's audience is researchers, not engineers.
 
 ## Decisions
 
@@ -187,4 +189,4 @@ These are recorded here rather than edited into the older files. When this spec 
 9. The mark renders at 16, 24, 48 and 160px in both themes. Its outer ring has exactly one gap, and its inner ring is closed. The favicon swaps its ink for a dark tab.
 10. The wordmark is SVG with an accessible name of "ReplicHAI", and it sets no font.
 11. Every guarantee in "What stays" still holds, at 1440×900 and 390×844.
-12. The whole browser suite, the unit tests and `go tool lateregate` pass.
+12. The whole browser suite, the unit tests and the repository's full check (`make check`, which runs `go tool lateregate`) pass.
