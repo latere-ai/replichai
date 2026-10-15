@@ -37,13 +37,21 @@ committed. The commit log already holds that.
   project file. A project with a paper that has no copy stops before anything
   runs and names the paper, and a resumed project hands its remaining runs the
   copies its first runs read.
+- A paper in a project file can list what its authors released, under
+  `artifacts:`. Each is snapshotted once before any run starts, a repository as
+  a git bundle of its branches and tags with the commit its default branch
+  pointed at, anything else as the file its address serves, and every run of
+  the paper is handed the same snapshots, read-only and outside the repository.
+  An artifact that cannot be snapshotted, or an address that serves a web page
+  instead of a file, stops the project before anything runs and is named.
 - Every run of a project is given a named network profile: `artifacts`, the
   list of places papers and their code and data live, which is the default, or
   `open`. Set it with `network:` in the project file, for the file or for one
   paper, or with `--network`. A sandbox that cannot enforce the profile refuses
   the run rather than running it under another.
-- `replication.json` names the network profile a run was given and the digest
-  of the paper copy it read, as `network_profile` and `paper_digest`.
+- `replication.json` names the network profile a run was given, the digest of
+  the paper copy it read, and the source, commit and digest of each artifact
+  snapshot it was handed, as `network_profile`, `paper_digest` and `artifacts`.
 - A run on your own machine keeps `verdict.json` as each grading round left it,
   and what replichai found when it read it. A published run commits them
   beside the grades as `grade/findings-<n>.json` and `grade/checks-<n>.json`;
