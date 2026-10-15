@@ -5,9 +5,16 @@ status: drafted
 
 # 047 — Set like the work it audits
 
-**Status:** drafted. A prototype of the landing, the hero figure, the mark and the projects screen is on the `frontend-redesign` branch for the owner's review. Nothing past the prototype is wired until the owner approves the direction.
+**Status:** drafted. A prototype is on the `redesign` branch for the owner's review: the landing, the hero figure, the mark, the projects list, a session with its verdict, and the registry. Nothing past the prototype is wired until the owner approves the direction.
 
-**Scope:** the look of the whole frontend. Type, color, layout, motion, the mark and the wordmark, on the landing and in the signed-in console. Frontend only: no route, no API, no schema, no copy that changes what the product claims.
+**Scope:** the look of the whole website, as one visual system built on latere-ui. Type, color, layout, motion, the mark and the wordmark. Frontend only: no route, no API, no schema, no copy that changes what the product claims. Every surface is in scope:
+
+- the landing;
+- the public registry, a public project and session, and a researcher's public profile;
+- the signed-in console: the projects list, a project, its papers, a session, the verdict and findings panes, and the transcript viewer;
+- settings, the wallet and billing;
+- the admin console;
+- sign-in, the failure screens and the 404.
 
 **Depends on:** [017](017-the-first-screen.md) (the mark and what it means), [029](029-the-landing-is-a-place.md) (the landing's guarantees), [030](030-the-app-on-a-phone.md) (the phone), [033](033-the-landing-rebuilt-from-the-design.md) and [034](034-the-console-rebuilt-from-the-design.md) (the landing and console this restyles), [040](040-the-landing-in-light.md) (light mode and the shared footer), latere-ui v2.2.0 (the ink palette and the footer).
 
@@ -85,6 +92,10 @@ The trait the platform has that this spec does not take is its monospace, upper-
 
 **The example verdict is a booktabs table.** It has three rules and no fills. Its status words carry a small dot in their tone and keep their word, so color is never the only signal. It is still marked as an example, and its paper key still resolves to nothing (033).
 
+**A rate is a footnote, never a headline.** The verdict leads with its outcome in words and its per-component table. The overall rate is derived from those rows and is set under them at the size of a footnote, with the counts it comes from. One large number would be the thing a reader has to trust, and the rows are what can be checked. This holds on the landing's example and on every verdict in the app.
+
+**The landing lists every file a session commits.** Table 1 names the six files `method.Deliverables()` lists, which the publication gate reads too, and `src/`. The four reports come first, because they are what a reader opens. The two JSON files follow, because they carry the same findings and the study as data.
+
 **The registry strip is a reference list.** Each published reproduction is set as a citation (authors, year, title, venue) with the signer and the session count after it, in a hanging indent. That is the form an academic reader scans a list of works in, and it is what the registry's data already is (043).
 
 ### Motion: exact, and only where something changes
@@ -114,6 +125,14 @@ The trait the platform has that this spec does not take is its monospace, upper-
 **The wordmark is drawn in the family's face.** "ReplicHAI" is set as outlines of Instrument Serif italic, which is what latere-ui's `.replichai-brand` sets the name in on every other Latere site. 017's rule that the wordmark depends on no font holds: the outlines are SVG paths, so nothing waits on a download. The `Replic`/`HAI` seam stays as a group inside the drawing, with its optical gap.
 
 **The favicon follows the platform's.** It is an SVG with a `prefers-color-scheme` style, so the ink ring swaps for a dark browser tab. The rasters (`apple-touch-icon.png`, `og.png`) are regenerated from the same source by `scripts/brand.mjs`.
+
+### In the app: the same hand
+
+A session reads like a paper's results section. The verdict's outcome comes first, in words, in the serif, and then its per-component table. The rate is the table's footnote. The findings tables (the boundary, the decisions the paper left unstated, the open-science scorecard, what the authors released) are booktabs tables with captions. A mismatch is a row with its two numbers side by side, never a colored strip.
+
+The registry is a reference list, set as the landing's is: a numbered citation, the reproduction's title, and who signed it. A public profile reads like a researcher's publication list.
+
+Settings, the wallet and the admin console use the platform's sectioned form: a title and description on the left and the controls on the right. Money is tabular, and a statement is a booktabs table.
 
 ### The console: the platform's shell
 
@@ -160,6 +179,7 @@ These are recorded here rather than edited into the older files. When this spec 
 2. Inter and Instrument Serif load from `/fonts/`, and no rendered text falls back to a system face. The browser suite checks `document.fonts` after load.
 3. No element sets a monospace face or `text-transform: uppercase` on a label, eyebrow, table head, badge or rail group. A test walks the landing and the 15 screens `mobile.test.mjs` sweeps.
 4. No element has a colored `border-left` used as an accent. Selection and the current page are shown by a tint.
+4a. No verdict, on the landing or in the app, sets its overall rate larger than the table it is derived from.
 5. Every text tone on the landing and the projects screen reaches 4.5:1 against the surface it sits on, in both themes, and every focus ring and control edge reaches 3:1.
 6. Every control reachable by Tab shows a visible focus ring.
 7. The hero figure is inline SVG with no canvas and no WebGL, and `three` is not in `package.json`. Its box reserves its aspect ratio before mount, so the layout shift it causes is 0.
