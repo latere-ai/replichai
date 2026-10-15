@@ -143,6 +143,9 @@ func (r *Runtime) capabilities(outputDir string) managed.Capabilities {
 		Cancellation:       true,
 		MaxAttachmentBytes: limit,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
+		// The runtime runs the grading loop itself, so it can keep and
+		// check the findings of every round between the stages.
+		FindingsRounds: true,
 	}
 }
 
@@ -387,6 +390,18 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 		r.recordPackages(session)
 		return r.launch(ctx, session, locator, spec, model, gateway, harness.StageWorker, spec.Task)
 	case harness.StageWorker, harness.StageRevision:
+		round := currentRound(*locator)
+		// The findings are kept and checked as the stage left them, whatever
+		// its exit, before anything else reads them: round 0 is what the run
+		// produced before a rubric pushed it, and it is kept for every run.
+		var checks Checks
+		if spec.Evaluation != nil && spec.Evaluation.Findings != "" {
+			kept, err := session.keepRound(round, spec.Evaluation.Findings)
+			if err != nil {
+				return err
+			}
+			checks = kept
+		}
 		if *current.Exit != 0 {
 			r.finish(status, managed.StateFailed, managed.ReasonRuntimeFailed,
 				fmt.Sprintf("the %s stage exited %d", current.Role, *current.Exit))
@@ -396,22 +411,34 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 			r.finish(status, managed.StateDone, managed.ReasonSucceeded, "")
 			return nil
 		}
-		round := currentRound(*locator)
-		task := judgeTask(spec.Evaluation.Rubric, session.Workspace(), session.Grade(), round, model)
+		task := judgeTask(spec.Evaluation.Rubric, session.Workspace(), session.Grade(), round, model) + checksSection(checks)
 		return r.launch(ctx, session, locator, spec, model, gateway, harness.StageJudge, task)
 	case harness.StageJudge:
 		round := currentRound(*locator)
+		// A later poll may run in another process, so what the system found
+		// is read back from the session rather than carried in memory.
+		checks, err := session.readChecks(round)
+		if err != nil {
+			return err
+		}
 		verdict, err := ReadVerdict(session.Grade(), round)
 		if err != nil {
 			// One retry: a judge can fail to produce a parsable verdict
 			// once. A session that still cannot be graded ends failed with
 			// that reason, never done with no verdict.
 			if judgeAttempts(*locator, round) < 2 {
-				task := judgeTask(spec.Evaluation.Rubric, session.Workspace(), session.Grade(), round, model)
+				task := judgeTask(spec.Evaluation.Rubric, session.Workspace(), session.Grade(), round, model) + checksSection(checks)
 				return r.launch(ctx, session, locator, spec, model, gateway, harness.StageJudge, task)
 			}
 			r.finish(status, managed.StateFailed, managed.ReasonRuntimeFailed, "grading failed: "+err.Error())
 			return nil
+		}
+		// A pass is the judge's reading of the rubric. Findings the system
+		// cannot read fail that rubric whatever the judge read, so a round
+		// with problems is held back for revision instead of passing.
+		heldBackRound := verdict.Passed() && len(checks.Problems) > 0
+		if heldBackRound {
+			verdict = managed.Verdict{Grade: managed.GradeNeedsRevision, Explanation: heldBack(verdict.Explanation, checks)}
 		}
 		locator.Stages[len(locator.Stages)-1].Verdict = &verdict
 		status.Verdict = &verdict
@@ -422,6 +449,12 @@ func (r *Runtime) advance(ctx context.Context, session *Session, locator *Locato
 		revisions := revisionsSpent(*locator)
 		if verdict.Grade == managed.GradeNeedsRevision && revisions < spec.Evaluation.MaxRevisions {
 			task := spec.Task + harness.RevisionHeader + verdict.Explanation
+			if !heldBackRound {
+				// A held-back verdict already lists the problems; any
+				// other rejection is given them beside the grader's
+				// reasoning.
+				task += revisionProblems(checks)
+			}
 			return r.launch(ctx, session, locator, spec, model, gateway, harness.StageRevision, task)
 		}
 		if verdict.Grade == managed.GradeNeedsRevision {
