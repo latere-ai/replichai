@@ -136,7 +136,7 @@ func TestMovingAPaperIsRefusedWhileItRuns(t *testing.T) {
 }
 
 // TestMovingOntoAPaperTheDestinationHolds covers 035 AC4: two projects holding
-// the same paper is the usual state when somebody reorganises, so the
+// the same paper is the usual state when somebody reorganizes, so the
 // collision happens in practice. Merging two papers' session histories is not
 // a move, so the request is refused and both projects are left unchanged.
 func TestMovingOntoAPaperTheDestinationHolds(t *testing.T) {
@@ -220,7 +220,7 @@ func TestMovingAPaperIsRefused(t *testing.T) {
 	}
 	// A withdrawal makes it movable again. The sign-off is still on the row,
 	// which is why the check reads Visibility and not the sign-off.
-	if err := d.Projects.SetPrivate(ctx, to.ID, project.Withdrawal{By: "sub-1", Reason: "reorganising"}); err != nil {
+	if err := d.Projects.SetPrivate(ctx, to.ID, project.Withdrawal{By: "sub-1", Reason: "reorganizing"}); err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
 	if w := do(t, h, "POST", path, moveBody(key, to.ID), "sub-1"); w.Code != http.StatusNoContent {
@@ -271,7 +271,7 @@ func TestMovingAPaperIsTheLeads(t *testing.T) {
 	if w := doAs(t, h, "POST", path, moveBody(key, to.ID), collab); errorCode(w.Body.Bytes()) != "not_lead" {
 		t.Fatalf("a published destination reported its state to a non-lead: status %d, body %s", w.Code, w.Body)
 	}
-	if err := d.Projects.SetPrivate(ctx, to.ID, project.Withdrawal{By: owner.Sub, Reason: "reorganising"}); err != nil {
+	if err := d.Projects.SetPrivate(ctx, to.ID, project.Withdrawal{By: owner.Sub, Reason: "reorganizing"}); err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
 

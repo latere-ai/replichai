@@ -301,7 +301,7 @@ func TestASnapshotMatchDoesNotSwallowADifferentModel(t *testing.T) {
 		t.Error("a different model was priced as a snapshot of a shorter id")
 	}
 	if got.Input != 90*Dollar {
-		t.Errorf("input = %d, want the dearest rate %d — an unrecognised model fails expensive", got.Input, 90*Dollar)
+		t.Errorf("input = %d, want the dearest rate %d — an unrecognized model fails expensive", got.Input, 90*Dollar)
 	}
 
 	// A version fragment does not count as a date.

@@ -325,7 +325,7 @@ func (s *Session) Bearer(ctx context.Context, ttl time.Duration) (string, bool, 
 		// A provider that does not mint an audience-scoped token has not
 		// failed the sign-in. The stored credential still authenticates, and
 		// the caller is told the short-lived one was not obtained.
-		//nolint:nilerr // the fallback is the documented behaviour, and it is reported
+		//nolint:nilerr // the fallback is the documented behavior, and it is reported
 		return token.AccessToken, false, nil
 	}
 	return actor, true, nil

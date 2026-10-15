@@ -43,7 +43,7 @@ func (s Scheme) String() string {
 // MarshalJSON encodes the value as its stable name.
 func (s Scheme) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
 
-// UnmarshalJSON decodes a stable name, rejecting anything unrecognised.
+// UnmarshalJSON decodes a stable name, rejecting anything unrecognized.
 func (s *Scheme) UnmarshalJSON(data []byte) error {
 	var name string
 	if err := json.Unmarshal(data, &name); err != nil {
