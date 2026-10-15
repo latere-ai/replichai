@@ -6,6 +6,37 @@ Designs, and the record of what was built. One spec per tightly-scoped feature; 
 
 Feasibility questions and scope extensions that are not on the roadmap (multi-study papers, hard-to-replicate instruments, unpublished manuscripts) live in [`BACKLOG.md`](BACKLOG.md), deliberately unsequenced. One of them, [016](016-a-paper-that-is-not-published-yet.md), needed enough argument to get a deferred spec of its own.
 
+## How to read this
+
+A spec is one design: the problem, the decisions and why, testable acceptance
+criteria, and what it deliberately leaves out. When it is built, an Outcome
+section records what actually shipped and where it diverged.
+
+Start with [Decisions to audit](#decisions-to-audit) for the choices the whole
+system rests on, then [the spec map](#the-spec-map) for every spec and its
+state, and [What is left](#what-is-left) for what is next.
+
+Each spec's frontmatter carries one status:
+
+| Status | Meaning |
+|---|---|
+| `draft` | argued, not yet agreed |
+| `designed` | agreed, not built |
+| `built`, `implemented` | shipped; older specs say implemented, newer ones built. The map's Done and Half done groups say whether all of it shipped |
+| `deferred` | waiting, for the reason the spec states |
+| `superseded` | replaced by a later spec, and kept under [`.archive/`](.archive/) |
+
+Several specs mention services of the Latere platform that ReplicHAI can run
+on: Topos (its agent runtime), Lux (its model gateway), Cella (its sandbox
+control plane) and Auth (its identity provider). Latere AI operates the hosted
+service at replichai.latere.ai.
+
+**Proposing a spec.** Open an issue first, so the problem is agreed before the
+design. Then send a pull request adding `NNN-short-title.md`, numbered one
+above the highest in use, with `status: draft` in its frontmatter and a row in
+the map's Not built table. `go tool lateregate spec-lint` checks that the tree
+and this index agree.
+
 ## What replichai is
 
 Give it a paper. It resolves the paper's identity, runs an agent that reproduces the machine-runnable inner loop, publishes the reproduction as its own GitHub repository with the agent's commit history, and returns an independent verdict, recording every decision the paper left unwritten. It never simulates the outer loop (the human study); placing and defending that boundary is the point.
@@ -134,7 +165,7 @@ This has been run, which is the reason to believe any of it. A session driven by
 | `internal/webauth` | the OIDC login, session cookie, gate policy, and dev bypass (006c) |
 | `internal/seo` | the head the server writes, the sitemap, and the addresses Go knows (042) |
 | `internal/spa` | embeds and serves the built frontend as the app shell (006e) |
-| `internal/doccheck` | tests that `example.env`, `README.md` and `docs/architecture.md` match the code |
+| `internal/doccheck` | tests that `example.env`, `docs/cli.md` and `docs/architecture.md` match the code |
 | `internal/oteltest` | a recording tracer for tests that check the spans instrumentation produces |
 | `frontend/` | the researcher UI — bun + React, i18n scaffolding (English only today) (006e) |
 | `cmd/replichai` | the CLI: `audit`, `run`, `resolve`, `publish`, `finish`, `login`, `whoami`, `logout`, `org`, `sessions`, `project`, `push`, `providers`, `rates` |
@@ -329,7 +360,7 @@ What 007 does **not** do is touch the audit: the never-simulate-the-outer-loop b
 
 Nothing on this list blocks the loop the product exists for: a paper goes in, a graded reproduction with its transcript comes out, and somebody pays for it. These are the next things worth building, and each one names why it is not built yet.
 
-**Measuring a paper with many runs ([046](046-one-run-is-one-draw.md)).** Forty-nine runs of three papers showed that one run is one draw, and that the agent system, the network and the agent's own labels moved the result more than the paper did ([the pilot](https://github.com/latere-ai/replichai-experiments/blob/main/docs/repeat-runs-pilot.md)). Runs per paper, a findings schema the agents' real output fits, and the run record are built: every manifest now says which run it was, what it ran on and how it ended, and a run that never started leaves one too. So are the first graded attempt, kept for every run as round 0's findings, with grading possible with no revision at all; the same inputs for every run of a study, which are one copy of each paper, a snapshot of each artifact the project lists for it, and one named network profile, all on the run's record; and a findings file the system cannot read never passing a grading round on the local runtime. What is left is the system rather than the agent deciding whether a number matched, blockers that name their cause, and the study view. What a study measures is decided: per-claim reproducibility given the released materials, with the environment recorded and varied as a facet.
+**Measuring a paper with many runs ([046](046-one-run-is-one-draw.md)).** Forty-nine runs of three papers showed that one run is one draw, and that the agent system, the network and the agent's own labels moved the result more than the paper did (a 49-run pilot in September 2026). Runs per paper, a findings schema the agents' real output fits, and the run record are built: every manifest now says which run it was, what it ran on and how it ended, and a run that never started leaves one too. So are the first graded attempt, kept for every run as round 0's findings, with grading possible with no revision at all; the same inputs for every run of a study, which are one copy of each paper, a snapshot of each artifact the project lists for it, and one named network profile, all on the run's record; and a findings file the system cannot read never passing a grading round on the local runtime. What is left is the system rather than the agent deciding whether a number matched, blockers that name their cause, and the study view. What a study measures is decided: per-claim reproducibility given the released materials, with the environment recorded and varied as a facet.
 
 **The outer loop as a product ([023](023-the-outer-loop-as-a-product.md), four children).** The experiment engine and the `KindExperiment` job seam exist; the Postgres stores, the routes, and the screen do not. 023a/023b/023c ship the two data sources that need only live input: `synthetic:generated` and `uploaded`. This is the largest unbuilt thing on the roadmap and the only one that moves the product past the inner loop. Its parent [007](007-from-reproduction-to-replication.md) stays a draft on purpose: it is the argument, and the 023 chain is what gets built from it.
 
