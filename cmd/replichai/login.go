@@ -88,7 +88,7 @@ func runLogout(_ context.Context, args []string, stdout, stderr *os.File) error 
 	return nil
 }
 
-// runOrg shows or switches the organization a project belongs to. Switching
+// runOrg shows or switches the organization the credential carries. Switching
 // goes through the refresh grant, so it needs no second device login.
 func runOrg(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("org", stderr)
