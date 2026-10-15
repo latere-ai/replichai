@@ -169,7 +169,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			if evidence.Status.Verdict != nil {
 				grade = provider.Grade(evidence.Status.Verdict.Grade)
 			}
-			record := runRecord(runtime, evidence.Status, *model, audit.PromptDigest(ctx), stderr)
+			record := runRecord(runtime, evidence.Status, *model, audit.PromptDigest(ctx), stderr).WithModels(evidence.Events)
 			if err := finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, m.Digest(), grade, record,
 				providerEventsFromManaged(evidence.Events), *invite, stdout); err != nil {
 				return err

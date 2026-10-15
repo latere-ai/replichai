@@ -120,6 +120,13 @@ type Run struct {
 	// harness reported it cost, where it reports one.
 	Tokens             int64 `json:"tokens,omitempty"`
 	VendorCostMicroUSD int64 `json:"vendor_cost_micro_usd,omitempty"`
+
+	// Models lists every model that served a call of the session, in the
+	// order each first served, when that is more than the one Model names: a
+	// session on a Latere Effort level can be moved to another model of the
+	// level while it runs (048), and a study must not read such a run as one
+	// model's.
+	Models []RunModel `json:"models,omitempty"`
 }
 
 // RunArtifact is one snapshot a run was handed: where it was taken from, the

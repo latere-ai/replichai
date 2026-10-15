@@ -414,7 +414,7 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 			harvestOutputs(ctx, e.gh, owner, name, j.ID, evidence)
 			// The session's own account of the run, with what the job adds:
 			// the project it belongs to and the tier that was asked for.
-			record := publish.RunOf(evidence.Status)
+			record := publish.RunOf(evidence.Status).WithModels(evidence.Events)
 			record.Project, record.RequestedModel = j.ProjectID, string(j.Tier)
 			// Only the process that specified the session knows its prompt,
 			// and it is the one whose build ran it. A session adopted from
