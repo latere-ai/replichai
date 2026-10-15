@@ -171,16 +171,20 @@ function Hero({ i18n, href }: { i18n: I18n; href: string }) {
 
 // ── What comes back ─────────────────────────────────────────────────────────
 
-// The files a reader opens first, out of what the publication gate treats as
-// worker-written; verdict.json and instrument.json carry the same findings as
-// data and are not on the stack. The names are filenames, so they are literals
-// rather than copy; what each one answers is the translated half.
+// Every file the method asks a session to write (`method.Deliverables()`, which
+// the publication gate reads too), and src/. The four reports come first,
+// because they are what a reader opens; the two JSON files carry the same
+// findings and the study as data, for a program to read. The names are
+// filenames, so they are literals rather than copy; what each one answers is
+// the translated half.
 const SHIPS = [
   { path: 'README.md', body: 'lpShipsReadme' },
   { path: 'REPRODUCIBILITY.md', body: 'lpShipsRepro' },
-  { path: 'src/', body: 'lpShipsSrc' },
   { path: 'UNVERIFIED.md', body: 'lpShipsUnverified', warn: true },
   { path: 'SOURCES.md', body: 'lpShipsSources' },
+  { path: 'verdict.json', body: 'lpShipsVerdictJson' },
+  { path: 'instrument.json', body: 'lpShipsInstrument' },
+  { path: 'src/', body: 'lpShipsSrc' },
 ] as const
 
 function ShipsBand({ i18n }: { i18n: I18n }) {
@@ -414,14 +418,20 @@ function WalkBand({ i18n }: { i18n: I18n }) {
             </div>
             <div className="lp-plate" data-plate="3">
               <span className="lp-plate-label">{t('lpPlateManifest')}</span>
-              <div className="lp-plate-rate">
-                <span className="lp-rate-n">{t('lpDemoRate')}</span>
-                <span className="lp-rate-of">{t('lpPlateInnerLoop')}</span>
+              <div className="lp-plate-rows">
+                <span>
+                  {t('lpDemoVerified')}
+                  <b className="ok">5</b>
+                </span>
+                <span>
+                  {t('lpDemoPartial')}
+                  <b className="warn">2</b>
+                </span>
+                <span>
+                  {t('lpPlateBlocked')}
+                  <b className="err">2</b>
+                </span>
               </div>
-              <span className="lp-meter" aria-hidden="true">
-                <span className="lp-meter-ok" style={{ width: '56%' }} />
-                <span className="lp-meter-warn" style={{ width: '22%' }} />
-              </span>
               <div className="lp-plate-note">{t('lpPlateSigned')}</div>
             </div>
           </div>
@@ -471,17 +481,7 @@ function VerdictBand({ i18n }: { i18n: I18n }) {
           </div>
           <div className="lp-window-body">
             <div className="lp-verdict-head">
-              <div className="lp-verdict-rate">
-                <span className="lp-verdict-outcome">{t('lpDemoOutcome')}</span>
-                <span className="lp-verdict-n">
-                  <b>{t('lpDemoRate')}</b>
-                  <span className="lp-meter" aria-hidden="true">
-                    <span className="lp-meter-ok" style={{ width: '56%' }} />
-                    <span className="lp-meter-warn" style={{ width: '22%' }} />
-                  </span>
-                </span>
-                <span className="lp-verdict-tally">{t('lpDemoTally')}</span>
-              </div>
+              <span className="lp-verdict-outcome">{t('lpDemoOutcome')}</span>
               <p className="lp-verdict-summary">{t('lpDemoSummary')}</p>
             </div>
             <div className="lp-table-scroll">
@@ -510,6 +510,16 @@ function VerdictBand({ i18n }: { i18n: I18n }) {
                 </tbody>
               </table>
             </div>
+            {/* The rate is derived from the table above and is set as the
+                table's footnote, never as a headline: one number would have to
+                be trusted, and the rows are what can be checked. */}
+            <p className="lp-verdict-foot">
+              <span className="lp-meter" aria-hidden="true">
+                <span className="lp-meter-ok" style={{ width: '56%' }} />
+                <span className="lp-meter-warn" style={{ width: '22%' }} />
+              </span>
+              {t('lpDemoFootnote')}
+            </p>
           </div>
         </div>
       </div>

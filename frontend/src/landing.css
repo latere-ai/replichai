@@ -534,20 +534,6 @@
   color: var(--fg-3);
   margin-right: 6px;
 }
-.lp-plate-rate {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.lp-rate-n {
-  font: 400 34px / 1 var(--font-sans);
-  letter-spacing: -0.02em;
-  color: var(--fg-1);
-}
-.lp-rate-of {
-  font-size: 13px;
-  color: var(--fg-2);
-}
 /* The rate as a bar: what verified, what partly verified, and, as the unfilled
    track, what did not. */
 .lp-meter {
@@ -697,41 +683,39 @@
 .lp-window-body {
   padding: 24px 24px 22px;
 }
+/* The outcome in words, then what it rests on. No number leads: the rate is
+   the table's footnote. */
 .lp-verdict-head {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 32px;
-  align-items: start;
-}
-.lp-verdict-rate {
-  display: grid;
-  gap: 4px;
+  gap: 6px;
+  max-width: 72ch;
 }
 .lp-verdict-outcome {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--fg-2);
-}
-.lp-verdict-n b {
-  font: 400 44px / 1 var(--font-sans);
-  letter-spacing: -0.025em;
-  font-variant-numeric: tabular-nums;
+  font: 400 26px / 1.2 var(--font-serif);
   color: var(--fg-1);
-}
-.lp-verdict-n .lp-meter {
-  margin-top: 12px;
-}
-.lp-verdict-tally {
-  margin-top: 6px;
-  font-size: 12.5px;
-  color: var(--fg-2);
-  font-variant-numeric: tabular-nums;
 }
 .lp-verdict-summary {
   margin: 0;
   font-size: 14.5px;
   line-height: 1.6;
   color: var(--fg-2);
+}
+/* The derived rate, under the rows it is derived from, at the size of a
+   footnote. */
+.lp-verdict-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.lp-verdict-foot .lp-meter {
+  width: 120px;
+  margin: 0;
 }
 /* The table is wider than a phone. It scrolls inside its own box, so the page
    never scrolls sideways. */
@@ -1047,10 +1031,6 @@
   }
   .lp-walk-panel {
     position: static;
-  }
-  .lp-verdict-head {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
   }
   .lp-file {
     grid-template-columns: minmax(0, 1fr);
