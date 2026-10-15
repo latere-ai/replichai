@@ -520,11 +520,21 @@ const en = {
     // The model tier a session runs on (031). The names say what the choice is
     // for, capability against cost, rather than naming a vendor's model, which
     // changes under the same tier on every release.
-    modelTier: 'Model',
-    modelTierHint: 'Which model the next session you start runs on. A cheaper tier spends the project’s credits more slowly.',
-    tierBest: 'Best',
-    tierBalanced: 'Balanced',
-    tierFast: 'Fast',
+    modelTier: 'Runs on',
+    modelTierHint: 'Where the next session you start runs, and how much effort it spends. Quick is cheapest; Sustained runs the strongest models.',
+    runtimePickLabel: 'Runs on {choice}. Change where the next session runs',
+    runtimePickTitle: 'Where the next session runs',
+    runsOn: 'Runs on',
+    effort: 'Effort',
+    effortQuick: 'Quick',
+    effortThorough: 'Thorough',
+    effortSustained: 'Sustained',
+    effortUnavailable: 'Not available to you right now',
+    specificModel: 'A specific model',
+    searchModels: 'Search {count} models',
+    noModelMatch: 'No model matches',
+    paidByPerson: 'Charged to your own Latere wallet, not to this project’s credits.',
+    paidByProject: 'Charged to this project’s credits.',
     // The price of a tier, per million tokens in and out, the unit the rate
     // card is kept in, so what is shown is what the run is billed from.
     tierPrice: '{in} / {out} per Mtok',

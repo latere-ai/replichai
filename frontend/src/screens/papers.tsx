@@ -13,7 +13,7 @@ import {
   type Job,
   listModels,
   type Me,
-  type ModelTier,
+  type RuntimeOption,
   movePaper,
   type Project,
   type ProjectCredits,
@@ -27,6 +27,7 @@ import { type I18n } from '../i18n'
 import { addPaperErrLabel, movePaperErrLabel, removePaperErrLabel, startErrLabel } from '../errors'
 import { formatUSD } from '../money'
 import { Ico } from '../icons'
+import { type Choice, RuntimePick, runtimesFrom } from '../runtime-pick'
 import { citationBits, type Grouped } from '../papers'
 import { Modal, Select, Tip } from '../ui'
 import { isMine } from '../account'
@@ -79,11 +80,13 @@ export function PapersCard({
   const [adding, setAdding] = useState(false)
   const [busyKey, setBusyKey] = useState('')
   const [err, setErr] = useState('')
-  // The model tier the next session runs on (031). It is deliberately not
-  // persisted: a remembered choice would quietly become the project's policy,
-  // and a per-project default is a decision with a different owner.
-  const [tier, setTier] = useState('')
-  const [tiers, setTiers] = useState<ModelTier[]>([])
+  // Where the next session runs and on what (031, 048): the runtime, the
+  // Effort level and, on the Latere platform, one specific model. It is
+  // deliberately not persisted: a remembered choice would quietly become the
+  // project's policy, and a per-project default is a decision with a
+  // different owner.
+  const [choice, setChoice] = useState<Choice>({ runtime: '', tier: '', model: '' })
+  const [runtimes, setRuntimes] = useState<RuntimeOption[]>([])
   // The session waiting on a delete confirmation (032). One dialog for the card
   // rather than one per row, the way the projects list holds its trash dialog.
   const [dropping, setDropping] = useState<Job | null>(null)
@@ -106,7 +109,7 @@ export function PapersCard({
     if (!mayWork) return
     let live = true
     listModels()
-      .then((r) => live && setTiers(r.tiers))
+      .then((r) => live && setRuntimes(runtimesFrom(r)))
       // A deployment that cannot list them leaves the control out rather than
       // showing an error: the Start button still works, on the default tier.
       .catch(() => {})
@@ -114,14 +117,6 @@ export function PapersCard({
       live = false
     }
   }, [mayWork])
-
-  // A tier reads as its name and its price. The price rides in the label rather
-  // than in a new Select option field, so the shared control is reused as it is.
-  const tierOptions = tiers.map((m) => {
-    const name = m.tier === 'best' ? t('tierBest') : m.tier === 'balanced' ? t('tierBalanced') : t('tierFast')
-    const priced = m.input && m.output ? ` — ${t('tierPrice', { in: formatUSD(i18n.lang, m.input), out: formatUSD(i18n.lang, m.output) })}` : ''
-    return { value: m.tier, label: name + priced }
-  })
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -147,7 +142,7 @@ export function PapersCard({
     setBusyKey(key)
     setErr('')
     try {
-      await startSession(project.id, key, tier || undefined)
+      await startSession(project.id, key, choice)
       refresh()
       onChanged()
     } catch (e) {
@@ -169,8 +164,11 @@ export function PapersCard({
 
   // Whether the project can afford another run. The button says so before it is
   // pressed rather than after a refusal, and the pot it is short of is on the
-  // same screen.
-  const short = !!credits && credits.available < credits.start_reserve
+  // same screen. A run the person pays for from their own Latere wallet does
+  // not draw on the project's credits (048), so the project's balance does not
+  // hold it back.
+  const chosen = runtimes.find((r) => r.name === choice.runtime) ?? runtimes.find((r) => r.default)
+  const short = chosen?.payer !== 'person' && !!credits && credits.available < credits.start_reserve
   const shortWhy = credits ? t('startNeedsCredits', { reserve: formatUSD(i18n.lang, credits.start_reserve) }) : ''
 
   return (
@@ -227,16 +225,10 @@ export function PapersCard({
         {/* The model the next Start runs on. One control for the card, not one
             per row: the choice is not made per paper, and three papers would
             otherwise mean three identical pickers. */}
-        {tierOptions.length > 0 && (
+        {runtimes.length > 0 && runtimes[0].efforts.length > 0 && (
           <div className="tier-pick" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span className="muted small">{t('modelTier')}</span>
-            <Select
-              value={tier || 'best'}
-              options={tierOptions}
-              onChange={setTier}
-              label={t('modelTier')}
-              width={280}
-            />
+            <RuntimePick i18n={i18n} runtimes={runtimes} value={choice} onChange={setChoice} />
             <Tip text={t('modelTierHint')}>
               <span className="muted small" aria-label={t('modelTierHint')}>
                 <Ico name="info" size={13} />
