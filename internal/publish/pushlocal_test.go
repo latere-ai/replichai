@@ -280,10 +280,13 @@ func TestOnlyTheUserPartReachesTheURL(t *testing.T) {
 func TestWorkspaceOutputsAreTheSystemsOwn(t *testing.T) {
 	dir := t.TempDir()
 	for path, body := range map[string]string{
-		"session/environment.json": `{"sandbox":{"driver":"host"}}`,
-		"grade/verdict-0.json":     `{"grade":"passed"}`,
-		"grade/verdict-1.json":     `{"grade":"failed"}`,
-		"grade/notes.txt":          "ignored",
+		"session/environment.json":       `{"sandbox":{"driver":"host"}}`,
+		"grade/verdict-0.json":           `{"grade":"passed"}`,
+		"grade/verdict-1.json":           `{"grade":"failed"}`,
+		"grade/notes.txt":                "ignored",
+		"session/rounds/findings-0.json": `{"schema":2}`,
+		"session/rounds/checks-0.json":   `{"round":0}`,
+		"session/rounds/scratch.txt":     "ignored",
 	} {
 		full := filepath.Join(dir, filepath.FromSlash(path))
 		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
@@ -297,13 +300,23 @@ func TestWorkspaceOutputsAreTheSystemsOwn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WorkspaceOutputs: %v", err)
 	}
-	for _, want := range []string{"environment.json", "grade/verdict-0.json", "grade/verdict-1.json"} {
+	for _, want := range []string{
+		"environment.json", "grade/verdict-0.json", "grade/verdict-1.json",
+		"grade/findings-0.json", "grade/checks-0.json",
+	} {
 		if _, ok := outputs[want]; !ok {
 			t.Errorf("%s was not collected: %v", want, outputNames(outputs))
 		}
 	}
-	if _, ok := outputs["grade/notes.txt"]; ok {
-		t.Error("an unrelated file in the grade directory was collected")
+	for _, unwanted := range []string{"grade/notes.txt", "grade/scratch.txt"} {
+		if _, ok := outputs[unwanted]; ok {
+			t.Errorf("an unrelated file, %s, was collected", unwanted)
+		}
+	}
+	// A round's findings are not a grade: the count of grading rounds still
+	// reads the judge's verdicts alone.
+	if run, err := (Run{}).WithOutputs(outputs); err != nil || run.Rounds != 2 {
+		t.Errorf("rounds = %d, %v; want the two verdicts", run.Rounds, err)
 	}
 	// Both survive the gate they are committed through: neither is a fixed
 	// report file, and an allowlist would have dropped them.
