@@ -23,13 +23,14 @@ import (
 type fakeOIDC struct {
 	identity               oidc.User
 	exchangeErr, verifyErr error
+	refresh                string
 }
 
 func (fakeOIDC) AuthCodeURL(state, nonce, verifier string, _ ...oauth2.AuthCodeOption) string {
 	return "https://issuer.example/auth?state=" + state + "&nonce=" + nonce
 }
 func (f fakeOIDC) Exchange(context.Context, string, string) (*oauth2.Token, error) {
-	return &oauth2.Token{AccessToken: "at"}, f.exchangeErr
+	return &oauth2.Token{AccessToken: "at", RefreshToken: f.refresh}, f.exchangeErr
 }
 func (f fakeOIDC) VerifyIDToken(context.Context, *oauth2.Token, string) (oidc.User, error) {
 	return f.identity, f.verifyErr
@@ -422,4 +423,45 @@ func clearedCookie(w *httptest.ResponseRecorder, name string) bool {
 		}
 	}
 	return false
+}
+
+// A deployment that runs sessions on the Latere platform as the person keeps
+// their refresh token at sign-in (048). A sign-in that brought none keeps
+// nothing, and a store that fails costs the Latere runtime, never the
+// sign-in.
+func TestCallbackKeepsTheLatereSignIn(t *testing.T) {
+	for _, c := range []struct {
+		name, refresh string
+		fail          bool
+		kept          bool
+	}{
+		{"a refresh token", "rt-1", false, true},
+		{"none", "", false, false},
+		{"a failing store", "rt-1", true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			l := newTestLogin(t, fakeOIDC{refresh: c.refresh, identity: oidc.User{
+				Sub: "u1", Email: "u@example.com", Raw: map[string]any{"email_verified": true},
+			}}, access.NewMemStore())
+			var kept []string
+			l.KeepSignIns(func(_ context.Context, subject, refresh string) error {
+				kept = append(kept, subject+":"+refresh)
+				if c.fail {
+					return errors.New("store down")
+				}
+				return nil
+			})
+			flow, _ := l.codec.Seal(flowState{State: "st8", Nonce: "n", Verifier: "v", Next: "/"}, time.Hour)
+			r := httptest.NewRequest("GET", "/callback?state=st8&code=abc", nil)
+			r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
+			w := httptest.NewRecorder()
+			l.HandleCallback(w, r)
+			if w.Code != http.StatusFound || findCookie(w, cookieName(sessionCookie, false)) == "" {
+				t.Fatalf("callback = %d with no session", w.Code)
+			}
+			if c.kept != (len(kept) == 1 && kept[0] == "u1:rt-1") {
+				t.Fatalf("kept = %v", kept)
+			}
+		})
+	}
 }

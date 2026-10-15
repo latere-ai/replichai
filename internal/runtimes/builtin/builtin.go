@@ -86,6 +86,25 @@ func buildLatere(config LatereConfig) (managed.Runtime, error) {
 	return latere.New(latere.Config{BaseURL: config.BaseURL, Tokens: tokens})
 }
 
+// Latere names the runtime that runs a session on the Latere platform.
+const Latere = latere.Name
+
+// Effort is one Effort level as a runtime would run it now for the person
+// asking: the stored preference, the level, the model its next turn runs on,
+// that model's price in micro-USD per million tokens, and whether the level
+// is open to them.
+type Effort = latere.Effort
+
+// LatereEfforts reads the Effort levels a Latere runtime offers the person on
+// the context, as the session start and GET /models show them.
+func LatereEfforts(ctx context.Context, runtime managed.Runtime) ([]Effort, error) {
+	platform, ok := runtime.(*latere.Runtime)
+	if !ok {
+		return nil, fmt.Errorf("runtime %q is not the Latere platform", runtime.Name())
+	}
+	return platform.Efforts(ctx)
+}
+
 // DefaultLatereAuthURL is Latere Auth in production.
 const DefaultLatereAuthURL = "https://auth.latere.ai"
 

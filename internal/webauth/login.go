@@ -64,6 +64,9 @@ type Login struct {
 	codec   *Codec
 	access  access.Access
 	members access.Membership // optional; nil skips the membership bind
+	// keep stores the person's refresh token when the deployment runs
+	// sessions on the Latere platform as the person (048). Nil keeps none.
+	keep func(ctx context.Context, subject, refresh string) error
 	// endSession is the issuer's RP-initiated logout. Empty leaves sign-out
 	// local-only, which is what an issuer advertising none can offer.
 	endSession string
@@ -82,6 +85,14 @@ func NewLogin(auth OIDCClient, codec *Codec, acc access.Access, baseURL string, 
 // also signs out at the issuer. It returns the receiver, like BindMemberships.
 func (l *Login) EndSessionAt(url string) *Login {
 	l.endSession = url
+	return l
+}
+
+// KeepSignIns sets where the login keeps a person's refresh token, for a
+// deployment that runs sessions on the Latere platform as the person (048).
+// It is optional and returns the receiver; without it no token is kept.
+func (l *Login) KeepSignIns(keep func(ctx context.Context, subject, refresh string) error) *Login {
+	l.keep = keep
 	return l
 }
 
@@ -169,6 +180,16 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 				sess.Email = p.Email
 			}
 			sess.Name, sess.Picture = p.Name, safePicture(p.Picture)
+		}
+	}
+
+	// A deployment that runs sessions on the Latere platform as the person
+	// keeps their refresh token, so it can act for them while a session they
+	// start runs after this request has ended (048). A failure costs the
+	// person the Latere runtime until they sign in again, never the sign-in.
+	if l.keep != nil && tok.RefreshToken != "" {
+		if err := l.keep(r.Context(), sess.Sub, tok.RefreshToken); err != nil {
+			slog.WarnContext(r.Context(), "login: keeping the Latere sign-in", "principal", sess.Sub, "error", err)
 		}
 	}
 
