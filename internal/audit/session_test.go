@@ -18,6 +18,7 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 	providermemory "github.com/latere-ai/replichai/internal/provider/memory"
 	"github.com/latere-ai/replichai/internal/runtimes"
+	"github.com/latere-ai/replichai/internal/verdict"
 )
 
 func TestSessionAuditorRunsThroughControllerAndRetainsBeforeRelease(t *testing.T) {
@@ -138,6 +139,44 @@ func TestSessionAuditorOptionsAndResultHelpers(t *testing.T) {
 	spec := runtime.Specs()[0]
 	if spec.Model.Preference != "fast" || spec.Evaluation.MaxRevisions != 5 {
 		t.Fatalf("options did not reach spec: %+v", spec)
+	}
+}
+
+// A study may grade a run without revising it. Zero revisions reaches the
+// specification as zero, where it once fell back to the default of three, so
+// an operator who asked for none got three.
+func TestZeroRevisionsReachTheSpecification(t *testing.T) {
+	runtime := managedmemory.New()
+	auditor := NewSessionAuditor(sessionController(t, runtime), testMethod, WithSessionMaxRevisions(0))
+	if _, err := auditor.Run(context.Background(), "paper", t.TempDir()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := runtime.Specs()[0].Evaluation.MaxRevisions; got != 0 {
+		t.Fatalf("max revisions = %d, want 0", got)
+	}
+	defaulted := NewSessionAuditor(sessionController(t, managedmemory.New()), testMethod, WithSessionMaxRevisions(-1))
+	if defaulted.maxRevisions != DefaultMaxRevisions {
+		t.Fatalf("a negative budget = %d, want the default", defaulted.maxRevisions)
+	}
+}
+
+// The findings of each round are checked where the runtime runs the grading
+// loop, and only there: a runtime that grades out of reach would refuse a
+// session that asked.
+func TestTheFindingsCheckIsAskedForWhereTheRuntimeKeepsRounds(t *testing.T) {
+	for _, keeps := range []bool{false, true} {
+		runtime := managedmemory.NewWithStore(nil, managedmemory.Config{FindingsRounds: keeps})
+		auditor := NewSessionAuditor(sessionController(t, runtime), testMethod)
+		if _, err := auditor.Run(context.Background(), "paper", t.TempDir()); err != nil {
+			t.Fatalf("Run (keeps rounds: %v): %v", keeps, err)
+		}
+		want := ""
+		if keeps {
+			want = verdict.File
+		}
+		if got := runtime.Specs()[0].Evaluation.Findings; got != want {
+			t.Fatalf("findings = %q under a runtime that keeps rounds: %v", got, keeps)
+		}
 	}
 }
 

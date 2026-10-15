@@ -35,7 +35,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		parallel     = fs.Int("parallel", 0, fmt.Sprintf("how many papers to run at once (default %d on this machine: half the cores, at most 4)", batch.DefaultParallel()))
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "time between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "maximum time for one paper")
-		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "maximum number of revisions per paper")
+		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "maximum number of revisions per run; 0 grades each run once and never revises it")
 		doPublish    = fs.Bool("publish", false, "publish each reproduction to its own repository")
 		ownerFlag    = fs.String("owner", "", "GitHub owner for --publish (default $REPLICHAI_GITHUB_OWNER, then the project file, then \""+publish.DefaultOrg+"\")")
 		inviteFlag   = fs.String("invite", "", "GitHub login to invite as a collaborator (default the project file's publish.invite)")
@@ -50,6 +50,9 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if len(positional) != 1 {
 		_, _ = fmt.Fprintln(stderr, "run takes exactly one project file")
 		return errExitQuiet
+	}
+	if err := checkRevisions(*maxRevisions, stderr); err != nil {
+		return err
 	}
 
 	file, err := batch.ReadFile(positional[0])

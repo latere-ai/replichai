@@ -391,3 +391,17 @@ func commit(workspace string, environ map[string]string, stage string) error {
 	}
 	return nil
 }
+
+// ReadableFindings is a verdict.json the system reads in full: every field
+// decodes and no rule is broken. A scripted worker writes it where a test needs
+// a run whose findings pass the system's check, as a real worker's must.
+const ReadableFindings = `{"schema":2,"verdict":"partial","summary":"One claim checked.",` +
+	`"graded_at":"2026-10-15T09:00:00Z","components":{"verified":1,"partial":0,"blocked":0,"total":1},` +
+	`"boundary":[{"claim":"The model reaches 91%","loop":"inner","outcome":"verified","citation":"§6","evidence":"Retrained; 91%"}],` +
+	`"decisions":[],` +
+	`"scorecard":[{"criterion":"code","found":true,"url":"https://github.com/authors/x"},` +
+	`{"criterion":"data","found":false,"searched":["OSF"]},` +
+	`{"criterion":"license","found":false,"searched":["the repository"]},` +
+	`{"criterion":"preregistration","found":false,"searched":["OSF registries"]},` +
+	`{"criterion":"supplement","found":false,"searched":["the publisher page"]}],` +
+	`"released":[]}`
