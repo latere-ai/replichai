@@ -618,8 +618,8 @@ func finalizePublication(ctx context.Context, gh *github.Client, owner, name str
 
 // verifyInstrument reads instrument.json from the committed tree and checks it
 // against the 007a schema, mirroring the auditor's finalize-time report for the
-// live mount path. A missing file is not an error: criterion 7 fails it in the
-// run's grade-and-revise loop, and this only reports what reached the
+// live mount path. A missing file is not an error: the rubric's Instrument
+// criterion fails it in the run's grade-and-revise loop, and this only reports what reached the
 // repository.
 func verifyInstrument(ctx context.Context, gh *github.Client, owner, name string) (present bool, violations []instrument.Violation, err error) {
 	raw, ok, err := gh.GetFileContent(ctx, owner, name, audit.InstrumentFile)
@@ -638,11 +638,12 @@ func verifyInstrument(ctx context.Context, gh *github.Client, owner, name string
 
 // reportInstrument prints the finalize-time instrument check as one status line,
 // with any schema violations beneath it. It does not gate the publish: a bad
-// instrument does not block it, because criterion 7 handles it in the run.
+// instrument does not block it, because the rubric's Instrument criterion
+// handles it in the run.
 func reportInstrument(stdout *os.File, present bool, violations []instrument.Violation) {
 	switch {
 	case !present:
-		_, _ = fmt.Fprintln(stdout, "instrument: none written (criterion 7 fails the run)")
+		_, _ = fmt.Fprintln(stdout, "instrument: none written (the rubric's Instrument criterion requires one)")
 	case len(violations) == 0:
 		_, _ = fmt.Fprintln(stdout, "instrument: valid")
 	default:
