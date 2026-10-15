@@ -38,7 +38,7 @@ sequenceDiagram
 ```
 replichai login
     Open https://auth.latere.ai/device and enter code:  WXYZ-1234
-    Waiting for approval… signed in as changkun@latere.ai
+    Waiting for approval… signed in as ada@example.org
 ```
 
 `--no-browser` prints and does not open. `--auth-url` and `--client-id` override the defaults for a self-hosted deployment.

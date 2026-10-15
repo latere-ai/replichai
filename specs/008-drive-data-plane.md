@@ -5,9 +5,9 @@ status: deferred
 
 # 008 — Drive as the artifact data plane
 
-> **Amended 2026-09-12.** Drive no longer hosts git (drive DR-26 removed
+> **Amended 2026-09-12.** Drive no longer hosts git (drive removed
 > its smart-HTTP and LFS outright, with no migration). Where this spec
-> assumed drive as the git store, read Latere Code (Origo, code.latere.ai)
+> assumed drive as the git store, read Latere Code (Origo, Latere's git hosting service)
 > for git hosting and drive for reproduction files, sharing and the public
 > zone. The `Store` seam argument is unchanged; the second implementation
 > now spans two services rather than one.
