@@ -50,21 +50,27 @@ func TestTheOfferedRuntimesAreTheDefaultAndTheListed(t *testing.T) {
 }
 
 func TestASignInStoreExistsExactlyWhenAPersonPays(t *testing.T) {
-	store, minter, err := personSignIns(stores{}, []managed.RuntimeName{"memory", "anthropic-managed"}, nil)
+	store, minter, err := personSignIns(stores{}, []managed.RuntimeName{"memory", "anthropic-managed"}, false)
 	if err != nil || store != nil || minter != nil {
 		t.Fatalf("no person-paid runtime: %v %v %v", store, minter, err)
 	}
+	if store, minter, err := personSignIns(stores{}, []managed.RuntimeName{"latere"}, true); err != nil || store != nil || minter != nil {
+		t.Fatalf("a dev server acting as its operator kept sign-ins: %v %v %v", store, minter, err)
+	}
+	if devLatereCommand(false, "cmd") != "" || devLatereCommand(true, "cmd") != "cmd" {
+		t.Fatal("the operator's command reached a server outside dev")
+	}
 	t.Setenv("REPLICHAI_SIGNIN_KEY", "")
-	if _, _, err := personSignIns(stores{}, []managed.RuntimeName{"latere"}, nil); err == nil || !strings.Contains(err.Error(), "REPLICHAI_SIGNIN_KEY") {
+	if _, _, err := personSignIns(stores{}, []managed.RuntimeName{"latere"}, false); err == nil || !strings.Contains(err.Error(), "REPLICHAI_SIGNIN_KEY") {
 		t.Fatalf("no key = %v", err)
 	}
 	t.Setenv("REPLICHAI_SIGNIN_KEY", strings.Repeat("ab", 32))
 	t.Setenv("AUTH_CLIENT_SECRET", "")
-	if _, _, err := personSignIns(stores{}, []managed.RuntimeName{"latere"}, nil); err == nil || !strings.Contains(err.Error(), "AUTH_CLIENT_SECRET") {
+	if _, _, err := personSignIns(stores{}, []managed.RuntimeName{"latere"}, false); err == nil || !strings.Contains(err.Error(), "AUTH_CLIENT_SECRET") {
 		t.Fatalf("no client secret = %v", err)
 	}
 	t.Setenv("AUTH_CLIENT_SECRET", "s")
-	store, minter, err = personSignIns(stores{}, []managed.RuntimeName{"latere"}, nil)
+	store, minter, err = personSignIns(stores{}, []managed.RuntimeName{"latere"}, false)
 	if err != nil || store == nil || minter == nil || signInOf(minter) == nil {
 		t.Fatalf("with both = %v %v %v", store, minter, err)
 	}
@@ -138,6 +144,20 @@ func TestALatereOfferActsAsThePersonAsking(t *testing.T) {
 	}
 	if _, err := offers[1].Efforts(context.Background(), "bob"); err == nil {
 		t.Fatal("a person with no kept sign-in read the levels")
+	}
+	// Under the dev bypass no sign-in is kept, and the runtime acts as the
+	// operator through its own configured command.
+	devCatalog, err := builtin.Catalog(builtin.Config{Latere: builtin.LatereConfig{BaseURL: api.URL, TokenCommand: "printf as-alice"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	devLatere, err := devCatalog.Build(context.Background(), "latere")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev := runtimeOffers([]managed.RuntimeName{"latere"}, "latere", map[managed.RuntimeName]managed.Runtime{"latere": devLatere}, nil)
+	if models, err := dev[0].Models(context.Background(), "dev-operator"); err != nil || len(models) != 1 {
+		t.Fatalf("dev models = %v, %v", models, err)
 	}
 }
 

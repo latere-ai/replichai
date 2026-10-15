@@ -62,8 +62,8 @@ func offeredRuntimes(catalog *runtimes.Catalog, raw string, selected managed.Run
 // otherwise. A server that offers one without a key to seal sign-ins with,
 // or without its own sign-in client's secret, refuses to start: it could not
 // act for anyone.
-func personSignIns(st stores, offered []managed.RuntimeName, built map[managed.RuntimeName]managed.Runtime) (signin.Store, *signin.Minter, error) {
-	if !slices.ContainsFunc(offered, func(name managed.RuntimeName) bool { return slices.Contains(personPaid, name) }) {
+func personSignIns(st stores, offered []managed.RuntimeName, actsAsOperator bool) (signin.Store, *signin.Minter, error) {
+	if actsAsOperator || !slices.ContainsFunc(offered, func(name managed.RuntimeName) bool { return slices.Contains(personPaid, name) }) {
 		return nil, nil, nil
 	}
 	sealer, err := signin.NewSealer(os.Getenv("REPLICHAI_SIGNIN_KEY"))
@@ -84,6 +84,18 @@ func personSignIns(st stores, offered []managed.RuntimeName, built map[managed.R
 		HTTP:         &http.Client{Timeout: 30 * time.Second, Transport: xotel.Transport(nil)},
 	})
 	return store, minter, nil
+}
+
+// devLatereCommand is the operator's own Latere token command, for a local
+// server under the loopback dev bypass only: there every request is the
+// operator, so a session on the Latere platform acts as them without a kept
+// sign-in. Outside dev it is ignored, so a server never acts for everyone
+// with one person's credential.
+func devLatereCommand(dev bool, command string) string {
+	if !dev {
+		return ""
+	}
+	return command
 }
 
 // signInOf is the runner's source of a person's bearer, nil without kept
@@ -115,11 +127,20 @@ func runtimeOffers(offered []managed.RuntimeName, selected managed.RuntimeName, 
 			label = string(name)
 		}
 		offer := httpapi.RuntimeOffer{Name: string(name), Label: label, Default: name == selected}
-		if slices.Contains(personPaid, name) && minter != nil {
+		if slices.Contains(personPaid, name) {
 			runtime := built[name]
+			// asPerson acts as the person asking through their kept
+			// sign-in; with none kept, as under the dev bypass, the runtime
+			// acts with its own configured source.
+			asPerson := func(ctx context.Context, principal string) context.Context {
+				if minter == nil {
+					return ctx
+				}
+				return builtin.WithLatereSignIn(ctx, minter.TokenFunc(principal))
+			}
 			offer.PersonPays = true
 			offer.Efforts = func(ctx context.Context, principal string) ([]httpapi.EffortOffer, error) {
-				efforts, err := builtin.LatereEfforts(builtin.WithLatereSignIn(ctx, minter.TokenFunc(principal)), runtime)
+				efforts, err := builtin.LatereEfforts(asPerson(ctx, principal), runtime)
 				if err != nil {
 					return nil, err
 				}
@@ -134,7 +155,7 @@ func runtimeOffers(offered []managed.RuntimeName, selected managed.RuntimeName, 
 				return out, nil
 			}
 			offer.Models = func(ctx context.Context, principal string) ([]string, error) {
-				models, err := runtime.Models(builtin.WithLatereSignIn(ctx, minter.TokenFunc(principal)))
+				models, err := runtime.Models(asPerson(ctx, principal))
 				if err != nil {
 					return nil, err
 				}
