@@ -52,17 +52,25 @@ func TestARuntimeWithNoInputsCannotRunAStudy(t *testing.T) {
 }
 
 // A named profile is enforced or refused, never swapped for whatever the
-// runtime allows. The memory runtime offers open egress and no allowlist.
+// runtime allows.
 func TestANamedNetworkProfileIsEnforcedOrRefused(t *testing.T) {
 	runtime := managedmemory.New()
-	open := NewSessionAuditor(sessionController(t, runtime), testMethod, WithNetworkProfile(ProfileOpen))
-	if _, err := open.Run(context.Background(), "paper", t.TempDir()); err != nil {
-		t.Fatalf("Run under the open profile: %v", err)
+	for _, profile := range NetworkProfiles() {
+		auditor := NewSessionAuditor(sessionController(t, runtime), testMethod, WithNetworkProfile(profile))
+		if _, err := auditor.Run(context.Background(), "paper", t.TempDir()); err != nil {
+			t.Fatalf("Run under the %s profile: %v", profile, err)
+		}
 	}
-	if got := runtime.Specs()[0].Sandbox.Network.Mode; got != managed.NetworkOpen {
-		t.Fatalf("the open profile ran as %q", got)
+	specs := runtime.Specs()
+	if specs[0].Sandbox.Network.Mode != managed.NetworkAllowlist || specs[1].Sandbox.Network.Mode != managed.NetworkOpen {
+		t.Fatalf("the profiles ran as %q and %q", specs[0].Sandbox.Network.Mode, specs[1].Sandbox.Network.Mode)
 	}
-	bounded := NewSessionAuditor(sessionController(t, managedmemory.New()), testMethod, WithNetworkProfile(ProfileArtifacts))
+	// A runtime that offers open egress and no allowlist, as a hosted one does.
+	openOnly := capabilityRuntime{Runtime: managedmemory.New(), capabilities: managed.Capabilities{
+		OutputDir:    managedmemory.OutputDir,
+		NetworkModes: map[managed.NetworkMode]bool{managed.NetworkNone: true, managed.NetworkOpen: true},
+	}}
+	bounded := NewSessionAuditor(sessionController(t, openOnly), testMethod, WithNetworkProfile(ProfileArtifacts))
 	_, err := bounded.Run(context.Background(), "paper", t.TempDir())
 	if !errors.Is(err, managed.ErrUnsupported) || !strings.Contains(err.Error(), "artifacts") {
 		t.Fatalf("Run under a profile the runtime cannot enforce = %v", err)

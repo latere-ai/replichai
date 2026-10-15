@@ -165,7 +165,7 @@ func buildSandbox(ctx context.Context, config LocalConfig, agent harness.Harness
 func Catalog(config Config) (*runtimes.Catalog, error) {
 	return runtimes.NewCatalog(
 		runtimes.Entry{Name: managedmemory.Name, Build: func(context.Context) (managed.Runtime, error) {
-			return managedmemory.NewWithStore(config.MemoryStore, managedmemory.Config{}), nil
+			return managedmemory.NewWithStore(config.MemoryStore, managedmemory.Config{InputDir: managedmemory.InputDir}), nil
 		}},
 		runtimes.Entry{Name: local.Name, Build: func(ctx context.Context) (managed.Runtime, error) {
 			return buildLocal(ctx, config.Local)
