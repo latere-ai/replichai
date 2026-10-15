@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+
+	"github.com/latere-ai/replichai/internal/credit"
 )
 
 // command is one subcommand: its name, the synopsis of its arguments, a
@@ -44,6 +46,7 @@ func commands() []command {
 		{"project", "create <title> | ls | sessions <id> | rm-session <id>...", "manage projects in the app", runProject},
 		{"push", "<project-file> --project <id>", "add a local run's sessions to a project in the app", runPush},
 		{"providers", "", "list the installed runtimes", runProviders},
+		{"models", "[--runtime <name>]", "list what --model accepts on a runtime: its Effort levels and the models it serves", runModels},
 		{"rates", "[flags]", "check that the rate card names the models a runtime resolves to", runRates},
 	}
 }
@@ -156,6 +159,52 @@ func noPositionals(name string, positional []string, stderr *os.File) error {
 	}
 	_, _ = fmt.Fprintf(stderr, "%s takes no arguments, got %q\n", name, positional)
 	return errExitQuiet
+}
+
+// runModels lists what --model accepts on one runtime: each Effort level with
+// the stored preference it is kept as, then every model the runtime lets a
+// session name exactly. On the Latere platform that is the platform's own
+// catalog, as the signed-in person may use it.
+func runModels(ctx context.Context, args []string, stdout, stderr *os.File) error {
+	fs := flagSet("models", stderr)
+	runtimeName := runtimeFlag(fs, defaultCLIRuntime)
+	var local localOptions
+	local.bind(fs)
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return err
+	}
+	if err := noPositionals("models", positional, stderr); err != nil {
+		return err
+	}
+	catalog, name, err := runtimeCatalog(resolveRuntime(*runtimeName, os.Getenv, defaultCLIRuntime), local)
+	if err != nil {
+		return err
+	}
+	runtime, err := catalog.Build(ctx, string(name))
+	if err != nil {
+		return err
+	}
+	models, err := runtime.Models(ctx)
+	if err != nil {
+		return err
+	}
+	for _, model := range models {
+		ref := model.Ref.Provider + "/" + model.Ref.ID
+		if len(model.Preferences) == 0 {
+			continue
+		}
+		for _, preference := range model.Preferences {
+			p, _ := credit.ParsePreference(preference)
+			_, _ = fmt.Fprintf(stdout, "%-10s %-11s %s\n", p.Effort(), "("+preference+")", ref)
+		}
+	}
+	for _, model := range models {
+		if len(model.Preferences) == 0 {
+			_, _ = fmt.Fprintf(stdout, "%s/%s\n", model.Ref.Provider, model.Ref.ID)
+		}
+	}
+	return nil
 }
 
 // runProviders lists the installed runtimes and marks the one a bare command

@@ -8,16 +8,20 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"latere.ai/x/pkg/hostsandbox"
+	xotel "latere.ai/x/pkg/otel"
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/managed/legacy"
 	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/provider/anthropic"
 	"github.com/latere-ai/replichai/internal/runtimes"
+	"github.com/latere-ai/replichai/internal/runtimes/latere"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
 	"github.com/latere-ai/replichai/internal/runtimes/local/container"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
@@ -40,6 +44,50 @@ type AnthropicConfig struct {
 	// BaseURL overrides the vendor endpoint and is empty in normal use.
 	BaseURL string
 }
+
+// LatereConfig holds what the Latere runtime needs to reach the platform. A
+// command-line run names the person it acts as with APIKey or TokenCommand;
+// a server leaves both empty and attaches each session's person to the
+// context instead (WithLatereSignIn).
+type LatereConfig struct {
+	// BaseURL and AuthURL are the platform's API origin and its Auth;
+	// empty is production.
+	BaseURL string
+	AuthURL string
+	// APIKey is a personal access token, exchanged at Auth for a bearer.
+	APIKey string
+	// TokenCommand prints a bearer for the platform's API, in the manner
+	// of a git credential helper.
+	TokenCommand string
+}
+
+// WithLatereSignIn attaches the person a Latere call acts for, as a function
+// that gives a fresh bearer for the platform's API. It is how a server that
+// runs many people's sessions through one runtime keeps each session acting
+// as the person who started it.
+func WithLatereSignIn(ctx context.Context, token func(context.Context) (string, error)) context.Context {
+	return latere.WithTokenSource(ctx, latere.TokenFunc(token))
+}
+
+// buildLatere composes the Latere runtime and the source of the person's
+// bearer it acts with when a call names none.
+func buildLatere(config LatereConfig) (managed.Runtime, error) {
+	var tokens latere.TokenSource
+	switch {
+	case strings.TrimSpace(config.APIKey) != "":
+		authURL := config.AuthURL
+		if authURL == "" {
+			authURL = DefaultLatereAuthURL
+		}
+		tokens = latere.PersonalAccessToken(authURL, strings.TrimSpace(config.APIKey), &http.Client{Timeout: 30 * time.Second, Transport: xotel.Transport(nil)})
+	case strings.TrimSpace(config.TokenCommand) != "":
+		tokens = latere.Command(config.TokenCommand)
+	}
+	return latere.New(latere.Config{BaseURL: config.BaseURL, Tokens: tokens})
+}
+
+// DefaultLatereAuthURL is Latere Auth in production.
+const DefaultLatereAuthURL = "https://auth.latere.ai"
 
 // LocalConfig holds what the local runtime needs to run a session on this
 // machine. Every field has a default, so an operator who says nothing gets the
@@ -82,6 +130,7 @@ type LocalConfig struct {
 type Config struct {
 	MemoryStore *managedmemory.Store
 	Anthropic   AnthropicConfig
+	Latere      LatereConfig
 	Local       LocalConfig
 }
 
@@ -169,6 +218,9 @@ func Catalog(config Config) (*runtimes.Catalog, error) {
 		}},
 		runtimes.Entry{Name: local.Name, Build: func(ctx context.Context) (managed.Runtime, error) {
 			return buildLocal(ctx, config.Local)
+		}},
+		runtimes.Entry{Name: latere.Name, Build: func(context.Context) (managed.Runtime, error) {
+			return buildLatere(config.Latere)
 		}},
 		runtimes.Entry{Name: AnthropicManaged, Build: func(context.Context) (managed.Runtime, error) {
 			if strings.TrimSpace(config.Anthropic.APIKey) == "" {

@@ -39,6 +39,8 @@ func TestRuntimeAdapterImportFirewall(t *testing.T) {
 			switch {
 			case strings.HasPrefix(name, "github.com/anthropics/") && !strings.HasPrefix(rel, filepath.Join("internal", "provider", "anthropic")):
 				t.Errorf("%s imports Anthropic SDK outside its adapter", rel)
+			case strings.HasSuffix(name, "/internal/runtimes/latere") && !strings.HasPrefix(rel, filepath.Join("internal", "runtimes", "builtin")):
+				t.Errorf("%s imports the Latere runtime outside the composition boundary", rel)
 			case (strings.HasSuffix(name, "/internal/provider/anthropic") || strings.HasSuffix(name, "/internal/provider/memory")) &&
 				!strings.HasPrefix(rel, filepath.Join("internal", "runtimes", "builtin")) &&
 				!strings.HasPrefix(rel, filepath.Join("internal", "provider")):

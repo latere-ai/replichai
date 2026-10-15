@@ -82,7 +82,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
 		projectID    = fs.String("project", "", "with --publish: the project the platform creates the repository under")
 		detach       = fs.Bool("detach", false, "with --publish: start the run and exit; complete it later with finish")
-		model        = fs.String("model", audit.DefaultModelPreference, "model to run on: a tier (best, balanced, fast) or provider/id")
+		model        = fs.String("model", audit.DefaultModelPreference, "model to run on: an Effort level (quick, thorough, sustained, or fast, balanced, best) or one model as provider/id")
 		local        localOptions
 	)
 	local.bind(fs)
@@ -138,6 +138,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			return capErr
 		}
 		mounts := capabilities.RepositoryModes[managed.AccessReadWrite]
+		_, keepsWorkspace := runtime.(workspaceReader)
 		if mounts {
 			// The agent is about to clone this repository, so the identity
 			// must be recorded in it before the clone.
@@ -145,7 +146,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			opts = append(opts, audit.WithSessionMount(audit.SessionMount{
 				URL: pub.mount.URL, Token: pub.mount.Token, MountPath: pub.mount.MountPath, ReadOnly: pub.mount.ReadOnly,
 			}))
-		} else {
+		} else if keepsWorkspace {
 			opts = append(opts, audit.WithLocalWorkspace())
 		}
 		hooks.Retain = func(ctx context.Context, evidence managed.EvidenceReader) error {
@@ -153,7 +154,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 			// release. The workspace holds the only copy of the work until
 			// the push has taken it.
 			if !mounts {
-				workspace, err := workspaceOf(runtime, evidence.Status.Ref)
+				workspace, err := hostWorkspace(ctx, runtime, evidence, filepath.Join(*out, slugify(paper)+"-workspace-"+evidence.Status.Ref.ID))
 				if err != nil {
 					return err
 				}
@@ -489,6 +490,30 @@ func workspaceOf(rt managed.Runtime, ref managed.SessionRef) (string, error) {
 		return "", fmt.Errorf("runtime %s keeps no local workspace to push from", rt.Name())
 	}
 	return located.Workspace(ref)
+}
+
+// hostWorkspace is the local repository the host pushes a session's work
+// from. A local runtime names the directory the session worked in. A hosted
+// runtime that mounted nothing, such as the Latere platform, keeps its files
+// on its side, so they are fetched while the session is still held and
+// committed once, by the host, into dir.
+func hostWorkspace(ctx context.Context, rt managed.Runtime, evidence managed.EvidenceReader, dir string) (string, error) {
+	if _, ok := rt.(workspaceReader); ok {
+		return workspaceOf(rt, evidence.Status.Ref)
+	}
+	files := make(map[string][]byte, len(evidence.Artifacts))
+	for _, artifact := range evidence.Artifacts {
+		body, err := evidence.Fetch(ctx, artifact)
+		if err != nil {
+			return "", fmt.Errorf("fetch %s: %w", artifact.Path, err)
+		}
+		files[artifact.Path] = body
+	}
+	message := fmt.Sprintf("the work of %s session %s, as it left its working directory", rt.Name(), evidence.Status.Ref.ID)
+	if err := publish.Materialize(ctx, dir, files, message); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 // pushWorkspace publishes what the agent committed into a local repository

@@ -123,7 +123,11 @@ func runtimeCatalog(rawName string, options localOptions) (*runtimes.Catalog, ma
 	credentials := runtimes.ResolveCredentials(os.LookupEnv)
 	catalog, err := builtin.Catalog(builtin.Config{
 		Anthropic: builtin.AnthropicConfig{APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase},
-		Local:     options.config(),
+		Latere: builtin.LatereConfig{
+			BaseURL: credentials.LatereAPIURL, AuthURL: credentials.LatereAuthURL,
+			APIKey: credentials.LatereAPIKey, TokenCommand: credentials.LatereTokenCommand,
+		},
+		Local: options.config(),
 	})
 	return catalog, name, err
 }
