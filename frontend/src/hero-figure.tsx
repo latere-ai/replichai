@@ -55,6 +55,26 @@ const py = (deg: number, r: number) => CY + r * Math.sin(rad(deg))
 const mod = (n: number, m: number) => ((n % m) + m) % m
 
 const REDUCE = '(prefers-reduced-motion: reduce)'
+const NARROW = '(max-width: 760px)'
+
+// At phone width the figure is framed tighter rather than set in larger type:
+// the full frame scaled to a phone sets its labels at seven pixels, and larger
+// labels in the full frame collide with the outer ring. The tight frame keeps
+// the rings and every label at the size they are drawn, and moves the gap's
+// label above the arc, where the frame has room for it.
+const FRAME = { wide: `0 0 ${W} ${H}`, narrow: '124 40 432 470' }
+
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(NARROW).matches)
+  useEffect(() => {
+    const mq = window.matchMedia?.(NARROW)
+    if (!mq) return
+    const on = () => setNarrow(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return narrow
+}
 
 // useAmbient says whether the figure should be moving: it is on screen, the tab
 // is visible, the reader has not asked for less motion, and has not paused it.
@@ -103,6 +123,10 @@ export function HeroFigure({ i18n }: { i18n: I18n }) {
   const [paused, setPaused] = useState(false)
   const [run, setRun] = useState(1)
   const { running, still } = useAmbient(root, paused)
+  const narrow = useNarrow()
+  const gapLabel = narrow
+    ? { x: 552, y: 70, anchor: 'end' as const, reach: 48 }
+    : { x: px(MARK_GAP_AT, RO + 36), y: py(MARK_GAP_AT, RO + 36) - 4, anchor: 'start' as const, reach: 30 }
 
   // Where the lap is, in milliseconds, kept across pauses so play resumes from
   // the frame it stopped on rather than jumping.
@@ -152,15 +176,15 @@ export function HeroFigure({ i18n }: { i18n: I18n }) {
   return (
     <figure className="hf" ref={root} data-test="lp-figure">
       <div className="hf-board">
-        <svg className="hf-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t('figAlt')}>
+        <svg className="hf-svg" viewBox={narrow ? FRAME.narrow : FRAME.wide} role="img" aria-label={t('figAlt')}>
           {/* The outer loop: the mark's open arc. Nothing travels it. */}
           <path className="hf-outer" d={markArc(CX, CY, RO)} pathLength={1} />
           {/* The gap, labeled: a leader from inside the opening out to the
               words, so the label points at the absence rather than the arc. */}
           <g className="hf-gap">
-            <line x1={px(MARK_GAP_AT, RO - 16)} y1={py(MARK_GAP_AT, RO - 16)} x2={px(MARK_GAP_AT, RO + 30)} y2={py(MARK_GAP_AT, RO + 30)} />
+            <line x1={px(MARK_GAP_AT, RO - 16)} y1={py(MARK_GAP_AT, RO - 16)} x2={px(MARK_GAP_AT, RO + gapLabel.reach)} y2={py(MARK_GAP_AT, RO + gapLabel.reach)} />
             <circle cx={px(MARK_GAP_AT, RO - 16)} cy={py(MARK_GAP_AT, RO - 16)} r={2} />
-            <text className="hf-gap-label" x={px(MARK_GAP_AT, RO + 36)} y={py(MARK_GAP_AT, RO + 36) - 4}>
+            <text className="hf-gap-label" x={gapLabel.x} y={gapLabel.y} textAnchor={gapLabel.anchor}>
               {t('figOpen')}
             </text>
           </g>

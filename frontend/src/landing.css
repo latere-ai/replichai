@@ -1076,20 +1076,10 @@
     margin-top: 96px;
     padding-top: 56px;
   }
-  /* Figure 1 is drawn in its own units and scales with the column. At phone
-     width that would set its labels at seven pixels, so the labels grow in
-     the figure's units to stay at a reading size on the screen. */
-  .hf-label {
-    font-size: 23px;
-  }
-  .hf-gap-label {
-    font-size: 25px;
-  }
-  .hf-run-label {
-    font-size: 21px;
-  }
-  .hf-panel {
-    font-size: 23px;
+  /* Figure 1's tight frame at this width (hero-figure.tsx), so the box keeps
+     the frame's ratio from the first paint. */
+  .hf-svg {
+    aspect-ratio: 432 / 470;
   }
 }
 
