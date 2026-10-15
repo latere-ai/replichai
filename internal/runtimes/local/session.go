@@ -24,10 +24,12 @@ import (
 )
 
 // The session directory's layout. workspace/ becomes the repository, tmp/ and
-// venv/ hold what the agent needs but must not publish, and session/ holds the
+// venv/ hold what the agent needs but must not publish, inputs/ holds what the
+// session was given to read and may not change, and session/ holds the
 // evidence, which the host writes and no stage may write.
 const (
 	workspaceDir  = "workspace"
+	inputsDir     = "inputs"
 	tmpDir        = "tmp"
 	harnessTmpDir = "tmp/harness"
 	venvDir       = "venv"
@@ -126,7 +128,7 @@ func CreateSession(root, id string, lookup LookupEnv) (*Session, error) {
 	// tmp/harness is the temporary root a harness is pointed at, so that
 	// whatever it derives from that root lands inside the session rather
 	// than in the workspace.
-	for _, child := range []string{workspaceDir, tmpDir, harnessTmpDir, venvDir, gradeDir, homeDir, evidenceDir, rawDir} {
+	for _, child := range []string{workspaceDir, inputsDir, tmpDir, harnessTmpDir, venvDir, gradeDir, homeDir, evidenceDir, rawDir} {
 		if err := os.MkdirAll(filepath.Join(dir, child), 0o700); err != nil {
 			return nil, fmt.Errorf("create %s: %w", child, err)
 		}
@@ -161,6 +163,14 @@ func (s *Session) Workspace() string { return workspacePath(filepath.Dir(s.dir),
 // pure function of the two so a workspace can be named before the session
 // exists: Capabilities names it and Start creates it.
 func workspacePath(root, id string) string { return filepath.Join(root, id, workspaceDir) }
+
+// Inputs is where the files a session was given to read are placed, outside
+// the repository, and mounted read-only into every stage that runs an agent.
+func (s *Session) Inputs() string { return inputsPath(filepath.Dir(s.dir), s.id) }
+
+// inputsPath is where session id under root keeps its inputs. Like the
+// workspace, it can be named before the session exists.
+func inputsPath(root, id string) string { return filepath.Join(root, id, inputsDir) }
 
 // Tmp is where downloads go, deliberately outside the repository.
 func (s *Session) Tmp() string { return filepath.Join(s.dir, tmpDir) }
