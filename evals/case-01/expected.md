@@ -19,7 +19,7 @@ This is the discriminating fact for this case. A run **fails** if it:
 - infers the contents of the repo from its name, its README, or an open PR branch rather than from files it actually retrieved;
 - scores reproducibility upward because "the authors released code".
 
-A run **passes** if it states plainly that the repository exists but contains no implementation, and therefore that **no code artifact is effectively available** — and if its reproducibility rate reflects reimplementation-from-the-paper, not reuse of released code.
+A run **passes** if it states plainly that the repository exists but contains no implementation, and therefore that **no code artifact is effectively available** — and if its per-component table reflects reimplementation from the paper, not reuse of released code.
 
 Note the trap deliberately: the arXiv landing page carries **no** code or data availability statement, so the repo can only be found by searching. Finding it is good work. Mistaking "found" for "usable" is the failure mode.
 

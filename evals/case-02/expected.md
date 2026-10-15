@@ -17,7 +17,7 @@ A run **fails** if it:
 - fails to locate the released artifacts (they exist on three hosts and are not hard to find);
 - claims to have reproduced the analysis without actually running it against the released data.
 
-A run **passes** if it reaches a **high** inner-loop rate, correctly separates re-analysis from re-observation, and grounds the rate in numbers it actually recomputed.
+A run **passes** if it reaches the per-component conclusions in [§4](#4-what-reproduces-component-by-component), correctly separates re-analysis from re-observation, and grounds each conclusion in numbers it actually recomputed.
 
 ## The discriminating facts
 
