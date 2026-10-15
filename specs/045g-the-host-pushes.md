@@ -70,7 +70,7 @@ flowchart TB
 
 So the local path uses `VerifyTree`, which is what [006f](006f-taking-a-reproduction-out.md) and [044b](044b-the-server-harvests-the-session.md) already apply to committed trees, and applies it before the first push rather than after, which is strictly earlier than the hosted path can manage. A flagged path is not pushed and is named in the run's output, so the operator can fix it and retry rather than owning a repository that may never be made public.
 
-`environment.json` and `grade/verdict-<n>.json` are system-authored and pass `VerifyTree` on their face, which is the second reason not to route them through the allowlist: neither is in `workerReports`, and the environment record is this deck's whole answer to whether a run was clean.
+`environment.json` and `grade/verdict-<n>.json` are system-authored and pass `VerifyTree` on their face, which is the second reason not to route them through the allowlist: neither is in `workerReports`, and the environment record is the 045 series' whole answer to whether a run was clean.
 
 **The push is a host act with a short-lived credential.** The token reaches `git` through a `0600` askpass helper named by `GIT_ASKPASS`, never in argv (visible in `ps`), never in the URL (it lands in `.git/config` and in the reflog), and never written into the workspace's git configuration. The remote is added, the push is made, and the remote is removed, so a workspace directory left on disk under the `keep` retention policy carries no credential and no push target.
 

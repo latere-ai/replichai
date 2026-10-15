@@ -11,7 +11,7 @@ import (
 )
 
 // RouteVersion is the only route version this package understands. Validate
-// refuses any other, so an unrecognised record is rejected rather than
+// refuses any other, so an unrecognized record is rejected rather than
 // reinterpreted under today's meaning.
 const RouteVersion = 1
 

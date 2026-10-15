@@ -1,13 +1,15 @@
 # Running audits on your own machine
 
-`replichai audit` normally sends the work to a hosted agent backend. With
+`replichai audit` normally sends the work to a hosted agent backend
+(Anthropic's Managed Agents, the `anthropic-managed` runtime). With
 `--runtime local` it runs on your machine instead: the coding agent you already
 have installed, confined to one folder, on the model you choose.
 
-Everything else is the same: the same method, the same rubric, the same seven
-output files, the same verdict. What changes is who owns the machine and whose
-model credential is used. Nobody is billed by the platform, because you bought
-the compute from the vendor yourself.
+Everything else is the same: the same method (the agent's instructions in
+[`method/`](../method/)), the same rubric, the same seven output files, the
+same verdict. What changes is who owns the machine and whose model credential
+is used. Nothing is charged to a replichai account, because you bought the
+compute from the model vendor yourself.
 
 ```bash
 replichai audit https://arxiv.org/abs/2603.01795 --runtime local
@@ -15,8 +17,20 @@ replichai audit https://arxiv.org/abs/2603.01795 --runtime local
 
 ## What you need
 
-One coding agent and one sandbox. On a machine where `claude login` has already
-been run you need no API key and no configuration file.
+One coding agent and one sandbox.
+
+- The **harness** is the coding agent's command-line program that runs inside
+  the sandbox and does the work: Claude Code (`claude`, the default) or Codex
+  (`codex`). replichai starts it, feeds it the task, and reads its output
+  stream; the harness's own login is what pays for the model unless you
+  configure another endpoint.
+- **srt** is Anthropic's sandbox runtime, the npm package
+  `@anthropic-ai/sandbox-runtime`. It confines a process to the files and
+  network hosts it is allowed, using Seatbelt on macOS and bubblewrap with
+  seccomp on Linux, without a container or a virtual machine.
+
+On a machine where `claude login` has already been run you need no API key and
+no configuration file.
 
 **macOS**
 
@@ -154,24 +168,32 @@ home denied. A run can read `/usr`, `/opt`, `/etc` and anything else outside
 outlives it, and your machine pushes that folder afterwards. That is why
 `--publish` works locally without giving an agent write access to anything.
 
-**With `--project`, no GitHub token needs to be on your machine either:**
+**With `--project`, no GitHub token needs to be on your machine either.** A
+project is a container for papers and sessions in the replichai web app, so
+this path needs an account there:
 
 ```bash
 replichai login
 replichai audit <paper> --runtime local --publish --project <id>
 ```
 
-The platform allocates the repository, from the same registry a session started
-in the app allocates from, and hands back a credential that can write to that
-one repository and expires within the hour. Your machine pushes with it and
-returns it when the run is finalized. Without `--project`, `--publish` uses
-`REPLICHAI_GITHUB_TOKEN` as before. That is an organization token, so prefer
-the project path where you have one.
+The app allocates the repository, from the same registry a session started in
+the app allocates from, and hands back a credential that can write to that one
+repository and expires within the hour. Your machine pushes with it and returns
+it when the run is finalized. Without `--project`, `--publish` uses
+`REPLICHAI_GITHUB_TOKEN`, a token broad enough to create repositories in the
+GitHub organization `--owner` names, so prefer the project path where you have
+one.
+The default owner, `open-hai`, is the organization the hosted service publishes
+into; with your own token, set `--owner` or `REPLICHAI_GITHUB_OWNER` to an
+organization you control.
 
 Two things that credential cannot do: `--invite` needs permission to administer
 the repository, so add the collaborator in the app instead; and a deployment
 with no GitHub App configured cannot mint a credential at all, in which case
 the terminal says which settings are missing and falls back to your own token.
+Only a GitHub App can issue a token limited to one repository, which is why
+this path needs one configured on the deployment.
 
 The read allowance has one cost: an agent that reads its own credential file
 puts the contents in its transcript. Everything published is swept for
@@ -224,20 +246,32 @@ gateways:
     base_url: https://api.anthropic.com
     dialect: anthropic
     key_env: ANTHROPIC_API_KEY
-  lux:                                    # any OpenAI-compatible gateway
-    base_url: https://api.latere.ai/v1/models/openai/v1
+  vllm:                                   # a vLLM server you host, started with --api-key
+    base_url: https://vllm.example.org/v1
     dialect: openai-responses
-    key_env: LUX_API_KEY
-  local:                                  # something you run yourself
+    key_env: VLLM_API_KEY
+  local:                                  # something on this machine, such as Ollama
     base_url: http://127.0.0.1:11434/v1
     dialect: openai-chat                  # no key_env: no credential is sent
 
 models:
   - {provider: anthropic, id: claude-opus-5,    gateway: harness-login, harness: claude-code, preferences: [best]}
   - {provider: anthropic, id: claude-sonnet-5,  gateway: harness-login, harness: claude-code, preferences: [balanced]}
-  - {provider: qwen,      id: qwen3-coder-480b, gateway: lux,           harness: codex,       preferences: [best]}
+  - {provider: qwen,      id: qwen3-coder-480b, gateway: vllm,          harness: codex,       preferences: [best]}
   - {provider: meta,      id: llama-4-scout,    gateway: local,         harness: codex,       preferences: [fast]}
 ```
+
+A **gateway** is an endpoint a model is reached through, and `dialect` is the
+wire protocol it speaks: `anthropic` (Anthropic's Messages API),
+`openai-responses` (OpenAI's Responses API) or `openai-chat` (OpenAI's Chat
+Completions API). Any OpenAI-compatible endpoint works the same way, hosted
+(OpenRouter, for example) or run by you (vLLM, Ollama, llama.cpp); declare
+whichever dialect it implements. `id` is sent to the endpoint as the model
+name, so it must be the name that endpoint serves: the vLLM row above assumes
+the server was started with `--served-model-name qwen3-coder-480b`. `key_env`
+names the environment variable that holds the endpoint's key; the key itself
+never goes in the file. `preferences` lists the tiers (`best`, `balanced`,
+`fast`) the row answers for that harness.
 
 Then pick one per run:
 
@@ -254,7 +288,7 @@ costs you an error message rather than forty seconds and a 400:
   OpenAI-compatible gateway therefore pairs with `codex`.
 - **One model per tier per harness.** Two `best` rows is an error, not a random
   choice: what a session ran on has to be determinate.
-- **A named credential must exist.** A gateway naming `LUX_API_KEY` with
+- **A named credential must exist.** A gateway naming `VLLM_API_KEY` with
   nothing in it fails now rather than mid-run.
 - **An exact `--model provider/id` must be in the file.** A model you never
   declared has no endpoint to reach it through.
@@ -311,6 +345,11 @@ papers:
       - https://zenodo.org/records/1234567/files/study-data.zip
 ```
 
+`publish.owner` is the GitHub organization the repositories are created in.
+`open-hai` is the one the hosted service uses, and your token cannot create
+repositories there, so put an organization you control in your own file (or
+pass `--owner`).
+
 Each paper gets its own session, its own sandbox and its own repository.
 `runs: 3` reproduces a paper three times, each run in its own session with its
 own repository; put `runs` at the top of the file to set it for every paper. One
@@ -360,10 +399,11 @@ the list of artifacts has changed since.
 ## Putting the results in the app
 
 Optional. A local run needs no account and no network beyond your model
-endpoint. If you do want the sessions in `replichai.latere.ai`:
+endpoint. If you do want the sessions in the replichai web app (the hosted one
+at `replichai.latere.ai`, or a deployment of your own):
 
 ```bash
-replichai login                              # device-code sign-in at auth.latere.ai
+replichai login                              # device-code sign-in, at auth.latere.ai by default
 replichai project create "CHI 2026 audit"
 replichai project ls
 replichai push papers.yaml --project <id>
@@ -377,6 +417,11 @@ repository the run pushed, which is why a run you intend to file should use
 
 Pushing twice is safe. A session updates its row rather than opening a second
 one, so a failed upload is retried by running the command again.
+
+These commands talk to the hosted app unless told otherwise. For a deployment
+of your own, set `REPLICHAI_AUTH_URL` and `REPLICHAI_API_URL` first; what the
+terminal's sign-in needs from that deployment's identity provider is in
+[`self-hosting.md`](self-hosting.md#the-terminals-sign-in).
 
 ## Codex
 

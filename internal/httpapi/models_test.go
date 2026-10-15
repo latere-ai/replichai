@@ -211,7 +211,7 @@ func TestStartSessionCarriesTheChosenTier(t *testing.T) {
 	}
 }
 
-// TestStartSessionRefusesAnUnknownTier checks that an unrecognised tier is
+// TestStartSessionRefusesAnUnknownTier checks that an unrecognized tier is
 // refused before anything is written. The adapter passes a preference it does
 // not know through as a literal model id, and a model the card does not name
 // is billed at the dearest rates the card holds, so a typo here would become a

@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: >-
+  If you cite a reproduction ReplicHAI produced, cite the software too, with
+  the version and method digest recorded in that reproduction's
+  replication.json.
+type: software
+title: ReplicHAI
+abstract: >-
+  ReplicHAI audits the reproducibility of research papers whose findings rest
+  on human participants. It finds what the authors released, separates the
+  part of the work a machine can re-run from the part that needs people,
+  implements and runs the machine-runnable part, records every decision the
+  paper left unwritten, and returns a per-component verdict with its evidence.
+authors:
+  - name: Latere AI
+    website: https://latere.ai
+repository-code: https://github.com/latere-ai/replichai
+url: https://replichai.latere.ai
+license: AGPL-3.0-or-later
+keywords:
+  - reproducibility
+  - replication
+  - research software
+  - human-computer interaction
+  - AI agents

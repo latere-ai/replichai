@@ -55,7 +55,7 @@ It is deliberately **not** the owner's email. `SignedOffEmail` is stored already
 `GET /projects` → `[]ProjectView`, owned and shared together, newest-modified first. `ProjectView` gains:
 
 ```json
-{ "owner_name": "Changkun Ou", "owner_handle": "changkun", "modified_at": "2026-08-08T21:00:00Z" }
+{ "owner_name": "Ada Lovelace", "owner_handle": "ada", "modified_at": "2026-08-08T21:00:00Z" }
 ```
 
 `GET /shared` is removed. `GET /public` keeps its shape and gains the same three fields, since the public registry lists other people's projects and has the same naming problem.

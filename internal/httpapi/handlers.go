@@ -587,7 +587,7 @@ const draftMaxTokens = 400
 // an error.
 //
 // It requires an exact entry in the rate card and never uses the card's
-// fail-expensive fallback. That fallback exists so an unrecognised session
+// fail-expensive fallback. That fallback exists so an unrecognized session
 // model is charged the dearest rates rather than nothing, which is right for a
 // run somebody chose and wrong for a local model an operator configured, since
 // it would bill Opus rates for a model that costs very little. Without an exact

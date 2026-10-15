@@ -111,7 +111,7 @@ Implementation lands as independently green commits: neutral types and conforman
 ## Out of scope
 
 - Calling OpenAI: 041f.
-- Calling Topos, Cella, Lux, or Drive: 041g.
+- Calling Topos, Cella, Lux, or Drive (Latere's agent runtime, sandbox control plane, model gateway, and file storage service): 041g.
 - Replacing the Anthropic adapter with Lux's Anthropic compatibility surface. Managed Agents lifecycle endpoints are not a model-generation dialect.
 
 ## Outcome

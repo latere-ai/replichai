@@ -1,8 +1,16 @@
 # Deploying replichai
 
-Kustomize manifests for the `latere` Kubernetes cluster. Production is deployed
-by the release pipeline on every `v*` tag (see [Release](#release)); staging is
-a prepared stub (see `staging/`).
+This directory is how Latere deploys `replichai.latere.ai`, and it is meant to
+be read as a worked example of one way to run the image, not as a requirement.
+The names in it (the `latere` cluster and namespace, the host, the OIDC client,
+the image registry) are Latere's. If you are running your own deployment, start
+at [`docs/self-hosting.md`](../docs/self-hosting.md), which covers what a
+deployment needs whatever it runs on, and come back here for a Kubernetes
+layout to adapt.
+
+The manifests are Kustomize, for Latere's Kubernetes cluster. Production is
+deployed by the release pipeline on every `v*` tag (see [Release](#release));
+staging is a prepared stub (see `staging/`).
 
 ## Layout
 
@@ -19,17 +27,17 @@ a prepared stub (see `staging/`).
   `latere` namespace and to the kinds `prod/` contains. An operator applies it;
   the pipeline never does, so the identity cannot widen its own grant.
 
-## One-time prerequisites (terraform owns these)
+## One-time prerequisites (provisioned outside this repository)
 
-The domain, database, and DB secret are provisioned by terraform in the latere
-infrastructure repository, which is not part of this one:
+The domain, the database and the database secret are not created by anything
+here. The operator's own infrastructure code provisions them, before the first
+deploy:
 
-- `dns.tf`: the `replichai.latere.ai` A record → the ingress load balancer.
-- `database.tf`: the `replichai` database on the shared cluster, and the
-  `replichai-db` Kubernetes secret in the `latere` namespace, carrying
-  `DATABASE_URL` and, where the cluster has a pooler, `DATABASE_POOL_URL`.
-
-Apply them there (`tofu apply`) before the first deploy.
+- a DNS record for the host, pointing at the ingress load balancer;
+- a Postgres database for replichai;
+- the `replichai-db` Kubernetes Secret in the deployment's namespace, carrying
+  `DATABASE_URL` (the direct endpoint, where migrations run) and, where the
+  database has a connection pooler in front of it, `DATABASE_POOL_URL`.
 
 ## The config secret (from `.env`)
 
@@ -47,30 +55,34 @@ kubectl -n latere create secret generic replichai-config \
 
 ```
 ANTHROPIC_API_KEY=...          # the anthropic-managed runtime credential
-REPLICHAI_GITHUB_APP_ID=...    # the GitHub App the server publishes as (009), and
+REPLICHAI_GITHUB_APP_ID=...    # the GitHub App the server publishes as, and
 REPLICHAI_GITHUB_APP_KEY=...   # its private key: the PEM text, or a path to it.
                                # REPLICHAI_GITHUB_TOKEN is the PAT fallback when neither is set
 AUTH_COOKIE_KEY=...            # openssl rand -hex 32
 AUTH_CLIENT_SECRET=            # only for a confidential OIDC client; prod's is public PKCE, so empty
-MAILGUN_API_KEY=...            # outbound mail (006p); omit and invitations are logged, not sent
-DRAFT_API_KEY=...              # only for drafting on a *non*-Anthropic endpoint (039); Anthropic reuses ANTHROPIC_API_KEY
-STRIPE_SECRET_KEY=...          # card payments (022b); omit and checkout answers payments_unconfigured
+MAILGUN_API_KEY=...            # outbound mail; omit and invitations are logged, not sent
+DRAFT_API_KEY=...              # only for drafting on a *non*-Anthropic endpoint; Anthropic reuses ANTHROPIC_API_KEY
+STRIPE_SECRET_KEY=...          # card payments; omit and checkout answers payments_unconfigured
 STRIPE_WEBHOOK_SECRET=...
 ```
+
+The comments above explain each line; keep them out of the real file, or on
+lines of their own, because `--from-env-file` reads an inline comment as part
+of the value.
 
 Everything else is set by the manifests. In Kubernetes a container's own `env`
 entry takes precedence over the same key arriving through `envFrom`, so a
 policy value put in the secret is not an override; it is ignored. The base
 sets what every environment shares: `DATABASE_URL` and `DATABASE_POOL_URL`
-(from the terraform-owned `replichai-db` secret), `ADDR`, `REPLICHAI_RUNTIME`,
+(from the separately provisioned `replichai-db` secret), `ADDR`, `REPLICHAI_RUNTIME`,
 `AUTH_ISSUER`, `AUTH_AUDIENCE`, `MAILGUN_DOMAIN`, `MAILGUN_REGION`. Each overlay sets what is its own:
 `BASE_URL`, `AUTH_CLIENT_ID`, `AUTH_REDIRECT_URL`, `ADMIN_EMAILS`. Change those
 in the overlay, where the change is reviewed, not in `.env`.
 
 ### Which model drafts a description
 
-[039](../specs/039-a-description-can-be-drafted.md) lets a project's owner ask a
-model for a first draft of its description.
+A project's owner can ask a model for a first draft of its description. An
+admin chooses the model.
 
 **On Anthropic, it is one field.** The deployment already holds an Anthropic
 credential for the agent that runs its sessions, so drafting reuses it: pick
@@ -96,10 +108,10 @@ descriptions are typed by hand.
 
 ### Who may sign in
 
-Since [006q](../specs/006q-sign-in-is-open-budget-is-not.md), anyone who
-completes the OIDC login is granted `user`; the deployment no longer keeps a
-guest list. What limits them is **money** ([011](../specs/011-what-a-session-costs.md)):
-a new account arrives with no credits, so it can sign in and read what it may,
+Anyone who completes the OIDC login is granted `user`; there is no guest list.
+What limits them is **money** (the cost model is in
+[what a session costs](../specs/011-what-a-session-costs.md)): a new account
+arrives with no credits, so it can sign in and read what it may,
 and cannot run a replication session until it buys credits, an admin adds some
 to its wallet, or it is invited into a project somebody else has funded.
 
@@ -135,14 +147,12 @@ credits somebody allocated to that project from their own wallet; a project must
 hold the **start reserve** before a session may begin there, and that reserve is
 held for the run and returned when it settles. The reserve is seeded at a
 deliberately non-zero default and set in **Admin → Platform**; credits are added
-per person in **Admin → People**. The migration drops the old session counter
-and its top-up table outright: a count and a balance are different quantities,
-so nothing is carried across and everyone starts at zero.
+per person in **Admin → People**.
 
 ### Outbound mail
 
 A project invitation is the one message the platform sends to somebody who is
-not using the app (006p), and it needs a transport:
+not using the app, and it needs a transport:
 
 | variable | where it lives | notes |
 |---|---|---|
@@ -159,7 +169,8 @@ from, so a wrong value sends people to the wrong host.
 ## Release
 
 A release is a tag, and the pipeline does the rest. Write the release's notes
-under `Unreleased` in `CHANGELOG.md`, then cut it:
+under `Unreleased` in `CHANGELOG.md`, then cut it with `lateregate`, the
+quality-gate and release tool pinned as a Go tool in `go.mod`:
 
 ```bash
 go tool lateregate release v0.31.0
@@ -169,8 +180,8 @@ It refuses while CI is red; otherwise it moves the notes into a
 section for the tag, rewrites the `newTag` in `deploy/prod/kustomization.yaml`
 to the tag, commits, tags, and pushes.
 
-`.github/workflows/release.yml` hands the tag to the shared `service-release`
-pipeline (`latere-ai/ci`), which builds the image from the root `Dockerfile`,
+`.github/workflows/release.yml` hands the tag to Latere's shared
+`service-release` workflow, which builds the image from the root `Dockerfile`,
 pushes it to `ghcr.io/latere-ai/replichai`, applies `deploy/prod/` in the
 `latere` namespace, rolls the Deployment onto the new image, runs
 `test/release-smoke.sh` against `https://replichai.latere.ai`, and publishes

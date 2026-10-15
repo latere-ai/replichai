@@ -13,7 +13,7 @@ status: implemented
 
 ## Problem
 
-The package is named `provider`, but the public lifecycle is Anthropic Managed Agents' resource graph: resolve a model, create an environment, create an agent revision, create a session, poll it, then interrupt and archive it. `audit`, the experiment runner, and the model cohort all repeat that choreography. OpenAI Responses with hosted shell has a response and a container, not a persistent agent revision; Topos with Cella and Lux has an orchestrated run, one or more sandboxes, and a model route. An adapter for either would have to invent Anthropic resources only to satisfy the interface.
+The package is named `provider`, but the public lifecycle is Anthropic Managed Agents' resource graph: resolve a model, create an environment, create an agent revision, create a session, poll it, then interrupt and archive it. `audit`, the experiment runner, and the model cohort all repeat that choreography. OpenAI Responses with hosted shell has a response and a container, not a persistent agent revision; Topos (Latere's agent runtime) with Cella (Latere's sandbox control plane) and Lux (Latere's model gateway) has an orchestrated run, one or more sandboxes, and a model route. An adapter for either would have to invent Anthropic resources only to satisfy the interface.
 
 The more serious leak is in durable state. A job stores only a session id. Resume, transcript, publication, cancellation, and cleanup send that id to whichever single provider the new process selected. Switching a deployment from Anthropic to OpenAI while a run is live would route an Anthropic id to OpenAI, and the current record has nowhere to retain an OpenAI container id or a Latere trace locator.
 
@@ -61,7 +61,7 @@ The normalized contract is intentionally semantic rather than lowest-common-deno
 | [041f](041f-openai-responses-runs-a-session.md) | Direct OpenAI Responses plus hosted-shell/container adapter | 041e |
 | [041g](041g-latere-runs-a-session.md) | Platform-native Topos + Cella + Lux adapter | 041e |
 
-041a–041e are the requested refactor. They leave Anthropic as the only production runtime but make that a matter of composition configuration instead of an application assumption. 041f and 041g are independent after the seam: either may land first, and installing both is not required to prove the normalization.
+041a–041e are the refactor this spec calls for. They leave Anthropic as the only production runtime but make that a matter of composition configuration instead of an application assumption. 041f and 041g are independent after the seam: either may land first, and installing both is not required to prove the normalization.
 
 ## Global invariants
 

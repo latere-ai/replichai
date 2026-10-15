@@ -75,7 +75,7 @@ A JWKS fetch that fails does not fail open. `jwtauth`'s cache serves the last kn
 
 ## Not in scope
 
-- Personal access tokens issued by replichai itself. Auth is the issuer; a second token factory here would be a second thing to revoke.
+- Personal access tokens issued by replichai itself. Auth, Latere's identity provider, is the issuer; a second token factory here would be a second thing to revoke.
 - Machine credentials for CI. A service principal is a different principal kind and its own spec.
 - Rate limiting per credential. Named, not solved here.
 - Any change to what a principal may do. This leaf is about how a request proves who it is, and nothing else.

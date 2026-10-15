@@ -151,4 +151,4 @@ Two things are short.
 
 **`Toolchain()` is read from the image and not yet written into the run's environment record**, so a container run records its driver and image but not the pinned interpreter versions the label carries.
 
-The image itself is not published: `DefaultImage` names a tag that does not exist yet, so this driver is code without an artifact to run.
+The image itself is not published, and there is no default: a container run names an image the operator built, with `--image` or `REPLICHAI_HARNESS_IMAGE`, and is refused without one. The preflight message and the published image described above are the design, not what ships.

@@ -17,8 +17,8 @@ import (
 )
 
 // bearerAuthenticator runs the server's bearer middleware over a request
-// and reports the identity it placed, so the family's suite can judge the
-// production path as an authkit.Authenticator.
+// and reports the identity it placed, so the shared authkit conformance suite
+// can judge the production path as an authkit.Authenticator.
 type bearerAuthenticator struct {
 	mw func(http.Handler) http.Handler
 }
@@ -43,7 +43,7 @@ type refused struct {
 
 func (e *refused) Error() string { return "refused: " + strings.TrimSpace(e.body) }
 
-// TestConformance runs the family's rule R2 against the bearer path the
+// TestConformance runs authkit's conformance check of the bearer path the
 // server installs: replichai.latere.ai is admitted and nothing else, and the
 // issuer is called for its key set alone.
 func TestConformance(t *testing.T) {
