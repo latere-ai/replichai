@@ -35,11 +35,12 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		parallel     = fs.Int("parallel", 0, fmt.Sprintf("how many papers to run at once (default %d on this machine: half the cores, at most 4)", batch.DefaultParallel()))
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "time between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "maximum time for one paper")
-		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "maximum number of revisions per paper")
+		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "maximum number of revisions per run; 0 grades each run once and never revises it")
 		doPublish    = fs.Bool("publish", false, "publish each reproduction to its own repository")
 		ownerFlag    = fs.String("owner", "", "GitHub owner for --publish (default $REPLICHAI_GITHUB_OWNER, then the project file, then \""+publish.DefaultOrg+"\")")
 		inviteFlag   = fs.String("invite", "", "GitHub login to invite as a collaborator (default the project file's publish.invite)")
 		resume       = fs.Bool("resume", false, "skip papers that have already finished")
+		network      = fs.String("network", "", "network profile for runs whose project file names none: artifacts (the default) or open")
 		local        localOptions
 	)
 	local.bind(fs)
@@ -50,6 +51,9 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	if len(positional) != 1 {
 		_, _ = fmt.Fprintln(stderr, "run takes exactly one project file")
 		return errExitQuiet
+	}
+	if err := checkRevisions(*maxRevisions, stderr); err != nil {
+		return err
 	}
 
 	file, err := batch.ReadFile(positional[0])
@@ -62,12 +66,31 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return err
 	}
 
+	// Every run of the study gets the same inputs (046): the network profile
+	// each run is given is settled, and a copy of every paper and a snapshot of
+	// every artifact it lists taken, before any run starts, so a study that
+	// cannot give its runs the same inputs spends nothing finding out.
+	entries, err := file.Entries()
+	if err != nil {
+		return err
+	}
+	profiles, err := networkProfiles(entries, *network)
+	if err != nil {
+		return err
+	}
+	inputs, err := batch.Inputs(ctx, batch.Root(positional[0]), entries,
+		batch.Sources{Paper: fetchStudyPaper, Artifact: fetchStudyArtifact}, *resume)
+	if err != nil {
+		return err
+	}
+
 	runner := &projectRunner{
 		method: m, options: local, runtimeName: resolveRuntime(*runtimeName, os.Getenv, "local"), out: *out,
 		owner: owner, invite: invite, publish: *doPublish,
 		interval: *interval, timeout: *timeout, maxRevisions: *maxRevisions,
 		stdout: stdout, stderr: stderr,
 		publishers: make(map[int]*publisher), project: file.Project,
+		profiles: profiles, inputs: inputs,
 	}
 	statePath := filepath.Join(batch.Root(positional[0]), "batch.json")
 	reportPath := filepath.Join(batch.Root(positional[0]), "report.md")
@@ -90,6 +113,41 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		return errExitQuiet
 	}
 	return err
+}
+
+// networkProfiles is the network profile each run is given, by the run's
+// index: the one its paper or its project file names, else the one the flag
+// names, else the default. Every name is checked before anything runs, so a
+// misspelled profile fails the study rather than one run of it.
+func networkProfiles(entries []batch.Resolved, flag string) (map[int]audit.NetworkProfile, error) {
+	profiles := make(map[int]audit.NetworkProfile, len(entries))
+	for _, entry := range entries {
+		profile, err := audit.ParseNetworkProfile(firstNonEmpty(entry.Network, flag, string(audit.DefaultNetworkProfile)))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", entry.Reference(), err)
+		}
+		profiles[entry.Index] = profile
+	}
+	return profiles, nil
+}
+
+// paperFetchTimeout bounds one fetch of a paper's full text, and
+// paperMaxBytes its size: a scanned paper with its appendices runs to tens of
+// megabytes, and the cap is the largest input a session takes.
+const (
+	paperFetchTimeout       = 2 * time.Minute
+	paperMaxBytes     int64 = 64 << 20
+)
+
+// fetchStudyPaper fetches the copy of a paper every run of a study is handed.
+// It is a variable so the tests of this command run with no network.
+var fetchStudyPaper batch.FetchPaper = studyFetcher(httpFetcher{timeout: paperFetchTimeout, maxBytes: paperMaxBytes})
+
+// studyFetcher fetches a paper's full text through fetcher.
+func studyFetcher(fetcher paper.Fetcher) batch.FetchPaper {
+	return func(ctx context.Context, reference string) (paper.Copy, error) {
+		return paper.FullText(ctx, reference, fetcher)
+	}
 }
 
 // resolvePublish resolves the publish block's two settings by one rule: the
@@ -137,6 +195,12 @@ type projectRunner struct {
 	repositories repositorySource
 	// project names the project the runs belong to, for each run's record.
 	project string
+	// profiles is the network profile each run is given, by the run's index,
+	// and inputs the copy of each paper and the snapshots of its artifacts
+	// every run of it is handed, by the paper's reference. Both are settled
+	// before any run starts.
+	profiles map[int]audit.NetworkProfile
+	inputs   map[string]batch.StudyInputs
 
 	mu         sync.Mutex
 	publishers map[int]*publisher
@@ -244,6 +308,16 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		audit.WithSessionMaxRevisions(r.maxRevisions),
 		audit.WithSessionTimeout(r.timeout),
 	}
+	profile, given, handed := r.given(entry)
+	if profile != "" {
+		opts = append(opts, audit.WithNetworkProfile(profile))
+	}
+	if handed {
+		opts = append(opts, audit.WithPaperCopy(given.Paper))
+		if len(given.Artifacts) > 0 {
+			opts = append(opts, audit.WithArtifacts(given.Artifacts))
+		}
+	}
 
 	// retained reports that the session reached the hook that finalizes it.
 	// Whatever that hook then did, the session's own account is the one to
@@ -285,6 +359,15 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 					grade = provider.Grade(evidence.Status.Verdict.Grade)
 				}
 				record := r.placed(runRecord(runtime, evidence.Status, model, audit.PromptDigest(ctx), r.stderr), entry)
+				record.NetworkProfile = string(profile)
+				if handed {
+					record.PaperDigest = given.Paper.Digest()
+					for _, snapshot := range given.Artifacts {
+						record.Artifacts = append(record.Artifacts, publish.RunArtifact{
+							Source: snapshot.Source, Commit: snapshot.Commit, Digest: snapshot.Digest(),
+						})
+					}
+				}
 				return finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, r.method.Digest(),
 					grade, record, providerEventsFromManaged(evidence.Events), r.invite, r.stdout)
 			},
@@ -312,6 +395,15 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		return outcome, fmt.Errorf("%s: %s", result.Status.TerminalReason, strings.TrimSpace(result.Status.Error))
 	}
 	return outcome, nil
+}
+
+// given is what a run of the study is handed: its network profile, and the copy
+// of its paper with the snapshots of its artifacts. A runner built without
+// them gives a run none, and the run has what its runtime allows and finds its
+// own copy.
+func (r *projectRunner) given(entry batch.Resolved) (audit.NetworkProfile, batch.StudyInputs, bool) {
+	inputs, handed := r.inputs[entry.Reference()]
+	return r.profiles[entry.Index], inputs, handed
 }
 
 // placed adds where a run sits in its project to its record: the project, and

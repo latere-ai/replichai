@@ -171,9 +171,10 @@ function Hero({ i18n, href }: { i18n: I18n; href: string }) {
 
 // ── What comes back ─────────────────────────────────────────────────────────
 
-// The five paths `internal/publish/gate.go` treats as worker-written. The names
-// are filenames, so they are literals rather than copy; what each one answers is
-// the translated half.
+// The files a reader opens first, out of what the publication gate treats as
+// worker-written; verdict.json and instrument.json carry the same findings as
+// data and are not on the stack. The names are filenames, so they are literals
+// rather than copy; what each one answers is the translated half.
 const SHIPS = [
   { path: 'README.md', body: 'lpShipsReadme' },
   { path: 'REPRODUCIBILITY.md', body: 'lpShipsRepro' },

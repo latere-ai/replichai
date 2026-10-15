@@ -162,10 +162,13 @@ type ResourceKind string
 
 // The resource kinds. ResourceAttachment carries file content inline with a
 // SHA-256 the validator recomputes; ResourceRepository names an HTTPS
-// repository to place at a destination inside the workspace.
+// repository to place at a destination inside the workspace; ResourceInput
+// carries a file the session reads and cannot change, placed outside the
+// workspace.
 const (
 	ResourceAttachment ResourceKind = "attachment"
 	ResourceRepository ResourceKind = "repository"
+	ResourceInput      ResourceKind = "input"
 )
 
 // TerminalReason says why a session stopped, and is carried only on a terminal

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -225,9 +226,17 @@ func shellQuote(value string) string {
 // repository the grades are committed to.
 const gradeDir = "grade"
 
+// roundsDir is where a local session keeps, for each grading round, the
+// findings file as the round left it and what the system found when it checked
+// it (046). It is under session/, where no stage may write, because the judge
+// may write grade/ and could otherwise edit the copy it was given to grade. In
+// the repository the files sit beside the grades they belong to.
+const roundsDir = "session/rounds"
+
 // WorkspaceOutputs reads the files a finalize step commits beside the agent's
-// own history: the environment record and the judge's verdict, both authored
-// by the system rather than by the subject of the audit.
+// own history: the environment record, the judge's verdict, and each round's
+// findings and checks, all authored by the system rather than by the subject of
+// the audit. Round 0's findings are what the run produced before any revision.
 func WorkspaceOutputs(sessionDir string) (map[string][]byte, error) {
 	outputs := make(map[string][]byte)
 	for _, name := range []string{EnvironmentFile} {
@@ -238,23 +247,32 @@ func WorkspaceOutputs(sessionDir string) (map[string][]byte, error) {
 		}
 		outputs[name] = body
 	}
-	entries, err := os.ReadDir(filepath.Join(sessionDir, gradeDir))
+	// A session that was never graded has no verdict and no rounds to commit,
+	// which is a fact about the run rather than a failure to read it.
+	collect(outputs, filepath.Join(sessionDir, gradeDir), "verdict-")
+	collect(outputs, filepath.Join(sessionDir, filepath.FromSlash(roundsDir)), "findings-", "checks-")
+	return outputs, nil
+}
+
+// collect adds the files of dir whose names start with one of prefixes to
+// outputs, under grade/. A directory or a file that cannot be read adds
+// nothing.
+func collect(outputs map[string][]byte, dir string, prefixes ...string) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		// A session that was never graded has no verdict to commit, which is
-		// a fact about the run rather than a failure to read it.
-		//nolint:nilerr // an ungraded session contributes no verdict file
-		return outputs, nil
+		return
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "verdict-") {
+		if entry.IsDir() || !slices.ContainsFunc(prefixes, func(prefix string) bool {
+			return strings.HasPrefix(entry.Name(), prefix) && strings.HasSuffix(entry.Name(), ".json")
+		}) {
 			continue
 		}
 		//nolint:gosec // the path is this program's own session directory
-		body, err := os.ReadFile(filepath.Join(sessionDir, gradeDir, entry.Name()))
+		body, err := os.ReadFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
 			continue
 		}
 		outputs[gradeDir+"/"+entry.Name()] = body
 	}
-	return outputs, nil
 }

@@ -77,9 +77,12 @@ type Run struct {
 	// Sandbox is the boundary the work ran behind. Network is its egress
 	// policy; under an allowlist, NetworkAllowed counts the hosts on it and
 	// NetworkDigest identifies the list, so two runs can be seen to have had
-	// the same reach without the list being repeated here.
+	// the same reach without the list being repeated here. NetworkProfile
+	// names the profile a study fixed the policy to; a run with none had
+	// whatever its runtime could enforce.
 	Sandbox        string `json:"sandbox,omitempty"`
 	Network        string `json:"network,omitempty"`
+	NetworkProfile string `json:"network_profile,omitempty"`
 	NetworkAllowed int    `json:"network_allowed,omitempty"`
 	NetworkDigest  string `json:"network_digest,omitempty"`
 
@@ -89,6 +92,17 @@ type Run struct {
 	// the revision of this program that ran the session.
 	PromptDigest string `json:"prompt_digest,omitempty"`
 	Build        string `json:"build,omitempty"`
+
+	// PaperDigest identifies the copy of the paper the run was handed, as
+	// "sha256:<hex>". Every run of a study is handed the same copy, so two
+	// runs with one digest read the same text. Empty means the run found its
+	// own copy, and which one it read is not on record.
+	PaperDigest string `json:"paper_digest,omitempty"`
+	// Artifacts are the snapshots of the authors' released materials the
+	// run was handed, in the order the study lists them. Every run of a study
+	// is handed the same ones, so the reproduction is of the paper given those
+	// materials rather than of whatever each run found.
+	Artifacts []RunArtifact `json:"artifacts,omitempty"`
 
 	// StartedAt and FinishedAt bound the session. State and Reason say how it
 	// ended; Reason is ReasonNotStarted for a run that failed before a session
@@ -106,6 +120,15 @@ type Run struct {
 	// harness reported it cost, where it reports one.
 	Tokens             int64 `json:"tokens,omitempty"`
 	VendorCostMicroUSD int64 `json:"vendor_cost_micro_usd,omitempty"`
+}
+
+// RunArtifact is one snapshot a run was handed: where it was taken from, the
+// commit a repository's default branch pointed at, and the snapshot's digest,
+// "sha256:<hex>".
+type RunArtifact struct {
+	Source string `json:"source"`
+	Commit string `json:"commit,omitempty"`
+	Digest string `json:"digest"`
 }
 
 // RunModel names a model by its provider and identifier.

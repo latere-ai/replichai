@@ -23,7 +23,7 @@ hermetic:
 # column is prose on purpose, for example "built (all six leaves)" or
 # "implemented; its Python half deleted", and the table's preamble says the
 # column names which part is missing. CheckIndex compares that cell to the enum
-# verbatim, so 23 of 114 rows would fail on wording rather than on drift.
+# verbatim, so many rows would fail on wording rather than on drift.
 # README.md is excluded instead: with no index configured, spec-lint would
 # otherwise try to parse it as a spec.
 spec:

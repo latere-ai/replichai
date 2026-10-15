@@ -130,6 +130,20 @@ type Resource struct {
 	Kind       ResourceKind        `json:"kind"`
 	Attachment *AttachmentResource `json:"attachment,omitempty"`
 	Repository *RepositoryResource `json:"repository,omitempty"`
+	Input      *InputResource      `json:"input,omitempty"`
+}
+
+// InputResource is a file the session reads and may not change, such as the
+// copy of a paper every run of a study is given (046). The runtime places it
+// at Path under Capabilities.InputDir, outside the workspace, and mounts it
+// read-only, so the agent can neither edit it nor commit it into the
+// reproduction. SHA256 is verified against Content during validation, as for
+// an attachment, and is what a run's record cites as the input it was given.
+type InputResource struct {
+	Path      string `json:"path"`
+	MediaType string `json:"media_type,omitempty"`
+	Content   []byte `json:"content"`
+	SHA256    string `json:"sha256"`
 }
 
 // EvaluationSpec makes a session graded. A nil *EvaluationSpec on SessionSpec
@@ -349,7 +363,12 @@ func (a Artifact) IsCompiled() bool {
 // is silently dropped. OutputDir is the sandbox path a session is told to write
 // its artifacts to, which instructions are templated against.
 type Capabilities struct {
-	OutputDir          string
+	OutputDir string
+	// InputDir is the sandbox path inputs are placed under, for the session
+	// OutputDir names. Empty means the runtime cannot hand a session a file
+	// it can read and not change, and a specification carrying an input is
+	// refused.
+	InputDir           string
 	PackageManagers    map[string]bool
 	NetworkModes       map[NetworkMode]bool
 	RepositoryModes    map[AccessMode]bool

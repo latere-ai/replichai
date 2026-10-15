@@ -147,7 +147,7 @@ recorded sign-off.
 | `replichai providers` | the runtimes this build knows |
 | `replichai rates` | check that the rate card names the models a runtime resolves to, from the compiled-in card or a live one (`--database-url`) |
 | `replichai login` / `whoami` / `logout` | sign in to the app from the terminal by device code, show who you are, forget the credential |
-| `replichai org [<org-uuid>\|--personal]` | show or switch the organization projects are filed under |
+| `replichai org [<org-uuid>\|--personal]` | show or switch the organization your sign-in carries; the app does not group projects by it |
 | `replichai sessions ls` / `replichai sessions prune` | list the session directories on this machine, and reclaim their space |
 | `replichai project create <title>` / `replichai project ls` | the projects in the app that locally run sessions are filed under |
 | `replichai project sessions <id>` / `replichai project rm-session <id>...` | list a project's sessions, and delete one |
@@ -198,7 +198,7 @@ make up          # Postgres + the server, on http://localhost:8080
 ```
 
 That brings up the whole stack in the foreground on the `memory` runtime, so it
-costs nothing and needs no API key: a submitted paper moves from `submitted` to
+costs nothing and needs no API key: a started session moves from `submitted` to
 `done` through the real HTTP, worker, and Postgres path with a fake audit
 inside it. Sign-in is bypassed on loopback; a deployment runs behind OIDC.
 `make down` removes the stack and its volume. [`CONTRIBUTING.md`](CONTRIBUTING.md)

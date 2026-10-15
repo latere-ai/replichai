@@ -27,6 +27,11 @@ const Name managed.RuntimeName = "memory"
 // accident.
 const OutputDir = "/workspace/outputs/"
 
+// InputDir is the input directory a memory runtime declares when it is built to
+// accept inputs, as the one the CLI and the server compose is. It is beside the
+// workspace, as a real runtime's is, and the runtime keeps nothing there.
+const InputDir = "/workspace/inputs/"
+
 // FailurePoint names a runtime method that can be made to fail. Keying
 // Config.Failures by one lets a test drive the error path of a single call
 // without wrapping the runtime in a fake.
@@ -57,6 +62,14 @@ type Config struct {
 	Files           map[string][]byte
 	Events          []managed.Event
 	Failures        map[FailurePoint]error
+	// FindingsRounds declares that the runtime checks the findings of each
+	// grading round, so a caller that asks for it only where it is declared
+	// can be tested both ways. This runtime keeps no rounds either way.
+	FindingsRounds bool
+	// InputDir is the input directory the runtime declares. Empty declares
+	// none, so a specification carrying an input is refused, as it is on a
+	// runtime that cannot mount one read-only.
+	InputDir string
 }
 
 // Store holds the sessions. It is deliberately separate from Runtime, which
@@ -138,9 +151,11 @@ func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error
 // Validate to discard an error it cannot return.
 func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
-		OutputDir:          OutputDir,
-		PackageManagers:    map[string]bool{"pip": true},
-		NetworkModes:       map[managed.NetworkMode]bool{managed.NetworkNone: true, managed.NetworkOpen: true},
+		OutputDir:       OutputDir,
+		PackageManagers: map[string]bool{"pip": true},
+		NetworkModes: map[managed.NetworkMode]bool{
+			managed.NetworkNone: true, managed.NetworkAllowlist: true, managed.NetworkOpen: true,
+		},
 		RepositoryModes:    map[managed.AccessMode]bool{managed.AccessReadOnly: true, managed.AccessReadWrite: true},
 		Evaluation:         true,
 		DurableEvents:      true,
@@ -148,6 +163,8 @@ func (r *Runtime) capabilities() managed.Capabilities {
 		Cancellation:       true,
 		MaxAttachmentBytes: 64 << 20,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
+		FindingsRounds:     r.config.FindingsRounds,
+		InputDir:           r.config.InputDir,
 	}
 }
 
