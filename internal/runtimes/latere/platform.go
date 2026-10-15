@@ -134,7 +134,14 @@ type wireEffort struct {
 		ID        string `json:"id"`
 		Name      string `json:"name"`
 		Available bool   `json:"available"`
-		Models    []struct {
+		Next      struct {
+			Price *struct {
+				Per    int64  `json:"per"`
+				Input  string `json:"input"`
+				Output string `json:"output"`
+			} `json:"price,omitempty"`
+		} `json:"next"`
+		Models []struct {
 			Name      string `json:"name"`
 			Charge    string `json:"charge"`
 			Available bool   `json:"available"`

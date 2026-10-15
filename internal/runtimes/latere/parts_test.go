@@ -186,11 +186,35 @@ func TestModelsListTheLevelsAndTheCatalog(t *testing.T) {
 	if strings.Join(names, " ") != want {
 		t.Fatalf("models = %s", strings.Join(names, " "))
 	}
-	if _, err := r.Models(context.Background()); err != nil {
+	if got := f.count("GET /v1/models/models"); got != 2 {
+		t.Fatalf("catalog read %d times, want its 2 pages", got)
+	}
+}
+
+func TestEffortsNameEachLevelsModelAndPrice(t *testing.T) {
+	f := newFakePlatform(t)
+	efforts, err := f.runtime(t).Efforts(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := f.count("GET /v1/models/models"); got != 2 {
-		t.Fatalf("catalog read %d times, want 2 pages once: the list is reused", got)
+	if len(efforts) != 3 || efforts[0].Level != "sustained" || efforts[1].Level != "thorough" || efforts[2].Level != "quick" {
+		t.Fatalf("efforts = %+v", efforts)
+	}
+	thorough := efforts[1]
+	if thorough.Preference != "balanced" || thorough.Model != (managed.ModelRef{Provider: "anthropic", ID: "claude-sonnet-5.5"}) ||
+		thorough.Input != 2_000_000 || thorough.Output != 10_000_000 || !thorough.Available {
+		t.Fatalf("thorough = %+v", thorough)
+	}
+	if efforts[0].Model.ID != "kimi-k3" || efforts[2].Input != 0 {
+		t.Fatalf("sustained and quick = %+v %+v", efforts[0], efforts[2])
+	}
+	for amount, want := range map[string]int64{"0.1": 100_000, "12.5": 12_500_000, "x": 0, "": 0, "3": 3_000_000} {
+		if got := perMillion(amount, 1_000_000); got != want {
+			t.Errorf("perMillion(%q) = %d, want %d", amount, got, want)
+		}
+	}
+	if perMillion("1", 1000) != 1_000_000_000 || perMillion("1", 0) != 0 {
+		t.Error("perMillion scales by per")
 	}
 }
 

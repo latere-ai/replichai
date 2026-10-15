@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,10 +54,6 @@ var DefaultImagePackages = []string{
 // words for the same three choices.
 var levels = map[string]string{"fast": "quick", "balanced": "thorough", "best": "sustained"}
 
-// modelsTTL is how long the model list is reused. The platform's levels and
-// catalog change when an administrator edits them, not per request.
-const modelsTTL = 5 * time.Minute
-
 // Config is what a composition root hands this package.
 type Config struct {
 	// BaseURL is the platform's API origin; empty is DefaultBaseURL.
@@ -86,8 +83,6 @@ type Runtime struct {
 
 	mu      sync.Mutex
 	network map[managed.NetworkMode]bool
-	models  []managed.Model
-	modelAt time.Time
 	logs    map[string][]wireEvent
 }
 
@@ -217,15 +212,10 @@ func (r *Runtime) capabilities() managed.Capabilities {
 
 // Models lists the three Effort levels, each serving its preference, and
 // every model the person may name. A level's reference names the level
-// itself; the model it resolves to is reported in Status.
+// itself; the model it resolves to is reported in Status. The list is the
+// person's own, so it is read for every call: two people may be offered
+// different catalogs.
 func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
-	r.mu.Lock()
-	if r.models != nil && r.now().Sub(r.modelAt) < modelsTTL {
-		models := slices.Clone(r.models)
-		r.mu.Unlock()
-		return models, nil
-	}
-	r.mu.Unlock()
 	bearer, err := r.bearer(ctx)
 	if err != nil {
 		return nil, err
@@ -244,10 +234,67 @@ func (r *Runtime) Models(ctx context.Context) ([]managed.Model, error) {
 		}
 		models = append(models, managed.Model{Ref: modelRef(entry.Metadata.Name)})
 	}
-	r.mu.Lock()
-	r.models, r.modelAt = slices.Clone(models), r.now()
-	r.mu.Unlock()
 	return models, nil
+}
+
+// Effort is one Effort level as the person asking would get it now: the
+// model its next turn runs on and that model's price in micro-USD per
+// million tokens, zero when the turn would be free.
+type Effort struct {
+	Preference string
+	Level      string
+	Model      managed.ModelRef
+	Input      int64
+	Output     int64
+	Available  bool
+}
+
+// Efforts reads the person's three Effort levels.
+func (r *Runtime) Efforts(ctx context.Context) ([]Effort, error) {
+	bearer, err := r.bearer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	effort, err := r.platform.effort(ctx, bearer)
+	if err != nil {
+		return nil, fmt.Errorf("read the Latere Effort levels: %w", err)
+	}
+	out := make([]Effort, 0, len(levels))
+	for _, preference := range []string{"best", "balanced", "fast"} {
+		e := Effort{Preference: preference, Level: levels[preference]}
+		for _, level := range effort.Levels {
+			if level.ID != e.Level {
+				continue
+			}
+			e.Available = level.Available
+			for _, model := range level.Models {
+				if model.Available {
+					e.Model = modelRef(model.Name)
+					break
+				}
+			}
+			if price := level.Next.Price; price != nil {
+				e.Input, e.Output = perMillion(price.Input, price.Per), perMillion(price.Output, price.Per)
+			}
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+// perMillion turns a decimal USD price per per tokens into micro-USD per
+// million tokens. An amount that does not parse reads as unknown, zero.
+func perMillion(amount string, per int64) int64 {
+	if per <= 0 {
+		return 0
+	}
+	whole, fraction, _ := strings.Cut(strings.TrimSpace(amount), ".")
+	fraction = (fraction + "000000")[:6]
+	micro, err := strconv.ParseInt(whole+fraction, 10, 64)
+	if err != nil || micro < 0 {
+		return 0
+	}
+	return micro * 1_000_000 / per
 }
 
 // Validate refuses what the platform cannot do, with no remote call.
