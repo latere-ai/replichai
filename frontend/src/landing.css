@@ -56,6 +56,19 @@
   align-items: center;
   gap: 6px;
 }
+/* The header's sign-in, while the hero's or the close's is on screen: faded
+   and lifted out of reach, then hidden outright once the fade ends, so it is
+   out of the tab order too. It comes back the same way. */
+.landing .btn.lp-bar-signin {
+  transition: opacity var(--motion-enter) var(--motion-ease), transform var(--motion-enter) var(--motion-ease), visibility 0s linear 0s, background var(--motion-fast) var(--motion-ease);
+}
+.landing .btn.lp-bar-signin.away {
+  opacity: 0;
+  transform: translateY(-4px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--motion-enter) var(--motion-ease), transform var(--motion-enter) var(--motion-ease), visibility 0s linear var(--motion-enter);
+}
 /* A navigation link: never underlined, a tint on hover, as on the platform. */
 .lp-bar-link {
   display: inline-flex;

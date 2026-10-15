@@ -101,6 +101,31 @@
 * {
   box-sizing: border-box;
 }
+/* Elastic scrolling stays inside the pane being scrolled (047). The console is
+   a fixed frame (`.shell` is the viewport's height) whose rail and main pane
+   scroll on their own, so the page itself has nothing to scroll and must not
+   bounce: on a trackpad or a phone the whole frame, rail and bar included,
+   used to rubber-band at either end. The root's overscroll is turned off while
+   the frame is mounted, and every pane that scrolls contains its own: it still
+   bounces at its ends, and the bounce never carries to the frame around it.
+   The landing is a document that scrolls as a whole, so it keeps the
+   browser's own behavior. */
+html:has(.shell),
+html:has(.shell) body {
+  overscroll-behavior: none;
+}
+.rail-nav,
+.screen,
+.tx-side,
+.tx-stream,
+.tx-body,
+.modal,
+.markdown-body,
+.event-io,
+.ev-detail-body,
+.disc-body pre {
+  overscroll-behavior: contain;
+}
 body {
   margin: 0;
   background: var(--bg);

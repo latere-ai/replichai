@@ -82,6 +82,35 @@ function useReveal<T extends HTMLElement>() {
 
 const REDUCE = '(prefers-reduced-motion: reduce)'
 
+// useInlineSignIn says whether one of the page's own sign-in buttons, the hero's
+// or the close's, is fully on screen below the sticky header. The header's
+// sign-in stands down while one is, so the first screen offers the way in once
+// rather than twice, and takes over the moment the reader scrolls past it: a
+// sign-in is on screen at every scroll position (029), it is just never two.
+//
+// It starts as true, which is the page at its top, so the header button does
+// not flash in and out on load. A browser without the observer gets false, and
+// the header keeps its button throughout, which is 029's original guarantee.
+function useInlineSignIn() {
+  const [inline, setInline] = useState(() => typeof IntersectionObserver !== 'undefined')
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return
+    const seen = new Map<Element, boolean>()
+    // Measured below the sticky header, and only a button the reader can see
+    // whole counts: one half under the header is not one they can press.
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) seen.set(e.target, e.isIntersecting)
+        setInline([...seen.values()].some(Boolean))
+      },
+      { rootMargin: '-57px 0px 0px 0px', threshold: 1 },
+    )
+    for (const el of document.querySelectorAll('[data-signin-inline]')) io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return inline
+}
+
 // Band is one section of the page, set like a section of a paper: a rule, its
 // number and name in the margin, a serif heading, a caption, and whatever shows
 // the thing. It carries the reveal, so no section below has to remember to.
@@ -155,7 +184,7 @@ function Hero({ i18n, href }: { i18n: I18n; href: string }) {
         </h1>
         <p className="landing-lead">{t('landingLead')}</p>
         <div className="lp-cta">
-          <a className="btn lg" data-test="lp-hero-signin" href={href}>
+          <a className="btn lg" data-test="lp-hero-signin" data-signin-inline href={href}>
             <LatereMark height={12} /> {t('signInWith')}
           </a>
           <a className="btn ghost lg" data-test="lp-hero-registry" href="/registry">
@@ -688,12 +717,14 @@ export function Landing({
   const { t } = i18n
   const href = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
   const closeRef = useReveal<HTMLElement>()
+  const inlineSignIn = useInlineSignIn()
 
   return (
     <div className="landing">
-      {/* The sign-in control, at every scroll position. This replaces 017's
-          fold: a page that scrolls cannot keep a button above the fold, and a
-          sticky header keeps it visible at every position. */}
+      {/* The way in, at every scroll position. This replaces 017's fold: a page
+          that scrolls cannot keep a button above the fold, and a sticky header
+          keeps one visible at every position. The header's own button stands
+          down while the hero's or the close's is on screen (useInlineSignIn). */}
       <header className="lp-bar">
         <div className="lp-bar-in">
           <HomeLockup />
@@ -701,7 +732,11 @@ export function Landing({
             <a className="lp-bar-link lp-bar-registry" href="/registry">
               {t('lpNavRegistry')}
             </a>
-            <a className="btn" data-test="lp-signin" href={href}>
+            {/* Hidden, not removed, while an inline sign-in is on screen, so the
+                bar keeps its width and nothing beside it moves. `visibility`
+                takes it out of the tab order and the accessibility tree with
+                it, so a keyboard reader meets the way in once as well. */}
+            <a className={inlineSignIn ? 'btn lp-bar-signin away' : 'btn lp-bar-signin'} data-test="lp-signin" href={href}>
               <LatereMark height={11} /> {t('signInWith')}
             </a>
           </nav>
@@ -725,7 +760,7 @@ export function Landing({
           </h2>
           <p>{t('lpCloseBody')}</p>
           <div className="lp-cta">
-            <a className="btn lg" href={href}>
+            <a className="btn lg" data-signin-inline href={href}>
               <LatereMark height={12} /> {t('signInWith')}
             </a>
             <a className="btn ghost lg" href="/registry">
