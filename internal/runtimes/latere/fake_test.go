@@ -153,7 +153,7 @@ func (f *fakePlatform) route(w http.ResponseWriter, r *http.Request) {
 			{"id": "quick", "name": "tier/quick", "available": true, "models": []map[string]any{
 				{"name": "free/google/gemma", "charge": "none", "available": true},
 				{"name": "google/gemma", "charge": "credit", "available": true}}},
-			{"id": "thorough", "name": "tier/thorough", "available": true, "models": []map[string]any{
+			{"id": "thorough", "name": "tier/thorough", "available": true, "next": map[string]any{"price": map[string]any{"per": 1000000, "input": "2", "output": "10"}}, "models": []map[string]any{
 				{"name": "anthropic/claude-sonnet-5.5", "charge": "credit", "available": true}}},
 			{"id": "sustained", "name": "tier/sustained", "available": true, "models": []map[string]any{
 				{"name": "anthropic/claude-opus-5.5", "charge": "credit", "available": false},

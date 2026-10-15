@@ -24,6 +24,8 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/publish"
 	"github.com/latere-ai/replichai/internal/registry"
+	"github.com/latere-ai/replichai/internal/runtimes"
+	"github.com/latere-ai/replichai/internal/runtimes/builtin"
 )
 
 // engineRunner drives a job's phases with the real engine. It belongs to the
@@ -61,6 +63,15 @@ type engineRunner struct {
 	// delay makes the phase progression observable over SSE. It is zero in
 	// production.
 	delay time.Duration
+	// router binds each new session to the runtime its job chose (048), and
+	// newController builds the controller over that binding. Without a
+	// router every session runs where the shared controller routes it.
+	router        *runtimes.Router
+	newController func(managed.RuntimeRouter) *managed.Controller
+	// signIn gives, for a person, the source of the bearer a runtime the
+	// person pays acts with on the Latere platform. Nil where the deployment
+	// keeps no sign-ins.
+	signIn func(principal string) func(context.Context) (string, error)
 }
 
 // jobStatusReader reads a job's latest observed status at publish time. The
@@ -84,6 +95,8 @@ type engineDeps struct {
 	owner      string
 	token      string
 	delay      time.Duration
+	router     *runtimes.Router
+	signIn     func(principal string) func(context.Context) (string, error)
 }
 
 // errEngineIncomplete is what newEngineRunner returns for a missing dependency.
@@ -109,7 +122,55 @@ func newEngineRunner(d engineDeps) (*engineRunner, error) {
 		controller: d.controller, sessions: d.sessions, method: d.method, fetch: d.fetch,
 		projects: d.projects, jobs: d.jobs, workDir: d.workDir,
 		gh: d.gh, owner: d.owner, token: d.token, delay: d.delay,
+		router: d.router, signIn: d.signIn,
+		newController: func(router managed.RuntimeRouter) *managed.Controller { return managed.NewController(router) },
 	}, nil
+}
+
+// actAs attaches the person a session belongs to, so a runtime the person
+// pays acts as them on the Latere platform. It changes nothing for a runtime
+// the deployment pays.
+func (e *engineRunner) actAs(ctx context.Context, principal string) context.Context {
+	if e.signIn == nil || principal == "" {
+		return ctx
+	}
+	return builtin.WithLatereSignIn(ctx, e.signIn(principal))
+}
+
+// sessionFor is the controller a new session of j runs through, bound to the
+// runtime the job chose, and whether that runtime takes a writable
+// repository: one that does not is not mounted, and its work is harvested
+// into the repository when it ends (044b).
+func (e *engineRunner) sessionFor(ctx context.Context, j *job.Job) (*managed.Controller, bool, error) {
+	if e.router == nil {
+		return e.controller, true, nil
+	}
+	route := e.router.Route()
+	if j.Runtime != "" {
+		route = runtimes.Route{Version: runtimes.RouteVersion, Runtime: managed.RuntimeName(j.Runtime)}
+	}
+	bound, err := e.router.Bind(route)
+	if err != nil {
+		return nil, false, err
+	}
+	runtime, err := bound.ForNew(managed.SessionSpec{})
+	if err != nil {
+		return nil, false, err
+	}
+	capabilities, err := runtime.Capabilities(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("read the %s runtime's capabilities: %w", runtime.Name(), err)
+	}
+	return e.newController(bound), capabilities.RepositoryModes[managed.AccessReadWrite], nil
+}
+
+// modelOf is what the session runs on: the exact model the person chose, or
+// the tier.
+func modelOf(j *job.Job) string {
+	if j.Model != "" {
+		return j.Model
+	}
+	return j.Tier.OrDefault().String()
 }
 
 // forge is the repository host the runner creates repositories in and
@@ -232,25 +293,32 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 // per job carries that job's observer.
 func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(provider.RunStatus)) error {
 	e.pause(ctx)
+	ctx = e.actAs(ctx, j.Principal)
+	controller, mounts, err := e.sessionFor(ctx, j)
+	if err != nil {
+		return err
+	}
 	options := []audit.SessionOption{
 		audit.WithSessionHooks(e.managedHooks(j, observe)),
 		// The wait has no wall-clock deadline: the backend session is the
 		// source of truth, and a deadline would mark a session failed while
 		// its agent is still committing the reproduction.
 		audit.WithoutSessionTimeout(),
-		audit.WithSessionModel(j.Tier.OrDefault().String()),
+		audit.WithSessionModel(modelOf(j)),
 	}
 	// With the repository created in resolving, mount it so the agent commits
 	// its reproduction into it live (006i); the mount is also the
 	// redistribution boundary, since only what is committed into it is
-	// published.
-	if e.gh != nil && j.RepoName != "" {
+	// published. A runtime that takes no writable repository, such as the
+	// Latere platform, is not mounted; its outputs are harvested into the
+	// repository when it ends.
+	if e.gh != nil && j.RepoName != "" && mounts {
 		mount := e.mountFor(j)
 		options = append(options, audit.WithSessionMount(audit.SessionMount{
 			URL: mount.URL, Token: mount.Token, MountPath: mount.MountPath, ReadOnly: mount.ReadOnly,
 		}))
 	}
-	_, err := audit.NewSessionAuditor(e.controller, e.method, options...).Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
+	_, err = audit.NewSessionAuditor(controller, e.method, options...).Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
 	return err
 }
 
@@ -269,8 +337,8 @@ func (e *engineRunner) Resume(ctx context.Context, j *job.Job, observe func(prov
 	_, err = audit.NewSessionAuditor(e.controller, e.method,
 		audit.WithSessionHooks(e.managedHooks(j, observe)),
 		audit.WithoutSessionTimeout(),
-		audit.WithSessionModel(j.Tier.OrDefault().String()),
-	).Resume(ctx, ref, j.Ref, filepath.Join(e.workDir, j.ID))
+		audit.WithSessionModel(modelOf(j)),
+	).Resume(e.actAs(ctx, j.Principal), ref, j.Ref, filepath.Join(e.workDir, j.ID))
 	return err
 }
 
@@ -282,7 +350,7 @@ func (e *engineRunner) Close(ctx context.Context, ref managed.SessionRef) error 
 	if ref.ID == "" {
 		return nil
 	}
-	_, err := e.controller.Cancel(ctx, ref, managed.Hooks{})
+	_, err := e.controller.Cancel(e.actAs(ctx, job.SessionOwner(ctx)), ref, managed.Hooks{})
 	return err
 }
 

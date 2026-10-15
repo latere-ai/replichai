@@ -64,6 +64,10 @@ type modelCache struct {
 func (rt *Router) listModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"tiers": rt.tiers(r.Context()),
+		// runtimes are what a session may run on, each with its Effort
+		// levels and, where a person may pick one, its models (048). They
+		// are the person's own, read as the person asking.
+		"runtimes": rt.runtimeViews(r.Context(), principal(r)),
 		// drafting reports whether this deployment can draft a description
 		// (039). The app asks so it can decide whether to offer the control,
 		// rather than offering one that answers 503. It is reported here with

@@ -322,6 +322,10 @@ type Deps struct {
 	// be priced (031). It is satisfied by provider.Provider. Nil lists the tiers
 	// with no prices, which is all an offline run with no backend can report.
 	Models credit.ModelResolver
+	// Runtimes are what a session may run on (048), the default first among
+	// them marked. Empty is a deployment with one runtime and no choice: a
+	// session start naming a runtime is refused.
+	Runtimes []RuntimeOffer
 	// Drafter writes a project's description when somebody asks for one (039).
 	// Nil means a deployment that does not draft: the route answers 503 and the
 	// app offers no control, so descriptions are typed by hand.
@@ -373,6 +377,7 @@ type Router struct {
 	// modelResolver turns a tier into the model a run would get, so the choice
 	// on the Start control can be priced (031). Nil lists the tiers unpriced.
 	modelResolver credit.ModelResolver
+	runtimes      []RuntimeOffer
 	drafter       Drafter
 	// drafting records which projects have a draft in flight on this server
 	// (039), so a burst of requests cannot each buy tokens against one balance.
@@ -407,7 +412,7 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, runtimes: d.Runtimes, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
 	rt.anonRegistry.ttl, rt.sitemapBody.ttl = publicTTL, publicTTL
 	rt.routes()
 	return rt

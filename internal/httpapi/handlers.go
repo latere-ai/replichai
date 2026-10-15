@@ -844,6 +844,12 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 		// wire, as every wire type here represents a domain enum. When omitted,
 		// the caller did not choose and the engine's default applies.
 		Tier string `json:"tier"`
+		// Runtime and Model are where the session runs and on what (048):
+		// an offered runtime, empty for the default, and one exact model
+		// as provider/id where the runtime offers a choice, empty for the
+		// tier.
+		Runtime string `json:"runtime"`
+		Model   string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
@@ -862,6 +868,34 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimSpace(body.PaperKey)
 	if key == "" {
 		writeError(w, http.StatusBadRequest, "missing_key")
+		return
+	}
+	// The runtime and model are checked here, before Enqueue, so no job row
+	// and no hold exist for a runtime this deployment does not offer or a
+	// model the person may not use there.
+	var runtimeName string
+	payer := job.PayerProject
+	model := strings.TrimSpace(body.Model)
+	if len(rt.runtimes) > 0 {
+		offer, ok := rt.offer(body.Runtime)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "bad_runtime")
+			return
+		}
+		if code := rt.chosenModel(r.Context(), offer, principal(r), model); code != "" {
+			status := http.StatusBadRequest
+			if code == "models_unavailable" {
+				status = http.StatusBadGateway
+			}
+			writeError(w, status, code)
+			return
+		}
+		runtimeName = offer.Name
+		if offer.PersonPays {
+			payer = job.PayerPerson
+		}
+	} else if strings.TrimSpace(body.Runtime) != "" || model != "" {
+		writeError(w, http.StatusBadRequest, "bad_runtime")
 		return
 	}
 	papers, err := rt.projects.ListPapers(r.Context(), proj.ID)
@@ -884,7 +918,7 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	j, err := rt.jobs.Enqueue(r.Context(), job.Submission{
 		Principal: principal(r), Ref: held.Ref, Kind: job.KindAudit, Project: proj.ID, PaperKey: held.Key,
-		Tier: tier,
+		Tier: tier, Runtime: runtimeName, Model: model, Payer: payer,
 	})
 	if err != nil {
 		rt.writeEnqueueError(w, err)
@@ -2862,7 +2896,7 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "not_ready")
 			return
 		}
-		evs, err := rt.live.Events(r.Context(), j.Status)
+		evs, err := rt.live.Events(job.WithSessionOwner(r.Context(), j.Principal), j.Status)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "live_transcript_unavailable")
 			return
@@ -2885,7 +2919,7 @@ func (rt *Router) getSessionTranscript(w http.ResponseWriter, r *http.Request) {
 		// A finished session with no committed repository, such as a server run
 		// that never published, still shows its trajectory through the backend
 		// session's events.
-		evs, err := rt.live.Events(r.Context(), j.Status)
+		evs, err := rt.live.Events(job.WithSessionOwner(r.Context(), j.Principal), j.Status)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "live_transcript_unavailable")
 			return
