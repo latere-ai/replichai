@@ -955,6 +955,9 @@ func collectArtifacts(dir string) ([]provider.Artifact, error) {
 // single timeout there would otherwise fail an audit's identity resolution.
 type httpFetcher struct {
 	timeout time.Duration
+	// maxBytes raises the size cap above fetch's default, for a paper's full
+	// text. Zero keeps the default, which is enough for a metadata record.
+	maxBytes int64
 	// private admits loopback and private addresses. Tests reaching an
 	// httptest server set it; nothing else does.
 	private bool
@@ -966,6 +969,9 @@ var fetchPolicy = retry.Policy{MaxAttempts: 3, Base: time.Second, Max: 2 * time.
 
 func (h httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	opts := []fetch.Option{fetch.WithTimeout(h.timeout)}
+	if h.maxBytes > 0 {
+		opts = append(opts, fetch.WithMaxBytes(h.maxBytes))
+	}
 	if h.private {
 		opts = append(opts, fetch.AllowPrivate())
 	}
