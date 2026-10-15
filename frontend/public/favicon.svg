@@ -1,9 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- The mark, two-tone like the in-app one: the outer ring — the study never
-       simulated — in vlag's crimson; the inner ring — the part a machine re-runs —
-       in vlag's azure. Drawn on transparency so it reads on a light or a dark
-       browser tab alike; the same six dashes and ring geometry `src/brand.tsx`
-       draws. -->
-  <circle cx="16" cy="16" r="12.33" fill="none" stroke="#a9373b" stroke-width="2.6" stroke-dasharray="8.0 4.92" />
-  <circle cx="16" cy="16" r="6.67" fill="none" stroke="#2369bd" stroke-width="3.5" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"><style>.mark-outer{stroke:#0d0d0d}.mark-inner{stroke:#2369bd}@media (prefers-color-scheme:dark){.mark-outer{stroke:#ececec}.mark-inner{stroke:#78b1ed}}</style><path class="mark-outer" d="M20.530 8.554A9.2 9.2 0 1 1 14.536 3.156" stroke-width="2.2"></path><circle class="mark-inner" cx="12" cy="12" r="4.6" stroke-width="2.4"></circle></svg>
