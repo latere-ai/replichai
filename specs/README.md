@@ -115,7 +115,7 @@ This has been run, which is the reason to believe any of it. A session driven by
 | `internal/runtimes` | the explicit runtime catalog and durable router — no registry, no `init` (041, 041c) |
 | `internal/audit` | the orchestrator: run an audit, optionally into a mounted repo |
 | `internal/fetch` | the one outbound fetcher for user-supplied URLs |
-| `internal/batch` | one project file: many papers, several runs each, in parallel and resumable (045h, 046) |
+| `internal/batch` | one project file: many papers, several runs each, one copy of each paper for all its runs, in parallel and resumable (045h, 046) |
 | `internal/cloud` | signing in from the terminal, and the API client a local session files its results through (045i, 045k) |
 | `internal/experiment` | run a reproduction's declared analysis on new data (007b); never imported by `audit` |
 | `internal/publish` | the manifest, the redistribution gate, naming, the filesystem forge |
