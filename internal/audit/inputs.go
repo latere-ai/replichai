@@ -76,6 +76,14 @@ func WithPaperCopy(copied paper.Copy) SessionOption {
 	return func(a *SessionAuditor) { a.paper = &copied }
 }
 
+// WithArtifacts hands the session the study's snapshots of what the paper's
+// authors released, read-only and outside the reproduction, so every run of a
+// study reproduces from the same materials (046). A runtime that cannot mount
+// an input read-only fails the session before it starts.
+func WithArtifacts(snapshots []paper.Artifact) SessionOption {
+	return func(a *SessionAuditor) { a.artifacts = slices.Clone(snapshots) }
+}
+
 // network is the session's egress: the profile's policy where one is named,
 // refused if the runtime cannot enforce it, and otherwise whatever the runtime
 // can enforce.
@@ -132,4 +140,76 @@ func paperProtocol(path string) string {
 ## The paper you were given
 
 The system fetched this paper's full text once for this study and gave every run of it the same copy. It is at %[1]s, and it is read-only. That file is the paper: read all of it, and do not fetch the paper's text from anywhere else, because a run that reads another version may compare its results against different reported values. In SOURCES.md, say that the text you audited is the copy you were given. The copy is not part of the reproduction: do not copy it into the repository. You still fetch the paper's landing pages, its supplementary material and anything else you need when you hunt for artifacts.`, path)
+}
+
+// artifactsDir is where a session's artifact snapshots sit under its inputs.
+const artifactsDir = "artifacts"
+
+// handedArtifact is one snapshot as the session is given it: the snapshot and
+// the path the session reads it at.
+type handedArtifact struct {
+	paper.Artifact
+	path string
+}
+
+// artifactInputs are the resources that carry the study's artifact snapshots,
+// and the snapshots with the paths the session reads them at. Two snapshots
+// with one name are told apart by their place in the list, so neither is
+// written over the other.
+func (a *SessionAuditor) artifactInputs(capabilities managed.Capabilities) ([]managed.Resource, []handedArtifact, error) {
+	if capabilities.InputDir == "" {
+		return nil, nil, fmt.Errorf("%w: this runtime cannot hand a run read-only snapshots of what the authors released", managed.ErrUnsupported)
+	}
+	taken := map[string]bool{}
+	resources := make([]managed.Resource, 0, len(a.artifacts))
+	handed := make([]handedArtifact, 0, len(a.artifacts))
+	for index, snapshot := range a.artifacts {
+		name := snapshot.Name
+		if name == "" || taken[name] {
+			name = fmt.Sprintf("%d-%s", index+1, cmpOr(snapshot.Name, "artifact"))
+		}
+		taken[name] = true
+		relative := artifactsDir + "/" + name
+		resources = append(resources, managed.Resource{Kind: managed.ResourceInput, Input: &managed.InputResource{
+			Path: relative, MediaType: "application/octet-stream", Content: snapshot.Content, SHA256: snapshot.SHA256,
+		}})
+		handed = append(handed, handedArtifact{Artifact: snapshot, path: filepath.Join(capabilities.InputDir, filepath.FromSlash(relative))})
+	}
+	return resources, handed, nil
+}
+
+func cmpOr(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+// artifactsProtocol tells the session which of the authors' released materials
+// it was handed, and how to use them. They are the materials the study
+// reproduces the paper from; the hunt for anything else the authors released
+// goes on as the method describes.
+func artifactsProtocol(handed []handedArtifact) string {
+	var b strings.Builder
+	b.WriteString(`
+
+## The released materials you were given
+
+The study snapshotted these materials the authors released, once, and gave every run of it the same snapshots, read-only:
+`)
+	for _, artifact := range handed {
+		switch artifact.Kind {
+		case paper.ArtifactGit:
+			name := strings.TrimSuffix(filepath.Base(artifact.path), filepath.Ext(artifact.path))
+			fmt.Fprintf(&b, "\n- %s: the repository, as a git bundle at %s, with its default branch at commit %s. "+
+				"Clone it with `git clone %s \"$TMPDIR/%s\"` and work from the clone.",
+				artifact.Source, artifact.path, artifact.Commit, artifact.path, name)
+		default:
+			fmt.Fprintf(&b, "\n- %s: the file as it was downloaded, at %s.", artifact.Source, artifact.path)
+		}
+	}
+	b.WriteString(`
+
+Reproduce from these snapshots rather than fetching the same materials again, so every run of the study works from the same ones. Record each in the "released" list of verdict.json under its source address. Keep anything you unpack from them outside the repository, as you would any third-party file. You may still look for anything else the authors released.`)
+	return b.String()
 }
