@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/latere-ai/replichai/blob/main/SECURITY.md
+    about: Report it privately to security@latere.ai, never as an issue.
+  - name: A published verdict about your own paper
+    url: mailto:contact@latere.ai
+    about: If you are an author of a paper a published reproduction audits and think it is wrong, write to us rather than opening a public issue.
+  - name: Running audits and reading verdicts
+    url: https://github.com/latere-ai/replichai/blob/main/docs/README.md
+    about: How an audit works, running it on your own machine, self-hosting, and the command reference.
