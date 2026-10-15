@@ -5,7 +5,7 @@ status: designed
 
 # 046 — One run is one draw
 
-**Status:** runs per paper, schema 2 of `verdict.json` and the run record built; the rest designed.
+**Status:** runs per paper, schema 2 of `verdict.json`, the run record, the first graded attempt kept, the same paper copy and network profile for every run of a study, and the schema check inside the local grading loop built; artifact snapshots, system-decided matches, blocker causes and the study view designed.
 
 **Scope:** making N runs of one paper a unit the platform can run, record and report on; treating the environment as something every run records and a study varies on purpose; and reporting what a set of runs shows rather than presenting one run's verdict as the paper's.
 
@@ -29,7 +29,7 @@ The environment moves the result as much as anything the pilot measured. A platf
 
 `runs: N` on the file or on one paper; a paper listed twice is two runs. Each run is its own session, repository and output directory, and resume matches a run by paper and run number. Before this, the batch keyed everything by the paper reference, so a resumed study silently dropped its failed and pending repeats and two concurrent runs could share a repository.
 
-Not yet carried through: `replichai push` files each run as its own session under the paper, which is right, but the record it files has no run number, so the app cannot say which run of a study a session was. The manifest does say (decision 3); the app's own record does not yet.
+Not yet carried through: `replichai push` files each run as its own session under the paper, which is right, but the record it files has no run number, so the app cannot say which run of a study a session was. The manifest does say (decision 3); the app's own record does not yet. Carrying it needs a field in the app's session store, its migration, and a place on the session screen to show it, which is more than the push itself.
 
 ### 2. Schema 2 of `verdict.json` (built)
 
@@ -37,7 +37,7 @@ A claim carries a list of mismatches, each with the paper's value and the run's 
 
 ### 3. Every run records what it ran under, in the manifest (built)
 
-`replication.json` carries a `run` block. It says where the run sits (the project, and which run of the paper it was, of how many), what it ran on (the runtime and session, the harness and its version, the model the runtime resolved and the one that was asked for, the sandbox, the network policy with the size and a digest of its allowlist), what it was given (a prompt digest over the exact instructions, task and rubric, and the build of replichai that ran it), and how it went (start and finish, the terminal state and its reason, the grading rounds, the tokens and the cost the harness reported). `publish.RunOf` builds it from the session's status for the CLI and the server alike. A session on the operator's machine adds the harness, the sandbox and the rounds from its own session directory, so they are right even when the run committed nothing.
+`replication.json` carries a `run` block. It says where the run sits (the project, and which run of the paper it was, of how many), what it ran on (the runtime and session, the harness and its version, the model the runtime resolved and the one that was asked for, the sandbox, the network policy with the size and a digest of its allowlist), what it was given (a prompt digest over the exact instructions, task and rubric, the build of replichai that ran it, and, for a run of a study, the network profile and the digest of the paper copy, decision 5), and how it went (start and finish, the terminal state and its reason, the grading rounds, the tokens and the cost the harness reported). `publish.RunOf` builds it from the session's status for the CLI and the server alike. A session on the operator's machine adds the harness, the sandbox and the rounds from its own session directory, so they are right even when the run committed nothing.
 
 A manifest is written for every run that was given a repository, including one that failed before its session existed, whose record says `failed` for `not_started`. The attempt count of a study is then a fact on record rather than an inference from timestamps.
 
@@ -47,20 +47,30 @@ A run is finalized more than once, and each finalize knows a different amount, s
 
 Four things the record does not carry, each for a reason:
 
-- **The paper copy and the artifact snapshot.** The system does not hand the run its paper yet (decision 5), and a hash of whatever the agent fetched would misstate who fixed the input.
+- **The artifact snapshot, and the paper copy of a run outside a study.** The system snapshots no released artifacts yet (decision 5), and a single `replichai audit` or a session the server starts is still not handed its paper. A hash of whatever the agent fetched would misstate who fixed the input, so those runs record none.
 - **An error message.** The reason is one of a closed list. A manifest may be made public, and nothing has scanned a runtime's error text for a path or a credential.
 - **The prompt digest of a resumed session.** The specification was fixed by the process that started it. Computing one from the method as it is now would describe a session that may have been given something else, so it is left empty.
 - **A study identifier.** The project and the run number place a run well enough for one project file. A study that spans several needs an identifier of its own, which belongs with the study view (decision 9). Until then `project` holds two kinds of value: the name a project file gives, for a run on the operator's machine, and the app's project id, for a run the server started.
 
 Still short: a hosted runtime reports no harness version, sandbox or grading rounds, so its record has the model, the times and the ending and little else. A session that started and then never reached the step that finalizes it leaves no manifest, though its reference is kept and `replichai finish` writes one. And the record `replichai push` files with the app has no run number yet.
 
-### 4. The first graded attempt is kept (designed)
+### 4. The first graded attempt is kept (built)
 
 Each grading round snapshots `verdict.json` under `grade/`, and a study may run with grading but no revision. Analysis reads round 0: what the run produced before the rubric pushed it. Revisions still happen for a reproduction a person will read; they are recorded, not hidden.
 
-### 5. Every run of a study gets the same inputs (designed)
+As built, on the local runtime. When a worker or a revision stage ends, the runtime copies the findings file the session's evaluation names to `session/rounds/findings-<n>.json` and records what it found when it checked the file in `checks-<n>.json`: whether the file was there, its digest, and the problems. Round 0 is the worker's. The copies are kept under `session/`, which no stage may write, rather than under `grade/` on disk, because the judge writes `grade/` and could otherwise edit the copy it was given to grade. A published run commits them beside the judge's verdicts as `grade/findings-<n>.json` and `grade/checks-<n>.json`, so round 0's findings are in the repository of every run that committed anything. The count of grading rounds still reads the judge's verdicts alone.
+
+`--max-revisions 0` grades a run once and never revises it; before, an explicit 0 silently became the default of three. A session spec may now carry zero revisions; only a negative budget is refused. A run graded `needs_revision` under a budget of zero ends failed, with the exhausted grade and `evaluation_failed`, as any rejected evaluation does, and the batch counts it as failed. Its findings are published all the same, and analysis reads round 0 whatever the grade. The hosted runtime refuses a graded session with no revision, because its vendor's grader takes no budget of zero and would revise three times anyway.
+
+### 5. Every run of a study gets the same inputs (partly built)
 
 The system fetches the paper once per study, hashes it, and mounts it read-only. Released artifacts are snapshotted the same way. The network policy is a named profile, not whatever the harness allows. A run that still cannot reach something records `not_fetched`, which is a fact about the run.
+
+Built for `replichai run`, the paper and the profile; the artifact snapshot is not.
+
+- **The paper.** Before any run starts, every paper of the project file gets one copy: arXiv's PDF for an arXiv reference, the address itself where it serves a PDF, the PDF the landing page of the address or the DOI declares in `citation_pdf_url`, or an open-access copy OpenAlex lists. Only a PDF is accepted, because a sign-in page handed to every run would misstate what each read. A paper may name its copy with `file:` instead, which is how a paper whose publisher refuses automated clients is run at all. A paper with no copy stops the study before anything runs, naming the paper. The copies are kept in `papers/` beside the project file under their digests and listed in `papers.json`; a resumed study hands its remaining runs the bytes its first runs read, and refuses to start if a kept copy or a named file has changed. Each run gets the copy as an input, a new kind of session resource: a file placed under the runtime's input directory, outside the workspace, and mounted read-only into the worker, the revision and the judge, so it can be neither edited nor committed. The instructions name its path, and the method's first step reads a copy the run was given in place of fetching one, which moved the method digest. The run record cites the copy as `paper_digest`.
+- **The profile.** Two profiles: `artifacts`, the allowlist of the hosts where papers and their artifacts live plus the model's endpoint, and `open`. A project file names one for the file or for a paper, and `--network` names one for a file that names none; the default is `artifacts`, the one both local sandboxes enforce. A runtime that cannot enforce the profile refuses the run instead of downgrading it. The run record names it as `network_profile`, beside the policy, the allowlist's size and its digest.
+- **Where it does not reach.** The hosted runtime declares no input directory and no allowlist, so a study cannot run there: its runs are refused before a session exists. A single `replichai audit` and a session the server starts still let the agent fetch the paper, under whatever egress the runtime can enforce. Released artifacts are not snapshotted; that half of this decision carries the construct's "given the released materials" and is the next piece.
 
 ### 6. The system decides whether a number matched (designed)
 
@@ -70,9 +80,11 @@ A study's claims are frozen per paper by two people, with their agreement report
 
 A blocked claim records one of: environment (refused fetch, dependency, time or compute limit), paper (unspecified, contradictory), artifacts (missing, dead, broken), or agent. Environment-caused failures can then be separated from paper-caused ones, which is the distinction the pilot could not make.
 
-### 8. Schema problems reach the revision deterministically (designed)
+### 8. Schema problems reach the revision deterministically (built)
 
 The local runtime runs `verdict.Validate` after the worker stage and gives the problems to the judge and to the revision, so a file the system cannot read is never passed by a model's reading of the rubric. The hosted runtime grades on the vendor's side and cannot take this check inside its loop; it keeps the finalize-time check.
+
+As built. A session's evaluation names its findings file, and a runtime declares whether it checks one each round; the audit names `verdict.json` only where the runtime declares it, and a runtime that does not refuses a session that names one rather than grading without the check. The check is the one decision 4 records: after every worker-side stage, before the judge starts. A missing file is a problem, not a skipped round. The judge is told what the system found, and a revision is given the same list beside the grader's reasoning. A round with problems never passes: a judge that passes it anyway is overruled, the verdict says why, and the run is revised, or fails once it has no revision left. A session that names no findings file, such as an experiment, is graded as before.
 
 ### 9. Report a study, not a run (designed)
 
@@ -90,8 +102,8 @@ For the platform, decisions 5 and 6 carry this measure: the released materials a
 
 1. A project file with `runs: 3` for one paper produces three sessions, three repositories and three output directories, and a resume after one failure runs exactly the failed and pending runs. (Built.)
 2. Every pilot mismatch shape and `not_fetched` validate under schema 2; one malformed row is a problem at that row and the rest of the file survives; schema 1 files still validate. (Built. Of the 29 findings files the pilot runs published, 27 validate and all 214 mismatches are read; the other two record a search as found with no address, which is a rule the files break.)
-3. A manifest names system, model, network profile, prompt digest, project, run number, terminal reason and grading rounds, and one exists for a run that never started. (Built, for a session on the operator's machine; a hosted session's record is sparser. The paper copy hash waits for decision 5.)
-4. A study can run with grading and zero revisions, and round 0's findings are on record for every run.
+3. A manifest names system, model, network profile, prompt digest, project, run number, terminal reason and grading rounds, and one exists for a run that never started. (Built, for a session on the operator's machine; a hosted session's record is sparser. A run of a study also names its network profile and the digest of the paper copy it was handed.)
+4. A study can run with grading and zero revisions, and round 0's findings are on record for every run. (Built on the local runtime: `--max-revisions 0`, and `grade/findings-0.json` in the repository of every run that committed anything. The hosted runtime refuses zero revisions and keeps no rounds.)
 5. The pilot's analysis script in replichai-experiments reproduces its report from manifests alone, with no transcript reading. (Partly: it reads the agent system and how a run ended from the run record, and falls back to `environment.json` for runs finalized before the record.)
 6. A study screen shows per-claim reproduction counts per profile, and a session verdict says it is one run.
 
