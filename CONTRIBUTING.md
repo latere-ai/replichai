@@ -5,6 +5,47 @@ pieces fit together, and why each layer is split where it is, is in
 [`docs/architecture.md`](docs/architecture.md); the design records are in
 [`specs/`](specs/README.md).
 
+## Getting set up
+
+You need Go 1.27 or newer, [bun](https://bun.sh) for the frontend, and Docker
+or Podman for the database tests and the local stack. Nothing else: no
+account, no API key, and no access to anything Latere runs.
+
+```bash
+git clone https://github.com/latere-ai/replichai
+cd replichai
+make hooks       # the pre-commit and pre-push checks
+make check       # every gate CI runs
+make up          # Postgres + the server on http://localhost:8080, on the free memory runtime
+```
+
+A real audit needs a model: an Anthropic API key for the `anthropic-managed`
+runtime, or a coding agent you are already logged in to for `--runtime
+local`. [`docs/local-runs.md`](docs/local-runs.md) covers the second.
+
+## Sending a change
+
+Fork the repository, work on a branch, and open a pull request. Keep one
+logical change per commit, stage the files explicitly, and write the subject
+as `scope: what changed`, in lowercase, for whoever reads the log. Maintainers
+push to `main` directly; CI runs the same gate on every push and pull
+request, and a `v*` tag cuts a release. A change people will notice gets an
+entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), written for whoever
+runs an audit or operates a deployment.
+
+If you are planning something large, open an issue first.
+
+## Specs first
+
+A feature starts as a spec in [`specs/`](specs/README.md), with acceptance
+criteria that are testable sentences. The implementation follows the spec, and
+a divergence is recorded in the spec's Outcome section rather than left in the
+code. Names in a spec (commands, flags, routes, configuration variables, JSON
+fields) are the names the code uses.
+
+Small fixes do not need a spec. A change to the CLI, the HTTP API, a
+configuration variable, a file an audit writes, or the method does.
+
 ## Where things are
 
 ```
@@ -248,3 +289,7 @@ records, so any edit to them, a typo fix included, makes later audits
 incomparable with earlier ones. `experiment.md` is kept outside the digest, so
 editing the experiment doctrine cannot change what an audit is comparable
 against.
+
+## Reporting a vulnerability
+
+Do not open an issue. [`SECURITY.md`](SECURITY.md) says where to send it.
