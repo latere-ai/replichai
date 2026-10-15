@@ -84,7 +84,7 @@ internal/httpapi/    the HTTP surface: submit, stream, read, publish, pay (payme
                      holds the Stripe checkout and webhook routes)
 internal/seo/        the head the server writes, the sitemap, and the addresses Go knows
 internal/spa/        embeds and serves the built frontend
-internal/doccheck/   tests that example.env, README.md, and docs/architecture.md match the code
+internal/doccheck/   tests that example.env, docs/cli.md, and docs/architecture.md match the code
 internal/oteltest/   a recording tracer for tests that check the spans instrumentation produces
 frontend/            the researcher UI: bun + React + Vite
 method/              the audit itself: instructions, rubric, task template (data, not code)
