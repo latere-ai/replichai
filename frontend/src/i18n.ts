@@ -109,6 +109,8 @@ const en = {
     lpShipsSrc: 'A runnable best-effort implementation of the inner loop.',
     lpShipsUnverified: 'Everything that could not be confirmed, each with what blocked it.',
     lpShipsSources: 'The paper’s key and every artifact search performed, with its result.',
+    lpShipsVerdictJson: 'The verdict as data: each component, its outcome and its evidence, for a program to read.',
+    lpShipsInstrument: 'The study as data: its protocol, the entry point of the analysis in src/, and whether a machine could serve the study.',
     // The walkthrough's plates: the artifact each step leaves, drawn as the app
     // draws it. The paper key is deliberately unresolvable; see lpDemoExample.
     lpPlateKey: 'Paper key',
@@ -126,7 +128,6 @@ const en = {
     lpPlateCommit2: 'record unstated seed and tolerance',
     lpPlateCommit3: 'add UNVERIFIED.md with 3 blockers',
     lpPlateManifest: 'Manifest',
-    lpPlateInnerLoop: 'inner loop',
     lpPlateSigned: 'Signed by a named researcher. Transcript committed next to the work.',
     // The verdict panel. It is the strongest thing this product has to show and
     // it is also a fabrication, so it says so: an Example marker, and a paper key
@@ -137,8 +138,6 @@ const en = {
     lpDemoExample: 'Example',
     lpDemoPublished: 'Published',
     lpDemoOutcome: 'Partly reproduces',
-    lpDemoRate: '72%',
-    lpDemoTally: '5 verified · 2 partial · 2 blocked, of 9',
     lpDemoSummary:
       'The inner loop reproduces on the released code, with one numeric mismatch in Table 3 that the run recorded and did not adjust. The outer loop is out of scope: the effect rests on 84 participants, and the run does not simulate them.',
     lpDemoColClaim: 'Claim',
@@ -203,10 +202,14 @@ const en = {
     figPause: 'Pause the figure',
     figPlay: 'Play the figure',
     tableLabel: 'Table {n}.',
-    lpShipsTable: 'The five files every session commits.',
+    lpShipsTable: 'What every session commits to its repository.',
     lpShipsColFile: 'File',
     lpShipsColAnswers: 'What it answers',
     lpDemoTable: 'A verdict as the app shows it. The paper and its numbers are invented.',
+    // The rate is derived from the rows and set as the table's footnote: the
+    // product never leads with one number a reader would have to trust.
+    lpDemoFootnote: 'Derived from all nine components, three of them shown above: 5 verified, 2 partial, 2 blocked (72%).',
+    lpPlateBlocked: 'Blocked',
     lpNavRegistry: 'Registry',
     signInTitle: 'Sign in',
     signInBody: 'Sign in to submit a paper, watch the audit run, and sign the verdict.',
