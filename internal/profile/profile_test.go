@@ -47,7 +47,7 @@ func TestRedactEmail(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		// A one- or two-character local part is masked whole: showing the first
 		// character of "hi" would reveal half the address.
-		{"hi@changkun.de", "**@changkun.de"},
+		{"hi@example.net", "**@example.net"},
 		{"ada.lovelace@example.org", "a**********e@example.org"},
 		{"  ada@example.org  ", "a*a@example.org"},
 		{"ab@example.org", "**@example.org"},

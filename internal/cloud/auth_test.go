@@ -57,7 +57,7 @@ func (p *provider) serve(t *testing.T) *httptest.Server {
 				return
 			}
 			writeJSON(w, map[string]any{
-				"access_token": jwt("user-1", "changkun@latere.ai"), "token_type": "Bearer",
+				"access_token": jwt("user-1", "ada@example.org"), "token_type": "Bearer",
 				"refresh_token": p.refreshNew, "expires_in": 3600,
 			})
 			return
@@ -68,7 +68,7 @@ func (p *provider) serve(t *testing.T) *httptest.Server {
 			return
 		}
 		writeJSON(w, map[string]any{
-			"access_token": jwt("user-1", "changkun@latere.ai"), "token_type": "Bearer",
+			"access_token": jwt("user-1", "ada@example.org"), "token_type": "Bearer",
 			"refresh_token": "refresh-1", "expires_in": 3600,
 		})
 	})
@@ -112,7 +112,7 @@ func TestLoginWritesAPrivateCredential(t *testing.T) {
 	if prompt.UserCode != "WXYZ-1234" || prompt.VerificationURI == "" {
 		t.Fatalf("prompt = %+v", prompt)
 	}
-	if token.Subject != "user-1" || token.Email != "changkun@latere.ai" {
+	if token.Subject != "user-1" || token.Email != "ada@example.org" {
 		t.Fatalf("token = %+v", token)
 	}
 	info, err := os.Stat(s.Store.Path())
