@@ -35,11 +35,17 @@ type Entry struct {
 	// DOI is an alternative spelling of Paper, so a list of DOIs reads
 	// naturally in the file.
 	DOI string `yaml:"doi"`
-	// Model, Harness and Sandbox override the file's defaults for this
-	// paper alone.
+	// Model, Harness, Sandbox and Network override the file's defaults for
+	// this paper alone. Network names a network profile.
 	Model   string `yaml:"model"`
 	Harness string `yaml:"harness"`
 	Sandbox string `yaml:"sandbox"`
+	Network string `yaml:"network"`
+	// File is a copy of the paper the operator supplies, a path relative to
+	// the project file, which every run of the paper is handed in place of a
+	// copy the system fetches. It is how a paper whose publisher refuses
+	// automated clients is run at all.
+	File string `yaml:"file"`
 	// Runs is how many times the paper is reproduced, each run in its own
 	// session with its own repository, which is what a study measuring how
 	// much reproductions of one paper vary asks for. Zero means the file's
@@ -86,6 +92,9 @@ type File struct {
 	Model   string `yaml:"model"`
 	Harness string `yaml:"harness"`
 	Sandbox string `yaml:"sandbox"`
+	// Network names the network profile every run is given unless its paper
+	// names another. Empty leaves the choice to the command that runs it.
+	Network string `yaml:"network"`
 	// Runs is how many times each paper is reproduced unless the paper says
 	// otherwise. Zero means once.
 	Runs    int           `yaml:"runs"`
@@ -138,6 +147,9 @@ func (f File) Entries() ([]Resolved, error) {
 		}
 		if entry.Sandbox == "" {
 			entry.Sandbox = f.Sandbox
+		}
+		if entry.Network == "" {
+			entry.Network = f.Network
 		}
 		runs := cmp.Or(entry.Runs, f.Runs, 1)
 		for range runs {
