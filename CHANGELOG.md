@@ -12,6 +12,13 @@ committed. The commit log already holds that.
 
 ### Added
 
+- A command reference, `docs/cli.md`, covering every command and flag, and a
+  guide to running your own deployment, `docs/self-hosting.md`, covering
+  Postgres, any OpenID Connect issuer, publishing to your own GitHub
+  organization, and the optional payments and mail.
+- A security policy, `SECURITY.md`, saying how to report a vulnerability
+  privately and which controls the tests hold to their word, with a code of
+  conduct, a citation file, and issue and pull request templates.
 - A project file can run one paper more than once. `runs: 3` on the file or on
   one paper starts three sessions of it, each with its own repository and its
   own output directory (`<paper>-run-2`, and so on), and listing a paper twice
@@ -80,6 +87,9 @@ committed. The commit log already holds that.
 
 ### Fixed
 
+- A run that wrote no `instrument.json` now says the rubric's Instrument
+  criterion requires one. It used to name criterion 7, which is Findings as
+  data, and to say the run failed when the grader had not said so.
 - `--max-revisions 0` grades a run once and never revises it. It used to be
   read as the default of three. A negative value is refused, and the hosted
   runtime, whose grader cannot be told zero, refuses a run that asks for none.
