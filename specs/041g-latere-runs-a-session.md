@@ -7,7 +7,7 @@ status: designed
 
 > **Rewritten 2026-10-15** against the platform as it runs today (Topos v0.41.0 behind `api.latere.ai/v1/agents`). The first design, of 2026-09, embedded Topos's agent loop in ReplicHAI's own process and composed Lux and Cella itself, and was blocked until that embedded loop could survive a crash. The platform now runs the loop as a hosted service, so the adapter is a client of it, the blocking question is answered by the platform, and most of the first design's machinery is gone. Where this text and the first design disagree, this text holds.
 
-**Status:** designed. The command-line half can be built and run now. The app's half waits on two Auth changes ([048](048-the-runtime-is-a-choice.md), Price and charge).
+**Status:** designed. The command-line half can be built and run now. The app's half waits on Auth (048, Price and charge). A study's runs, which are handed read-only inputs (046), wait on Topos delivering a read-only input (Topos spec 075); until it is built the runtime refuses them, and a study that fixes its runs' network waits on platformd letting an agent narrow it (platform spec 210).
 
 **Scope:** `latere`, a managed runtime that runs one ReplicHAI session as a hosted Topos session on the Latere platform, on any model the platform serves, charged to the person who starts it. It satisfies `managed.Runtime` and passes the shared conformance suite. Choosing it is [048](048-the-runtime-is-a-choice.md).
 
@@ -19,7 +19,7 @@ The Latere platform is a composition: Topos runs the agent and keeps the session
 
 That one choice settles what the first design could not:
 
-- **Durability is the platform's.** A hosted session's loop runs on the platform's runners, which hold it by a lease and fence their writes; a runner that dies hands the session to another within a minute, and the session resumes from its log. ReplicHAI keeps only the session's id, and every later call (status, events, interrupt, end) is keyed by it, so a ReplicHAI process can restart at any point and pick the session up.
+- **Durability is the platform's.** A hosted session's loop runs on the platform's runners, which hold it by a lease and fence their writes; a runner that dies hands the session to another within a minute, and the session resumes from its log. ReplicHAI keeps only the session's id, and every later call (status, events, interrupt, end) is keyed by it, so a ReplicHAI process can restart at any point and pick the session up. The first design's gate (a crash in the middle of a model call or a command must not repeat it) has moved to the platform rather than closed: Topos recovers from a lost runner and closes an interrupted tool call as of unknown effect, and its own test of a kill at every commit point is not built yet.
 - **Inference and metering are the platform's.** Every model call is recorded on the session with the model that served it, its token counts and its cost.
 - **The sandbox and its network are the platform's.** Topos opens a machine at the agent's first tool call and closes it when idle.
 
@@ -42,7 +42,15 @@ SessionSpec ─▶ latere adapter ─▶ api.latere.ai/v1/agents
 
 `SessionRef.ID` is the Topos session id. The locator records the grading stage and round and the event sequence each stage began at, and nothing else: no token, no task text. Every advance of the stage is a new locator revision, persisted by the controller's checkpoint before the adapter's next call (041b).
 
-**The worker.** The adapter applies one agent in the person's own context, named from a digest of its manifest (`replichai-<digest>`), so the same method and runtime configuration reuse one agent and a changed one gets its own. Its manifest carries the session's instructions, the built-in tools a reproduction needs (read, write, edit, bash, grep, glob, web_fetch, todo), the grader below as a subagent, approvals that never wait for a person, the platform's base image, and a turn timeout long enough for a reproduction. The session is created with `attended: false`, so a question the agent asks is answered at once and never stops the run.
+**The worker.** The adapter applies one agent in the person's own context, named from a digest of its manifest (`replichai-<digest>`), so the same method and runtime configuration reuse one agent and a changed one gets its own. Its manifest carries:
+
+- the session's instructions;
+- the built-in tools a reproduction needs (read, write, edit, bash, grep, glob, web_fetch, todo), the `record_verdict` client tool, and the grader below as its one subagent. A thread holds only the tools its parent holds, so the worker must hold `record_verdict` for the grader to have it; the adapter, not the tool list, is what keeps the worker from using it;
+- the Cella permissions a machine needs (`cella:sandbox.*`, `cella:secret.*`, `cella:environment.use`), without which the first tool call is refused;
+- approvals in `progressive` mode with every built-in tool always allowed, because a session nobody attends would otherwise stop on a confirmation forever;
+- the platform's base image, and a turn timeout long enough for a reproduction, since the default two hours ends a long turn.
+
+The session is created with `attended: false`, so a question the agent asks is answered at once and never stops the run. Each of these is checked against the live platform before the adapter relies on it.
 
 **The model.** A session is created without a message, its model is set with one `PATCH` to the chosen Effort level (`tier/quick`, `tier/thorough`, `tier/sustained`) or to the specific model the person picked, and only then is the task sent. The platform refuses a model the person may not use, with its own reason, before any model call.
 
@@ -73,10 +81,10 @@ Each is either refused before anything remote is created, as 041a requires, or i
 
 | The specification asks for | What the platform does today | The adapter |
 |---|---|---|
-| A network policy (`none`, an allowlist, `open`) per session | The network is the person's own account preference (listed hosts, package managers, ask, or open), for every session they start; a session cannot choose another | Declares the one mode the person's preference gives, read before any remote write, and refuses any other. A per-session network that narrows the preference is a platform change (Topos and platformd) |
+| A network policy (`none`, an allowlist, `open`) per session | The network is the person's own account preference (listed hosts, package managers, ask, or open), for every session they start; a session cannot choose another, and under an allowlist the platform joins its own hosts to any the agent names | Declares `open` when the person's preference is open, read before any remote write, and nothing otherwise, so an audit is refused with a message naming the preference. An allowlist is not offered: the platform's joined list is wider than the one asked for, and a study must record the network its runs actually had. A session whose agent narrows the preference is platform spec 210 |
 | Packages | No package or bootstrap field; the base image carries Python with the document and data libraries | Accepts `pip` packages the configured image already provides and refuses any other |
 | Bootstrap commands | Not built (manifest hooks are validated and never run) | Refuses |
-| A read-only input outside the workspace (`InputResource`) | Attachments are written into the working directory, where the agent can change them | Declares no `InputDir`, so a study's fixed inputs are refused. Read-only inputs are a platform change (Topos) |
+| A read-only input outside the workspace (`InputResource`) | Attachments are written into the working directory, where the agent can change them | Declares no `InputDir`, so a study's fixed inputs are refused. Read-only inputs are Topos spec 075 |
 | A repository the agent pushes to with a ReplicHAI credential | No client-supplied secret (named secrets are not built); GitHub only through the person's own GitHub connection, on `agents/*` branches | Declares no repository modes. The host publishes the outputs to GitHub afterwards, as it does for the local runtime ([045g](045g-the-host-pushes.md)) |
 
 ## Outputs and the host's publish
@@ -87,7 +95,7 @@ No forge credential ever reaches the platform. The host (the command line, or th
 
 ## Usage and cost
 
-Each `model.request` event carries the model that served the call, its token counts and its cost in micro-USD. The adapter normalizes each into an event usage delta: input excludes cached input on this wire, so fresh input is `input_tokens`, cached input `cache_read_input_tokens`, cache write `cache_write_input_tokens`, output `output_tokens`, and reasoning tokens a detail of output. Cost is carried as the extra meter `cost.usd_micro`. Status usage is the cumulative sum, which is monotonic by construction; `Status.Model` is the model of the first call.
+Each `model.request` event carries the model that served the call, its token counts and its cost in micro-USD. The adapter normalizes each into an event usage delta: input excludes cached input on this wire, so fresh input is `input_tokens`, cached input `cache_read_input_tokens`, cache write `cache_write_input_tokens`, output `output_tokens`, and reasoning tokens a detail of output. Cost is carried as the extra meter `platform.cost_usd_micro`, which no rate card prices: a Latere job is paid by the person (048), its settlement never calls the card, and the job records the meter as the session's reported cost. Status usage is the cumulative sum, which is monotonic by construction; `Status.Model` is the model of the first call.
 
 The platform charges the person's wallet for every call (048). ReplicHAI does not price the session; it records what the platform reported.
 
