@@ -66,6 +66,12 @@ The judge cannot edit what it grades: the workspace is mounted read-only, and
 the only place it may write is a directory the worker never sees. That is a
 filesystem permission, not an instruction the model is asked to follow.
 
+Before the judge starts, replichai itself reads the run's `verdict.json`
+against its schema. The judge is told what it found, and a revision is given the
+same list. A round whose findings replichai cannot read does not pass, whatever
+the judge wrote: the run is revised, or fails once it has no revision left.
+With `--max-revisions 0` a run is graded once and never revised.
+
 ## Where everything lands
 
 Each session gets a directory under `~/.replichai/sessions/<id>/`:
@@ -75,8 +81,14 @@ Each session gets a directory under `~/.replichai/sessions/<id>/`:
 | `workspace/` | your reproduction, and a git repository. This is what gets published |
 | `tmp/` | downloads: the paper PDF, datasets, anything third-party. `$TMPDIR` points here, and so does the agent's own scratch space, so nothing either of them creates lands in the repository |
 | `venv/` | the language environment the bootstrap made. The agent is told to use it, and in practice sometimes installs a second one inside `workspace/` anyway. Either way a dependency tree is never committed, never harvested into your output directory, and refused at publication |
+| `inputs/` | what the run was handed to read, such as the study's copy of the paper. Every stage reads it and none can write it, and it is never part of the repository |
 | `grade/` | the judge's verdict, one file per grading round |
 | `session/` | the transcript, the status, and what the run ran on. Nothing inside the sandbox can write here |
+
+`session/rounds/` keeps, for every grading round, `verdict.json` as the round
+left it and what replichai found when it read it. When the run is published they
+are committed beside the grades, as `grade/findings-<n>.json` and
+`grade/checks-<n>.json`. Round 0 is what the run produced before any revision.
 
 This split is what keeps the output clean. The agent works in `workspace/`, so
 nothing else it needs can end up in the repository; the transcript is written
@@ -183,6 +195,20 @@ the hunt records it as *not fetched* rather than as *not released*. A container
 run has unrestricted egress and no such bound, which is one more reason the two
 drivers are not interchangeable.
 
+`replichai run` does not leave this to the sandbox. Every run of a project is
+given a named **network profile**, so two runs of one study reach the same
+places:
+
+| Profile | Reaches |
+|---|---|
+| `artifacts` (the default) | the declared list above, and your model's endpoint |
+| `open` | anywhere. Only `--sandbox container` can enforce it |
+
+Name it with `network:` in the project file, for the whole file or for one
+paper, or with `--network` for a project file that names none. A sandbox that
+cannot enforce the profile refuses the run instead of running it under another.
+Each run's `replication.json` names its profile in `run.network_profile`.
+
 ## Choosing a model
 
 Write `~/.config/replichai/models.yaml`. With no file, the default is your
@@ -271,6 +297,7 @@ replichai run papers.yaml --parallel 4 --publish
 project: chi-2026-audit
 model: best
 harness: claude-code
+network: artifacts
 publish:
   owner: open-hai
 papers:
@@ -278,6 +305,7 @@ papers:
   - doi: 10.1145/3654777.3676417
     model: fast
     runs: 3
+    file: papers/uist-2024.pdf
 ```
 
 Each paper gets its own session, its own sandbox and its own repository.
@@ -285,6 +313,17 @@ Each paper gets its own session, its own sandbox and its own repository.
 own repository; put `runs` at the top of the file to set it for every paper. One
 paper failing never stops the rest; the exit code is non-zero if any failed, so
 CI reads the exit code and you read the report.
+
+**Every run of a paper reads the same copy of it.** Before any run starts,
+replichai fetches each paper once (arXiv's PDF, the PDF the paper's page
+declares, or an open-access copy) and hands that copy to every run, read-only
+and outside the repository. Runs that each found their own copy could compare
+their results against different versions of the paper. Many publishers refuse
+automated clients, so a paper can also name its copy with `file:`, a path
+relative to the project file. If a paper has no copy, the project stops before
+anything runs and names the paper. The copies are kept in `papers/` beside the
+project file and listed in `papers.json`, and each run's `replication.json`
+cites its copy by digest in `run.paper_digest`.
 
 Two files are written beside the project file and kept current as it runs:
 `batch.json`, the state, and `report.md`, the table of what passed, what it
@@ -298,6 +337,8 @@ Resume skips what finished and retries what failed, into the repository the
 first attempt created. A retry whose recorded repository no longer exists is
 refused rather than given a new one: edit `repo` in `batch.json`, or run
 without `--resume`. A retry that fails early keeps the repository on record.
+A resumed project hands its remaining runs the copies its first runs read, and
+refuses to start if a copy, or a file the project names, has changed since.
 
 ## Putting the results in the app
 
@@ -398,6 +439,8 @@ success. An empty repository is a real outcome, and the transcript in
 | `--image` | none; required, since no harness image is published | with `--sandbox container` |
 | `--parallel` | half the cores, capped at 4 | with `replichai run`: papers at once |
 | `--resume` | off | with `replichai run`: skip what finished |
+| `--network` | `artifacts` | with `replichai run`: the network profile for a project file that names none |
+| `--max-revisions` | 3 | how many times a run may be revised after a grade; 0 grades it once and never revises it |
 
 Most of these have an environment variable: `REPLICHAI_RUNTIME`,
 `REPLICHAI_SANDBOX`, `REPLICHAI_HARNESS`, `REPLICHAI_MODELS_FILE`,
