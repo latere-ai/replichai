@@ -145,7 +145,7 @@ func run() error {
 	credentials := runtimes.ResolveCredentials(os.LookupEnv)
 	catalog, err := builtin.Catalog(builtin.Config{Local: serverLocalConfig(), Anthropic: builtin.AnthropicConfig{
 		APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase,
-	}, Latere: builtin.LatereConfig{BaseURL: credentials.LatereAPIURL}})
+	}, Latere: builtin.LatereConfig{BaseURL: credentials.LatereAPIURL, TokenCommand: devLatereCommand(*dev, credentials.LatereTokenCommand)}})
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func run() error {
 	jobStore, projectStore, accessStore, memberStore := st.jobs, st.projects, st.access, st.members
 	// A runtime the person pays for acts as the person, so the server keeps
 	// their Latere sign-in (048). It is required exactly when one is offered.
-	signIns, minter, err := personSignIns(st, offered, built)
+	signIns, minter, err := personSignIns(st, offered, devLatereCommand(*dev, credentials.LatereTokenCommand) != "")
 	if err != nil {
 		return err
 	}
