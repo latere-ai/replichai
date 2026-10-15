@@ -68,11 +68,12 @@ func TestEveryEnvironmentVariableIsInExampleEnv(t *testing.T) {
 
 // TestEverySubcommandIsDocumented reads the CLI's subcommands from the
 // registry that dispatch and help are generated from, and checks that each is
-// named as a command in README.md and docs/architecture.md.
+// named as a command in docs/cli.md, the command reference, and in
+// docs/architecture.md.
 func TestEverySubcommandIsDocumented(t *testing.T) {
 	root := repoRoot(t)
 	names := subcommands(t, filepath.Join(root, "cmd", "replichai", "commands.go"))
-	for _, doc := range []string{"README.md", filepath.Join("docs", "architecture.md")} {
+	for _, doc := range []string{filepath.Join("docs", "cli.md"), filepath.Join("docs", "architecture.md")} {
 		text, err := os.ReadFile(filepath.Join(root, doc))
 		if err != nil {
 			t.Fatal(err)
