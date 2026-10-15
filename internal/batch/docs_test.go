@@ -46,7 +46,8 @@ func TestTheDocumentedProjectFileWorks(t *testing.T) {
 		t.Errorf("the file's defaults did not reach the first paper: %+v", entries[0])
 	}
 	for run, entry := range entries[1:] {
-		if entry.Model != "fast" || entry.Reference() != "10.1145/3654777.3676417" || entry.File != "papers/uist-2024.pdf" {
+		if entry.Model != "fast" || entry.Reference() != "10.1145/3654777.3676417" || entry.File != "papers/uist-2024.pdf" ||
+			len(entry.Artifacts) != 2 || entry.Artifacts[0] != "https://github.com/authors/system" {
 			t.Errorf("the per-paper override did not apply: %+v", entry)
 		}
 		if entry.Run != run+1 || entry.Runs != 3 {
