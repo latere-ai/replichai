@@ -1148,6 +1148,7 @@
   .hf-gap-end,
   .hf-panel,
   .hf-run-label,
+  .hf-run-n,
   .hf-station,
   .hf-marker,
   .hf-trail {
@@ -1161,7 +1162,8 @@
   .hf-gap,
   .hf-gap-end,
   .hf-panel,
-  .hf-run-label {
+  .hf-run-label,
+  .hf-run-n {
     animation-delay: 900ms;
   }
   .hf-station {
@@ -1176,7 +1178,8 @@
     animation-name: hf-fade-trail;
   }
   /* A new run number arrives rather than flips. */
-  .hf-run-n {
+  .hf-run-n.next {
+    opacity: 1;
     animation: hf-count var(--motion-enter) var(--motion-ease);
   }
 }

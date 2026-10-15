@@ -234,7 +234,9 @@ export function HeroFigure({ i18n }: { i18n: I18n }) {
           <text className="hf-run-label" x={CX} y={CY - 18} textAnchor="middle">
             {t('figRunLabel')}
           </text>
-          <text className="hf-run-n" x={CX} y={CY + 30} textAnchor="middle" key={run}>
+          {/* Keyed by the count, so each new run arrives rather than flips. The
+              first arrives with the rest of the figure, the later ones alone. */}
+          <text className={run > 1 ? 'hf-run-n next' : 'hf-run-n'} x={CX} y={CY + 30} textAnchor="middle" key={run}>
             {run}
           </text>
 
