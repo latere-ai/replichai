@@ -442,7 +442,9 @@ textarea {
 .rail-beta {
   font: 500 11px/1 var(--font-sans);
   color: var(--fg-2);
-  background: var(--bg-raised);
+  /* The hover step, not the raised one: the rail sits on the deep ground,
+     which is the raised step's own value in the light ladder. */
+  background: var(--bg-hover);
   border-radius: var(--radius-chip);
   padding: 4px 6px;
 }
