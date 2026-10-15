@@ -154,3 +154,20 @@ func TestCoversReportsAResolutionFailureWithoutClaimingAFinding(t *testing.T) {
 func (c Card) names(model string) bool {
 	return c.namesRef(managed.ModelRef{Provider: "anthropic", ID: model})
 }
+
+func TestAPreferenceReadsInEitherSpelling(t *testing.T) {
+	for word, want := range map[string]Preference{
+		"best": PrefBest, "Sustained": PrefBest, " thorough ": PrefBalanced, "balanced": PrefBalanced, "QUICK": PrefFast, "fast": PrefFast,
+	} {
+		got, ok := ParsePreference(word)
+		if !ok || got != want {
+			t.Errorf("ParsePreference(%q) = %q, %v", word, got, ok)
+		}
+	}
+	if _, ok := ParsePreference("deep"); ok {
+		t.Error("an unknown word parsed")
+	}
+	if PrefFast.Effort() != "quick" || PrefBalanced.Effort() != "thorough" || PrefBest.Effort() != "sustained" {
+		t.Error("the Effort levels")
+	}
+}
