@@ -493,11 +493,19 @@ export const movePaper = (id: string, key: string, toProject: string) =>
 // tier is the model the session runs on (031). Omitted means the caller did not
 // choose and the engine's default applies, which is what every call did before
 // the choice existed; a tier the server does not offer is refused 400.
-export const startSession = (id: string, paperKey: string, tier?: string) =>
+// startSession starts a paper's session. The choice names the tier and, where
+// the deployment offers them (048), the runtime and one exact model; a field
+// left empty is not sent, so the server's default applies.
+export const startSession = (id: string, paperKey: string, choice?: { tier?: string; runtime?: string; model?: string }) =>
   fetch(`/projects/${id}/sessions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(tier ? { paper_key: paperKey, tier } : { paper_key: paperKey }),
+    body: JSON.stringify({
+      paper_key: paperKey,
+      ...(choice?.tier ? { tier: choice.tier } : {}),
+      ...(choice?.runtime ? { runtime: choice.runtime } : {}),
+      ...(choice?.model ? { model: choice.model } : {}),
+    }),
   }).then(json<{ job_id: string; project_id: string }>)
 
 // A model tier as the picker needs it: what it is, what it resolves to today,
@@ -516,7 +524,34 @@ export type ModelTier = {
 // listModels answers what each tier would run on and what it would cost. A
 // deployment with no backend still lists the tiers, without prices, so the
 // choice can still be offered.
-export const listModels = () => fetch('/models').then(json<{ tiers: ModelTier[]; drafting?: boolean }>)
+export const listModels = () =>
+  fetch('/models').then(json<{ tiers: ModelTier[]; runtimes?: RuntimeOption[]; drafting?: boolean }>)
+
+// One Effort level as a runtime would run it now for the person asking: the
+// stored tier, the model its next turn runs on, and that model's price in
+// micro-USD per million tokens, absent when it is free or unknown.
+export type EffortOption = {
+  tier: string
+  effort: string
+  model?: string
+  provider?: string
+  input?: number
+  output?: number
+  error?: string
+}
+
+// A runtime a session may run on (048). payer says who pays: the project's
+// credits, or the person's own Latere wallet. models lists the exact models a
+// person may pick there, and is absent where the runtime offers only levels.
+export type RuntimeOption = {
+  name: string
+  label: string
+  default: boolean
+  payer: 'project' | 'person'
+  efforts: EffortOption[]
+  models?: string[]
+  error?: string
+}
 
 // draftDescription asks the deployment's configured model for a description of
 // this project (039). It writes nothing: what comes back is a suggestion, and

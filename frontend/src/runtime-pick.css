@@ -1,0 +1,194 @@
+/* The runtime and model choice on the papers card (048). It reads the design
+   system's tokens and adds no color of its own: ink is the selection, the
+   shared shadow lifts the panel, and the motion is the system's. */
+
+.rp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  height: 32px;
+  padding: 0 9px 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--fg-1);
+  font: 500 13px/1 var(--font-sans);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-hover) var(--ease-fluid),
+    color var(--dur-hover) var(--ease-fluid);
+}
+.rp-btn:hover,
+.rp-btn.open {
+  border-color: var(--brand);
+}
+.rp-btn:focus-visible {
+  outline: 2px solid var(--brand-ring);
+  outline-offset: 2px;
+}
+.rp-btn-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-caret {
+  flex: none;
+  color: var(--fg-3);
+  transition: transform var(--motion-enter) var(--ease-fluid);
+}
+.rp-btn.open .rp-caret {
+  transform: rotate(180deg);
+}
+
+.rp-pop {
+  position: fixed;
+  z-index: 60;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 24px));
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-pop);
+  animation: om-fade-up var(--motion-enter) var(--motion-ease) both;
+}
+.rp-section {
+  padding: 6px 6px 8px;
+}
+.rp-section + .rp-section {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.rp-head {
+  margin: 0 0 6px 2px;
+  color: var(--fg-3);
+  font: 500 12px/1.3 var(--font-sans);
+}
+
+/* The runtimes, as a segmented control: one of a few, all visible. */
+.rp-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-raised);
+}
+.rp-seg-opt {
+  flex: 1;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-2);
+  font: 500 13px/1 var(--font-sans);
+  cursor: pointer;
+  transition:
+    background var(--dur-hover) var(--ease-fluid),
+    color var(--dur-hover) var(--ease-fluid);
+}
+.rp-seg-opt:hover {
+  color: var(--fg-1);
+}
+.rp-seg-opt.on {
+  background: var(--bg-surface);
+  color: var(--fg-1);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+/* A level, and a specific model, as rows: a name, then what it runs. */
+.rp-levels,
+.rp-models {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rp-level,
+.rp-model {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-1);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease-fluid);
+}
+.rp-level:hover:not(:disabled),
+.rp-model:hover,
+.rp-level:focus-visible,
+.rp-model:focus-visible {
+  background: var(--bg-raised);
+  outline: none;
+}
+.rp-level.on,
+.rp-model.on {
+  background: var(--brand-soft);
+}
+.rp-level:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.rp-level-name {
+  font: 500 13px/1.3 var(--font-sans);
+}
+.rp-level-detail {
+  grid-column: 1;
+  color: var(--fg-3);
+  font: 400 12px/1.35 var(--font-sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-model span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 13px/1.3 var(--font-sans);
+}
+.rp-tick {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--brand);
+}
+.rp-search {
+  width: 100%;
+  margin-bottom: 4px;
+}
+.rp-models {
+  max-height: 188px;
+  overflow-y: auto;
+}
+.rp-empty {
+  padding: 8px 9px;
+  color: var(--fg-3);
+  font-size: 12px;
+}
+.rp-note {
+  margin: 0;
+  padding: 8px 8px 4px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-3);
+  font: 400 12px/1.4 var(--font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-pop {
+    animation: none;
+  }
+  .rp-caret {
+    transition: none;
+  }
+}
