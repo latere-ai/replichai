@@ -586,6 +586,7 @@ func aRun() Run {
 		Model: &RunModel{Provider: "anthropic", ID: "claude-opus-5"}, RequestedModel: "best",
 		Sandbox: "host", Network: "allowlist", NetworkProfile: "artifacts", NetworkAllowed: 12, NetworkDigest: "sha256:beef",
 		PromptDigest: "sha256:cafe", Build: "327e052", PaperDigest: "sha256:f00d",
+		Artifacts:  []RunArtifact{{Source: "https://github.com/authors/system", Commit: "c0ffee", Digest: "sha256:beef"}},
 		StartedAt:  time.Date(2026, 9, 11, 19, 53, 0, 0, time.UTC),
 		FinishedAt: time.Date(2026, 9, 11, 20, 12, 0, 0, time.UTC),
 		State:      "done", Reason: "succeeded",
@@ -864,7 +865,7 @@ func TestALaterFinalizeThatKnowsLessErasesNothing(t *testing.T) {
 	}
 	got = manifestOf(t, forge).Run
 	if got.Reason != "evaluation_failed" || got.PromptDigest != full.PromptDigest || got.Harness != full.Harness ||
-		got.PaperDigest != full.PaperDigest || got.NetworkProfile != full.NetworkProfile {
+		got.PaperDigest != full.PaperDigest || got.NetworkProfile != full.NetworkProfile || !reflect.DeepEqual(got.Artifacts, full.Artifacts) {
 		t.Errorf("after a changed ending the record is %+v", got)
 	}
 }
