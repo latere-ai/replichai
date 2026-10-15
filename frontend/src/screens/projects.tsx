@@ -551,22 +551,29 @@ export function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string
         </h1>
         <p className="screen-desc">{t('publicIntro')}</p>
       </div>
-      <div className="card">
-        {list === null ? (
-          <div className="empty">…</div>
-        ) : list.length === 0 ? (
+      {/* A list of works, set as a paper sets its references (047): numbered,
+          the paper's own citation first, the reproduction's title after it,
+          and who signed it last. Every row here is public and signed, so a
+          visibility badge would say the same thing on every line. */}
+      {list === null ? (
+        <div className="empty">…</div>
+      ) : list.length === 0 ? (
+        <div className="card">
           <Empty icon="globe" text={t('noPublic')} />
-        ) : (
-          <div className="rows">
-            {list.map((p) => (
-              <RowButton key={p.id} className="row" onOpen={() => onOpen(p.id, p.title)}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="row-title">{p.title}</div>
-                  {/* Which paper this row is a reproduction of (043), above the
-                      facts about the reproduction itself. It is the paper's own
-                      line, not the project's; a project's title is a name
-                      somebody typed. */}
+        </div>
+      ) : (
+        <ol className="rows ref-list">
+          {list.map((p, i) => (
+            <li key={p.id}>
+              <RowButton className="row ref-row" onOpen={() => onOpen(p.id, p.title)}>
+                <span className="ref-n">{i + 1}</span>
+                <div className="ref-body">
+                  {/* Which paper this row is a reproduction of (043), first,
+                      as a reference list leads with its authors. It is the
+                      paper's own line, not the project's; a project's title is
+                      a name somebody typed. */}
                   <RowCitation i18n={i18n} papers={p.papers} />
+                  <div className="row-title">{p.title}</div>
                   <div className="row-sub">
                     {t('initiator')}:{' '}
                     {p.signer_handle ? (
@@ -583,13 +590,12 @@ export function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string
                   </div>
                 </div>
                 <StatusBadge i18n={i18n} p={p} />
-                <VisibilityBadge i18n={i18n} visibility="public" />
                 <Ico name="chevronRight" size={15} className="chev" />
               </RowButton>
-            ))}
-          </div>
-        )}
-      </div>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   )
 }

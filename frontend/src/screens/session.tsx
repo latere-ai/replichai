@@ -184,7 +184,7 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   // instead of rendering an empty table, which would read as a paper that had
   // no boundary.
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    <div className="verdict-pane">
       {findings ? (
         <SessionFindings i18n={i18n} findings={findings} />
       ) : (
@@ -214,125 +214,133 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
   const outcomeLabel = (o: ClaimOutcome) =>
     o === 'verified' ? t('outVerified') : o === 'partial' ? t('outPartial') : o === 'blocked' ? t('outBlocked') : t('outNotScored')
 
+  // Set as a results section: the outcome in words, then the tables, each with
+  // its caption above it as a journal sets a table's (047). The rate is the
+  // boundary table's footnote, under the rows it is derived from, never a
+  // headline over them.
   return (
-    <div className="stack" style={{ gap: 16 }}>
-      <div className="card card-pad findings-head">
-        <div className="findings-verdict">
-          <span className="eyebrow">{t('verdict')}</span>
-          <div className="findings-word" style={{ color: verdictTone(f.verdict) }}>
-            {verdictLabel(f.verdict)}
-          </div>
-          <div className="mono small muted">
-            {t('graded')} {dateOnly(i18n.lang, f.graded_at)}
-          </div>
-        </div>
-        <div className="stack" style={{ gap: 12, minWidth: 0 }}>
-          <p className="findings-summary">{f.summary}</p>
-          {/* The decomposition and the rate, one line, never apart. */}
-          <div className="findings-decomp">
-            <span className="eyebrow">{t('innerLoopRate')}</span>
-            {r !== null && <span className="findings-rate">{r.toFixed(2)}</span>}
-            <Decomposition c={f.components} />
-            <span className="small muted">
-              {t('componentsOf', {
-                verified: String(f.components.verified),
-                partial: String(f.components.partial),
-                blocked: String(f.components.blocked),
-                total: String(f.components.total),
-              })}
-            </span>
-          </div>
-        </div>
-      </div>
+    <div className="findings-doc">
+      <header className="findings-head">
+        <span className="eyebrow">{t('verdict')}</span>
+        <h2 className="findings-word" style={{ color: verdictTone(f.verdict) }}>
+          {verdictLabel(f.verdict)}
+        </h2>
+        <p className="findings-summary">{f.summary}</p>
+        <span className="findings-graded">
+          {t('graded')} {dateOnly(i18n.lang, f.graded_at)}
+        </span>
+      </header>
 
-      <div className="card">
-        <div className="card-head">
-          <span className="eyebrow">{t('boundary')}</span>
-        </div>
+      <section className="findings-sec">
+        <p className="table-caption">
+          <b>{t('tableLabel', { n: '1' })}</b> {t('boundary')}
+        </p>
         {/* Four columns read across, so on a phone the box scrolls sideways
             rather than the table restacking into something that is no longer a
             comparison (030). */}
         <div className="grid-table-wrap">
-        <table className="grid-table">
-          <thead>
-            <tr>
-              <th>{t('claim')}</th>
-              <th style={{ width: 92 }}>{t('loop')}</th>
-              <th style={{ width: 118 }}>{t('outcome')}</th>
-              <th style={{ width: '34%' }}>{t('evidenceOrBlocker')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {f.boundary.map((c, i) => (
-              // An outer row is muted as well as labeled: the inner/outer
-              // boundary is the rule this product defends, and it has to be
-              // visible without reading the column.
-              <tr key={i} className={c.loop === 'outer' ? 'row-outer' : undefined}>
-                <td>
-                  <div className="claim-text">{c.claim}</div>
-                  <div className="mono small muted">{c.citation}</div>
-                </td>
-                <td>
-                  <span className="loop-pill">{c.loop === 'inner' ? t('loopInner') : t('loopOuter')}</span>
-                </td>
-                <td className="mono small" style={{ color: outcomeTone(c.outcome), letterSpacing: '0.08em', fontWeight: 600 }}>
-                  {outcomeLabel(c.outcome)}
-                </td>
-                <td className="small muted">
-                  {c.evidence}
-                  {c.mismatches?.map((m, j) => <MismatchLine key={j} i18n={i18n} m={m} />)}
-                </td>
+          <table className="grid-table">
+            <thead>
+              <tr>
+                <th>{t('claim')}</th>
+                <th style={{ width: 96 }}>{t('loop')}</th>
+                <th style={{ width: 132 }}>{t('outcome')}</th>
+                <th style={{ width: '34%' }}>{t('evidenceOrBlocker')}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {f.boundary.map((c, i) => (
+                // An outer row is muted as well as labeled: the inner/outer
+                // boundary is the rule this product defends, and it has to be
+                // visible without reading the column.
+                <tr key={i} className={c.loop === 'outer' ? 'row-outer' : undefined}>
+                  <td>
+                    <div className="claim-text">{c.claim}</div>
+                    <div className="claim-cite">{c.citation}</div>
+                  </td>
+                  <td>
+                    <span className={c.loop === 'inner' ? 'loop-pill inner' : 'loop-pill outer'}>{c.loop === 'inner' ? t('loopInner') : t('loopOuter')}</span>
+                  </td>
+                  <td>
+                    <span className={'outcome-tag ' + c.outcome} style={{ color: outcomeTone(c.outcome) }}>
+                      {outcomeLabel(c.outcome)}
+                    </span>
+                  </td>
+                  <td className="claim-ev">
+                    {c.evidence}
+                    {c.mismatches?.map((m, j) => <MismatchLine key={j} i18n={i18n} m={m} />)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+        {/* The decomposition and the rate, one line, never apart, under the
+            table they are derived from. */}
+        <p className="findings-decomp">
+          <Decomposition c={f.components} />
+          <span>
+            {t('innerLoopRate')} {r !== null && <span className="findings-rate">{r.toFixed(2)}</span>}
+          </span>
+          <span>
+            {t('componentsOf', {
+              verified: String(f.components.verified),
+              partial: String(f.components.partial),
+              blocked: String(f.components.blocked),
+              total: String(f.components.total),
+            })}
+          </span>
+        </p>
+      </section>
 
-      <div className="card">
-        <div className="card-head">
-          <span className="eyebrow">{t('unresolved')}</span>
-          <span className="small muted" style={{ marginLeft: 'auto' }}>{t('unresolvedHint')}</span>
-        </div>
+      <section className="findings-sec">
+        <p className="table-caption">
+          <b>{t('tableLabel', { n: '2' })}</b> {t('unresolved')}. {t('unresolvedHint')}
+        </p>
         {open.length === 0 ? (
-          <div className="card-pad small muted">{t('unresolvedNone')}</div>
+          <p className="findings-none">{t('unresolvedNone')}</p>
         ) : (
-          <div className="stack" style={{ gap: 0 }}>
+          <div className="ruled-list">
             {open.map((c, i) => (
               <div key={i} className="unresolved-row">
-                <span className="mono small" style={{ color: outcomeTone(c.outcome), fontWeight: 600, letterSpacing: '0.08em', width: 84, flex: 'none' }}>
+                <span className={'outcome-tag ' + c.outcome} style={{ color: outcomeTone(c.outcome) }}>
                   {outcomeLabel(c.outcome)}
                 </span>
                 <div className="stack" style={{ gap: 3, minWidth: 0 }}>
                   <span className="claim-text">{c.claim}</span>
-                  <span className="small muted">{c.evidence}</span>
+                  <span className="claim-ev">{c.evidence}</span>
                   {c.mismatches?.map((m, j) => <MismatchLine key={j} i18n={i18n} m={m} />)}
                 </div>
-                <span className="mono small muted" style={{ marginLeft: 'auto' }}>{c.citation}</span>
+                <span className="claim-cite" style={{ marginLeft: 'auto' }}>
+                  {c.citation}
+                </span>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {!!f.decisions?.length && (
-        <div className="card card-pad stack" style={{ gap: 14 }}>
-          <span className="eyebrow">{t('decisions')}</span>
-          {f.decisions.map((d, i) => (
-            <div key={i} className="decision">
-              <div className="claim-text">{d.question}</div>
-              <div className="small muted">
-                {t('decisionWhere')}: {d.where}
+        <section className="findings-sec">
+          <p className="table-caption">
+            <b>{t('tableLabel', { n: '3' })}</b> {t('decisions')}
+          </p>
+          <div className="ruled-list">
+            {f.decisions.map((d, i) => (
+              <div key={i} className="decision">
+                <div className="claim-text">{d.question}</div>
+                <dl className="decision-facts">
+                  <dt>{t('decisionWhere')}</dt>
+                  <dd>{d.where}</dd>
+                  <dt>{t('decisionAssumed')}</dt>
+                  <dd>{d.assumed}</dd>
+                  <dt>{t('decisionSensitivity')}</dt>
+                  <dd>{d.sensitivity}</dd>
+                </dl>
               </div>
-              <div className="small">
-                {t('decisionAssumed')}: {d.assumed}
-              </div>
-              <div className="small muted">
-                {t('decisionSensitivity')}: {d.sensitivity}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   )
@@ -354,7 +362,7 @@ function MismatchLine({ i18n, m }: { i18n: I18n; m: Mismatch }) {
     <div className="mismatch">
       <span className="mismatch-kind">{kind}</span>
       {m.what && <span className="mismatch-what small">{m.what}</span>}
-      <span className="mismatch-values mono small">
+      <span className="mismatch-values">
         {t('reportedIs')} <b>{m.reported}</b> · {t('observedIs')} <b>{m.observed}</b>
       </span>
       {m.note && <span className="mismatch-note small">{m.note}</span>}
@@ -699,7 +707,7 @@ export function SessionScreen({
               <Ico name="chevronLeft" size={14} w={2} />
             </button>
           </Tip>
-          <span className="row-mono row-title">{job?.ref ?? '…'}</span>
+          <span className="row-title session-ref">{job?.ref ?? '…'}</span>
         </div>
         <div className="detail-tabs">
           <Tab on={tab === 'transcript'} onClick={() => onTab('transcript')} icon="layers" label={t('transcript')} />

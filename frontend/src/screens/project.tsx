@@ -556,15 +556,20 @@ function LatestFindingsCard({ i18n, paper, job, onOpen }: { i18n: I18n; paper: P
           {paper.title || paper.ref}
         </span>
       </div>
-      <div className="findings-decomp">
-        {r !== null && <span className="findings-rate" style={{ fontSize: 28 }}>{r.toFixed(2)}</span>}
-        <span className="small muted">{t('ofComponents', { n: String(f.components.total) })}</span>
-      </div>
-      <Decomposition c={f.components} />
+      {/* The counts lead and the rate follows them as their footnote, at the
+          same size as the line it sits in (047): the components are what can be
+          checked, and a large number is what a reader would have to trust. */}
       <div className="stack" style={{ gap: 6 }}>
         <CountLine tone="var(--ok)" label={t('outVerified')} n={f.components.verified} total={f.components.total} />
         <CountLine tone="var(--warn)" label={t('outPartial')} n={f.components.partial} total={f.components.total} />
         <CountLine tone="var(--fg-3)" label={t('outBlocked')} n={f.components.blocked} total={f.components.total} />
+      </div>
+      <div className="findings-decomp">
+        <Decomposition c={f.components} />
+        <span>
+          {t('innerLoopRate')} {r !== null && <span className="findings-rate">{r.toFixed(2)}</span>}
+        </span>
+        <span>{t('ofComponents', { n: String(f.components.total) })}</span>
       </div>
       {scores.length > 0 && (
         <div className="stack" style={{ gap: 7, paddingTop: 4, borderTop: '1px solid var(--border)' }}>
@@ -601,7 +606,7 @@ function CountLine({ tone, label, n, total }: { tone: string; label: string; n: 
     <div className="score-row">
       <span style={{ width: 7, height: 7, borderRadius: 2, background: tone, flex: 'none' }} />
       <span style={{ color: 'var(--fg-2)' }}>{label}</span>
-      <span className="mono small tabular" style={{ marginLeft: 'auto' }}>
+      <span className="small tabular" style={{ marginLeft: 'auto', color: 'var(--fg-1)' }}>
         {n} / {total}
       </span>
     </div>
