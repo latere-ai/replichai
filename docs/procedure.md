@@ -14,7 +14,9 @@ The workspace boundary keeps the result clean. The agent writes its reproduction
 
 ## 1. Acquire the paper
 
-Fetch the reference. If only an abstract comes back, download the PDF and extract the full text. Read all of it: appendices, footnotes, the data-availability statement, acknowledgments.
+In a study run with `replichai run`, the system fetches the paper once, before any run starts, and hands every run the same copy, read-only and outside the repository. The run reads that copy and fetches no other, so two runs of a study never compare their results against two versions of the paper. A run's record cites the copy by its digest.
+
+Otherwise, fetch the reference. If only an abstract comes back, download the PDF and extract the full text. Either way, read all of it: appendices, footnotes, the data-availability statement, acknowledgments.
 
 The artifact pointer is often not where you would expect. In one audited paper the only code link was a page-one footnote; the landing page carried no availability statement at all. A procedure that reads landing pages and stops will report "no code released" for papers that did release code.
 
