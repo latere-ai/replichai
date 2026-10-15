@@ -129,3 +129,12 @@ func TestResolveAgainstKeepsALinkItCannotRead(t *testing.T) {
 		t.Errorf("resolveAgainst = %q", got)
 	}
 }
+
+func TestASnapshotIsIdentifiedByItsBytes(t *testing.T) {
+	snapshot := SnapshotOf("https://github.com/authors/system", ArtifactGit, "abc123", "system.bundle", []byte("bundle"))
+	sum := sha256.Sum256([]byte("bundle"))
+	if snapshot.SHA256 != hex.EncodeToString(sum[:]) || snapshot.Digest() != "sha256:"+snapshot.SHA256 ||
+		snapshot.Kind != ArtifactGit || snapshot.Commit != "abc123" || snapshot.Name != "system.bundle" {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
