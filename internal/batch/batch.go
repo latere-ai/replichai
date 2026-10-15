@@ -46,6 +46,11 @@ type Entry struct {
 	// copy the system fetches. It is how a paper whose publisher refuses
 	// automated clients is run at all.
 	File string `yaml:"file"`
+	// Artifacts are what the paper's authors released, as the addresses the
+	// study snapshots once and hands every run of the paper: a code host's
+	// repository, a repository ending in .git, or the direct download address
+	// of a file.
+	Artifacts []string `yaml:"artifacts"`
 	// Runs is how many times the paper is reproduced, each run in its own
 	// session with its own repository, which is what a study measuring how
 	// much reproductions of one paper vary asks for. Zero means the file's
