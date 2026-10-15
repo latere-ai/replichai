@@ -4244,3 +4244,18 @@ input.submit-input {
     grid-row: 1;
   }
 }
+
+/* The offer of the app's source (source.tsx), quiet at the foot of the rail. It
+   folds with the rail's labels, and it renders nothing until the repository is
+   public. */
+.rail-source {
+  display: block;
+  padding: 0 10px 8px;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+.rail-source:hover {
+  color: var(--fg-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
