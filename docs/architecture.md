@@ -25,7 +25,7 @@ An audit without publishing stops at the agent runtime and collects artifacts in
 flowchart LR
     browser --> server["cmd/server"]
     server --> webauth["webauth<br/>OIDC login, session cookie, gate, /admin, freeze gate"]
-    server --> httpapi["httpapi<br/>the operator routes, SSE, the public zone"]
+    server --> httpapi["httpapi<br/>the signed-in routes, SSE, the public zone"]
     server --> spa["spa<br/>the built frontend, embedded"]
     server --> runner["job.Runner"]
     runner --> audit["audit"]
@@ -37,8 +37,10 @@ flowchart LR
 
 Postgres holds `jobs`, `projects`, `project_papers`, `project_members`,
 `access_grants`, `freeze_overrides`, `platform_settings`, `profiles`, and the
-ledger's `ledger_entries`, whose schema `latere.ai/x/pay` owns. The older
-`credit_entries` is kept, unread, until the copied balances are trusted.
+ledger's `ledger_entries`, whose schema the `latere.ai/x/pay` module owns. On a
+database created by an older release, the rows of the earlier `credit_entries`
+table are copied into `ledger_entries` once, and that table is left in place
+but no longer read.
 
 One binary. The HTTP server and the worker run in the same process; the database lets a session outlive the request, the connection, and a restart. A submitted session becomes a row before anything is spent, and the worker claims it with `SELECT … FOR UPDATE SKIP LOCKED`, so two pods do not run the same audit twice.
 
@@ -50,11 +52,11 @@ One binary. The HTTP server and the worker run in the same process; the database
 
 **Managed-session contract** (`internal/managed/`) is the seam: one `SessionSpec` starts one session and returns a provider-tagged, versioned `SessionRef`. That complete reference is persisted before the first poll and routes every later poll, transcript, artifact, cancel, and release back to its owning runtime, even after a restart or a change of default.
 
-**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Three runtimes ship today: `anthropic-managed`, which adapts the existing Managed Agents backend; `memory`, a deterministic reference runtime; and `local`, which runs a session on the operator's own machine. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
+**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Three runtimes ship: `anthropic-managed`, which adapts Anthropic's Managed Agents backend; `memory`, a deterministic reference runtime that produces a fake audit, for tests and local development; and `local`, which runs a session on the operator's own machine. Here and below, the **operator** is whoever runs replichai: the person at the terminal for the CLI, or whoever administers a deployment of the server. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
 
-Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Direct OpenAI and Latere adapters are designed separately and are not built.
+Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Other adapters, such as one that calls OpenAI directly, are not built.
 
-**The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed` behind the same contract, passes the contract tests in `internal/managed/contracttest` as the memory runtime does, and the choices that vary inside it are not part of its name:
+**The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed` behind the same contract, passes the contract tests in `internal/managed/contracttest` as the memory runtime does, and the choices that vary inside it are not part of its name. The **harness** is the coding agent's command-line program that does the work inside the sandbox, Claude Code or Codex, and `srt` is Anthropic's sandbox runtime (`@anthropic-ai/sandbox-runtime`):
 
 ```mermaid
 flowchart LR
@@ -72,7 +74,7 @@ flowchart LR
 
 **Batching** (`internal/batch/`) runs a whole project: a list of papers, a concurrency cap, one isolated session each, resumable state, and a report. Preparation is serialized and execution is not, because allocating a repository name is a read of what exists followed by a decision.
 
-**The terminal's identity** (`internal/cloud/`) is the device-code flow against `auth.latere.ai`, with its own client and its own credential file. `internal/webauth`'s bearer middleware is the other half: one principal, two credential sources, and a request carrying a bearer never consults a cookie. A locally executed session reaches the app as an ordinary `jobs` row with `origin = local`, filed through `ImportLocal`, which has no path to the credit ledger.
+**The terminal's identity** (`internal/cloud/`) is the device-code flow against `auth.latere.ai` by default (`REPLICHAI_AUTH_URL` names another issuer), with its own client and its own credential file. `internal/webauth`'s bearer middleware is the other half: one principal, two credential sources, and a request carrying a bearer never consults a cookie. A locally executed session reaches the app as an ordinary `jobs` row with `origin = local`, filed through `ImportLocal`, which has no path to the credit ledger.
 
 **Publishing** (`internal/publish/`) owns the manifest, the redistribution gate, repository naming, and the transcript rendering. It is split so that everything decidable without a network is pure: `Classify` and `PlanPublication` touch no repository and no clock; `Publish` and `FinalizeLive` are the only parts that create anything, and they do so through `Forge`, a seam over repository hosting that mirrors the provider seam.
 
@@ -107,7 +109,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **Web auth** (`internal/webauth/`) wires that model to HTTP: the OIDC login and the session cookie holding only the subject and email, the gate policy the API mounts, the admin routes behind a tier guard, the freeze gate that turns a negative wallet into a view-only account, and a dev bypass that refuses to run off loopback. It is the one place that imports both `httpapi` and `access`, so neither imports the other.
 
-**Platform policy** (`internal/platform/`) is the settings row an admin tunes at runtime: the start reserve, the overdraft floor, the rate card. It stores policy and does not enforce it; enforcement lives where the money moves.
+**Platform policy** (`internal/platform/`) is the settings row an admin tunes at runtime: the start reserve (what a project must hold before a session may start), the overdraft floor, and the **rate card**, the per-model price list, in dollars per million input and output tokens, that a session's usage is charged at. It stores policy and does not enforce it; enforcement lives where the money moves.
 
 **The ledger** (`internal/credit/`) is append-only, in micro-USD, and no balance is stored anywhere: every number in the product is computed by summing the table. A session takes a reserve inside the transaction that inserts it and settles in the transaction that ends it. There is no payment package of its own: the card processor is the shared `latere.ai/x/pay` seam (open a hosted checkout, verify and read a webhook) with its Stripe adapter composed in `cmd/server`. `internal/httpapi/payments.go` holds the checkout and webhook routes. The webhook is the only thing that posts a credit, and it dedupes on an external reference so a retried delivery cannot double it. `internal/webauth/freeze.go` is where a negative wallet turns into a view-only account.
 
@@ -117,7 +119,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **Drafting** (`internal/draft/`) is one short model call: a prompt in, a paragraph and a token count out. It is deliberately not a `provider.Provider`: that contract is about sessions somebody can rejoin, and drafting a sentence is not one.
 
-**The HTTP surface** (`internal/httpapi/`) translates HTTP to the job model and back and adds no engine logic. Every handler depends on an interface (the job store, a registry reader, the gate), never on `internal/audit`, its method, or a provider adapter, so the whole surface tests against fakes with no database and no network. Routes are registered through one of two helpers, gated or open, and both sets are enumerable from the router, so a test asserts that every operator route refuses an ungranted principal and that no route was registered outside the gate by mistake.
+**The HTTP surface** (`internal/httpapi/`) translates HTTP to the job model and back and adds no engine logic. Every handler depends on an interface (the job store, a registry reader, the gate), never on `internal/audit`, its method, or a provider adapter, so the whole surface tests against fakes with no database and no network. Routes are registered through one of two helpers, gated or open, and both sets are enumerable from the router, so a test asserts that every gated route refuses an ungranted principal and that no route was registered outside the gate by mistake.
 
 **What a crawler reads** (`internal/seo/`) writes the HTML head server-side, because a single-page app that sets `document.title` after boot says nothing to a reader who never runs the script. It owns the address vocabulary Go has to know (the project, session, and profile path shapes), so the server can tell a real address from a typo and answer the second with a 404 rather than the shell. Operator screens are marked `noindex`; only what an owner published reaches the sitemap.
 
@@ -159,11 +161,11 @@ Artifact paths and file contents come out of a sandbox that has just executed co
 - compiled residue (`.pyc`, `__pycache__/`) is dropped; it is machine-specific, and a reproduction repository should hold sources;
 - silence from the grader is never success. The backend is in the same resting state both before a run starts and after it ends, so a resting state with no grader record means **pending**, not finished; calling it terminal would abort a healthy run polled between kickoff and pickup. Either way it does not pass.
 
-Publication fails closed. A repository is created private and stays private. A tree carrying third-party paths is recorded in the manifest as a redistribution that did not clear; a transcript carrying a foreign secret blocks the change to public under a `secret_in_transcript` review. A project goes public only as the owner's deliberate act, with a responsibility sign-off snapshotted onto the project so a later profile edit cannot rewrite a published attestation, and a publication can be withdrawn back to private with the retraction recorded beside the sign-off rather than erasing it.
+Publication fails closed. A repository is created private and stays private. A tree carrying third-party paths is recorded in the manifest as a redistribution that did not clear; a transcript carrying a foreign secret blocks the change to public under a `secret_in_transcript` review. A project goes public only as its owner's deliberate act, with a responsibility sign-off snapshotted onto the project so a later profile edit cannot rewrite a published attestation, and a publication can be withdrawn back to private with the retraction recorded beside the sign-off rather than erasing it.
 
 Ownership is granted by invitation (the organization invites a GitHub login as a collaborator), so the service never holds anyone's repository credentials.
 
-The backend credential is read from the environment and travels only in a request header. It is never placed in a URL, a log line, or a payload, and a test asserts that. Every server-side GitHub operation runs as a GitHub App installation rather than an organization PAT. The one remaining exception is the mount credential the sandbox itself holds: an installation token lives at most an hour, shorter than a long run, so the mount keeps a non-expiring token until runs are bounded under that or the backend can refresh one mid-session. That is [009](../specs/009-secret-containment-when-the-agent-commits-live.md)'s open commitment, and it is recorded rather than assumed away.
+The backend credential is read from the environment and travels only in a request header. It is never placed in a URL, a log line, or a payload, and a test asserts that. Every server-side GitHub operation runs as a GitHub App installation rather than an organization PAT. The one remaining exception is the mount credential the sandbox itself holds: an installation token lives at most an hour, shorter than a long run, so the mount keeps a non-expiring token until runs are bounded under that or the backend can refresh one mid-session. That gap is open, and the [design record on secret containment](../specs/009-secret-containment-when-the-agent-commits-live.md) tracks it rather than assuming it away.
 
 The app fails closed by the same rule. A request with no grant behind it is refused, the gate resolves per request, and the router's own gated set is asserted in a test so a new route cannot ship open. The release smoke (`test/release-smoke.sh`) drives the deployed gate after every tagged deploy and fails if `/projects` answers anything but a refusal, so the dev bypass reaching production is a failed release rather than a silent hole.
 
@@ -171,4 +173,4 @@ The app fails closed by the same rule. A request with no grant behind it is refu
 
 Reproduction artifacts are not committed to this repository. An audit's output is the paper's reproduction, not this tool's source, and the two have different lifecycles, different licenses, and different audiences. That is why each reproduction gets its own repository under its own organization.
 
-What is designed but not built is the replication track past the inner loop as a product: the engine for experiments over instruments exists and nothing user-facing reaches it ([`specs/023`](../specs/023-the-outer-loop-as-a-product.md) and its children), and hosting a study with real participants ([`specs/007d`](../specs/007d-hosting-a-study.md)) is blocked on corpus rather than on code. [`specs/README.md`](../specs/README.md) is the map of what is built and what is not.
+What is designed but not built is the replication track past the inner loop as a product: the engine for experiments over instruments exists and nothing user-facing reaches it (see [the outer loop as a product](../specs/023-the-outer-loop-as-a-product.md)), and [hosting a study with real participants](../specs/007d-hosting-a-study.md) waits on reproduced papers whose study can actually be hosted, not on code. [`specs/README.md`](../specs/README.md) is the map of what is built and what is not.

@@ -42,7 +42,7 @@ func TestTheDocumentedCatalogWorks(t *testing.T) {
 	// The two credentials the example names are set; the local gateway names
 	// none, which is the case the example exists to show.
 	catalog, err := local.NewCatalog(file, registry, func(name string) (string, bool) {
-		return "a-credential", name == "ANTHROPIC_API_KEY" || name == "LUX_API_KEY"
+		return "a-credential", name == "ANTHROPIC_API_KEY" || name == "VLLM_API_KEY"
 	})
 	if err != nil {
 		t.Fatalf("the documented catalog does not validate: %v", err)

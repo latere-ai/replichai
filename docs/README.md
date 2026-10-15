@@ -7,6 +7,7 @@ Pages grouped by who reads them.
 | Page | |
 |---|---|
 | [`../README.md`](../README.md) | what replichai is, the commands, and a first audit |
+| [`cli.md`](cli.md) | every `replichai` command and its flags: runtimes, one audit, a project of papers, publishing, signing in to the app, and housekeeping |
 | [`local-runs.md`](local-runs.md) | running audits on your own machine with the coding agent you already have: prerequisites, the sandbox, choosing a model, whole projects, filing results in the app, and troubleshooting |
 
 ## Reading a verdict
@@ -20,8 +21,9 @@ Pages grouped by who reads them.
 
 | Page | |
 |---|---|
+| [`self-hosting.md`](self-hosting.md) | running your own deployment from a clone: what you need, configuration, the identity provider, the first admin, compose for evaluation, the container image, and publishing |
 | [`../example.env`](../example.env) | every environment variable the server and the CLI read, with its default and what it is for |
-| [`../deploy/README.md`](../deploy/README.md) | the hosted deployment: the config secret, drafting, who may sign in, the rate-card check, outbound mail, and releasing |
+| [`../deploy/README.md`](../deploy/README.md) | how Latere deploys `replichai.latere.ai` on Kubernetes, as a worked example: the config secret, drafting, who may sign in, the rate-card check, outbound mail, and releasing |
 
 ## Changing the code or the method
 
@@ -33,7 +35,8 @@ Pages grouped by who reads them.
 
 ## Studies of the audits
 
-How far repeat audits of one paper agree, the statistical model for measuring
-it, and the background notes behind that work are kept in
-[`latere-ai/replichai-experiments`](https://github.com/latere-ai/replichai-experiments). They are not
-documentation of the software.
+One audit is one run, and one run is one draw: in a September 2026 pilot, 49
+runs of three papers differed from each other mostly because of the agent
+system, the sandbox's network access, how the agent labeled its own results,
+and the grader's revisions, more than because of the paper. A single run's
+verdict is therefore one sample.
