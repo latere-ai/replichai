@@ -104,6 +104,76 @@ func TestAFindingsCheckNeedsARuntimeThatKeepsRounds(t *testing.T) {
 	}
 }
 
+// inputResource is a valid input carrying body at path.
+func inputResource(path string, body []byte) Resource {
+	sum := sha256.Sum256(body)
+	return Resource{Kind: ResourceInput, Input: &InputResource{
+		Path: path, Content: body, SHA256: hex.EncodeToString(sum[:]), MediaType: "application/pdf",
+	}}
+}
+
+// An input is checked as an attachment is, and lives in its own directory, so
+// an input and an attachment of one name do not collide.
+func TestInputResourceValidation(t *testing.T) {
+	spec := validSpec()
+	spec.Resources = append(spec.Resources, inputResource("inputs/data.csv", []byte("%PDF-1.7")))
+	if err := spec.Validate(); err != nil {
+		t.Fatalf("an input beside an attachment of the same name: %v", err)
+	}
+	for _, test := range []struct {
+		name  string
+		alter func(*Resource)
+		field string
+	}{
+		{"no payload", func(r *Resource) { r.Input = nil }, "resources[1]"},
+		{"two payloads", func(r *Resource) { r.Attachment = &AttachmentResource{} }, "resources[1]"},
+		{"escaping path", func(r *Resource) { r.Input.Path = "../paper.pdf" }, "resources[1].input.path"},
+		{"wrong digest", func(r *Resource) { r.Input.SHA256 = strings.Repeat("0", 64) }, "resources[1].input.sha256"},
+		{"no digest", func(r *Resource) { r.Input.SHA256 = "paper" }, "resources[1].input.sha256"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec := validSpec()
+			input := inputResource("paper.pdf", []byte("%PDF-1.7"))
+			test.alter(&input)
+			spec.Resources = append(spec.Resources, input)
+			var invalid *InvalidSpecError
+			if err := spec.Validate(); !errors.As(err, &invalid) || invalid.Field != test.field {
+				t.Fatalf("error = %v, want InvalidSpecError field %q", err, test.field)
+			}
+		})
+	}
+	spec = validSpec()
+	spec.Resources = []Resource{inputResource("paper.pdf", []byte("a")), inputResource("paper.pdf", []byte("b"))}
+	if err := spec.Validate(); err == nil {
+		t.Fatal("two inputs at one path were accepted")
+	}
+}
+
+// A runtime that names no input directory cannot hand a session a file it may
+// read and not change, and refuses one rather than putting it somewhere the
+// session can write.
+func TestAnInputNeedsARuntimeWithAnInputDirectory(t *testing.T) {
+	capabilities := Capabilities{
+		PackageManagers: map[string]bool{"pip": true},
+		NetworkModes:    map[NetworkMode]bool{NetworkAllowlist: true},
+		Evaluation:      true, MaxAttachmentBytes: 16,
+	}
+	spec := validSpec()
+	spec.Resources = []Resource{inputResource("paper.pdf", []byte("%PDF-1.7"))}
+	var unsupported *UnsupportedError
+	if err := ValidateCapabilities("memory", capabilities, spec); !errors.As(err, &unsupported) || unsupported.Capability != "input" {
+		t.Fatalf("error = %v, want unsupported input", err)
+	}
+	capabilities.InputDir = "/inputs"
+	if err := ValidateCapabilities("memory", capabilities, spec); err != nil {
+		t.Fatalf("a runtime with an input directory: %v", err)
+	}
+	spec.Resources = []Resource{inputResource("paper.pdf", []byte("a paper longer than the limit"))}
+	if err := ValidateCapabilities("memory", capabilities, spec); !errors.As(err, &unsupported) || unsupported.Capability != "attachment_size" {
+		t.Fatalf("error = %v, want an input over the size limit refused", err)
+	}
+}
+
 func TestRepositoryResourceValidation(t *testing.T) {
 	spec := validSpec()
 	spec.Resources = []Resource{{Kind: ResourceRepository, Repository: &RepositoryResource{

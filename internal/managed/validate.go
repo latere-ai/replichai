@@ -170,23 +170,25 @@ func (r Resource) validate(index int) (string, error) {
 	field := fmt.Sprintf("resources[%d]", index)
 	switch r.Kind {
 	case ResourceAttachment:
-		if r.Attachment == nil || r.Repository != nil {
+		if r.Attachment == nil || r.Repository != nil || r.Input != nil {
 			return "", invalid(field, "attachment payload mismatch")
 		}
-		if err := safeRelativePath(r.Attachment.Path); err != nil {
-			return "", invalid(field+".attachment.path", err.Error())
-		}
-		digest, err := hex.DecodeString(r.Attachment.SHA256)
-		if err != nil || len(digest) != sha256.Size {
-			return "", invalid(field+".attachment.sha256", "must be a SHA-256 hex digest")
-		}
-		actual := sha256.Sum256(r.Attachment.Content)
-		if !strings.EqualFold(hex.EncodeToString(actual[:]), r.Attachment.SHA256) {
-			return "", invalid(field+".attachment.sha256", "content digest mismatch")
+		if err := checkFile(field+".attachment", r.Attachment.Path, r.Attachment.Content, r.Attachment.SHA256); err != nil {
+			return "", err
 		}
 		return path.Clean(r.Attachment.Path), nil
+	case ResourceInput:
+		if r.Input == nil || r.Attachment != nil || r.Repository != nil {
+			return "", invalid(field, "input payload mismatch")
+		}
+		if err := checkFile(field+".input", r.Input.Path, r.Input.Content, r.Input.SHA256); err != nil {
+			return "", err
+		}
+		// An input lives in its own directory, so its destination cannot
+		// collide with a path in the workspace.
+		return "input:" + path.Clean(r.Input.Path), nil
 	case ResourceRepository:
-		if r.Repository == nil || r.Attachment != nil {
+		if r.Repository == nil || r.Attachment != nil || r.Input != nil {
 			return "", invalid(field, "repository payload mismatch")
 		}
 		u, err := url.Parse(r.Repository.URL)
@@ -206,6 +208,24 @@ func (r Resource) validate(index int) (string, error) {
 	default:
 		return "", invalid(field+".kind", "unknown resource kind")
 	}
+}
+
+// checkFile validates a file carried inline: a contained relative path, and a
+// SHA-256 that matches the content, so a corrupted or substituted payload fails
+// the specification instead of the run.
+func checkFile(field, relative string, content []byte, sum string) error {
+	if err := safeRelativePath(relative); err != nil {
+		return invalid(field+".path", err.Error())
+	}
+	digest, err := hex.DecodeString(sum)
+	if err != nil || len(digest) != sha256.Size {
+		return invalid(field+".sha256", "must be a SHA-256 hex digest")
+	}
+	actual := sha256.Sum256(content)
+	if !strings.EqualFold(hex.EncodeToString(actual[:]), sum) {
+		return invalid(field+".sha256", "content digest mismatch")
+	}
+	return nil
 }
 
 func safeRelativePath(value string) error {
@@ -313,6 +333,12 @@ func ValidateCapabilities(runtime RuntimeName, capabilities Capabilities, spec S
 		}
 		if resource.Kind == ResourceAttachment && capabilities.MaxAttachmentBytes > 0 && int64(len(resource.Attachment.Content)) > capabilities.MaxAttachmentBytes {
 			return &UnsupportedError{Runtime: runtime, Field: fmt.Sprintf("resources[%d].attachment.content", i), Capability: "attachment_size"}
+		}
+		if resource.Kind == ResourceInput && capabilities.InputDir == "" {
+			return &UnsupportedError{Runtime: runtime, Field: fmt.Sprintf("resources[%d].input", i), Capability: "input"}
+		}
+		if resource.Kind == ResourceInput && capabilities.MaxAttachmentBytes > 0 && int64(len(resource.Input.Content)) > capabilities.MaxAttachmentBytes {
+			return &UnsupportedError{Runtime: runtime, Field: fmt.Sprintf("resources[%d].input.content", i), Capability: "attachment_size"}
 		}
 	}
 	return nil

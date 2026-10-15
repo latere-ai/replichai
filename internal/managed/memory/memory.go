@@ -61,6 +61,10 @@ type Config struct {
 	// grading round, so a caller that asks for it only where it is declared
 	// can be tested both ways. This runtime keeps no rounds either way.
 	FindingsRounds bool
+	// InputDir is the input directory the runtime declares. Empty declares
+	// none, so a specification carrying an input is refused, as it is on a
+	// runtime that cannot mount one read-only.
+	InputDir string
 }
 
 // Store holds the sessions. It is deliberately separate from Runtime, which
@@ -153,6 +157,7 @@ func (r *Runtime) capabilities() managed.Capabilities {
 		MaxAttachmentBytes: 64 << 20,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
 		FindingsRounds:     r.config.FindingsRounds,
+		InputDir:           r.config.InputDir,
 	}
 }
 
