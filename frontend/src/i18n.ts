@@ -283,7 +283,7 @@ const en = {
     errNoCredits: 'This project is out of credits. Allocate more to it to continue.',
     errNoCreditsAtAll: 'You have no credits yet. Ask a platform admin to add some, or work in a project somebody else has funded.',
     // buying credits (022e)
-    beta: 'BETA',
+    beta: 'Beta',
     navWallet: 'Wallet',
     walletHeading: 'Your wallet',
     walletDesc: 'Credits you buy and spend. Sessions spend from the project you allocate credits to, not from the wallet.',
@@ -858,15 +858,15 @@ const en = {
     transcriptWaitingLive: 'Waiting for the agent’s first events…',
     // tiers + phases
 
-    tierUser: 'user',
-    tierAdmin: 'admin',
-    tierNone: 'no access',
-    'phase.submitted': 'submitted',
-    'phase.resolving': 'resolving',
-    'phase.running': 'running',
-    'phase.publishing': 'publishing',
-    'phase.done': 'done',
-    'phase.failed': 'failed',
+    tierUser: 'User',
+    tierAdmin: 'Admin',
+    tierNone: 'No access',
+    'phase.submitted': 'Submitted',
+    'phase.resolving': 'Resolving',
+    'phase.running': 'Running',
+    'phase.publishing': 'Publishing',
+    'phase.done': 'Done',
+    'phase.failed': 'Failed',
 }
 
 // TKey is every translation key, derived from the English block so a new locale

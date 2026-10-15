@@ -106,6 +106,9 @@
 
 :root[data-theme='dark'] {
   --azure: #78b1ed;
+  /* The browser's own parts, the scrollbars and native controls, in the dark
+     theme as well. */
+  color-scheme: dark;
 }
 
 * {
@@ -198,11 +201,11 @@ textarea {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+/* A label over a section or a value: the page's sans, sentence case, quiet.
+   It was monospace and upper case until 047, which read as a developer tool. */
 .eyebrow {
-  font: 600 10px/1 var(--font-mono);
-  letter-spacing: 0.14em;
-  color: var(--fg-3);
-  text-transform: uppercase;
+  font: 500 12px/1.4 var(--font-sans);
+  color: var(--fg-2);
 }
 /* An eyebrow that carries its section's glyph. The color is set where it is
    used, so one rule serves every tinted section head. */
@@ -214,16 +217,22 @@ textarea {
 .eyebrow-ico svg {
   flex: none;
 }
-/* A link that reads as one: brand-toned, with room for a trailing glyph. */
+/* A link that reads as one: ink, underlined as the family underlines a link in
+   prose, with room for a trailing glyph. The underline is quiet at rest and
+   takes the text's color on hover. */
 .link {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--brand);
-  text-decoration: none;
+  color: var(--fg-1);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+  transition: text-decoration-color var(--dur-hover);
 }
 .link:hover {
-  text-decoration: underline;
+  text-decoration-color: currentColor;
   /* Offset clear of descenders, and thin enough not to read as a strikethrough
      on mono text. The default underline sits on the baseline and cuts through
      g, y and p. */
@@ -254,19 +263,19 @@ textarea {
      browser that does not support the unit. */
   height: 100vh;
   height: 100dvh;
-  /* The background the rail sits on. The content panel is a raised surface on
-     it, so the boundary between navigation and work is a change of depth rather
-     than a line (034). */
-  background: var(--bg-deep);
+  /* One ground for the rail and the work, divided by a hairline, as the
+     platform's console is (047). 034 floated the work in an inset card on a
+     deeper ground; that depth is what made the console look like another
+     product beside the platform. */
+  background: var(--bg);
 }
 .rail {
   width: 236px;
   flex: none;
   display: flex;
   flex-direction: column;
-  /* No fill and no border: the rail is part of the background. A surface here
-     would draw a second panel beside the one the reader is working in. */
   background: transparent;
+  border-right: 1px solid var(--border);
   transition: width 0.18s var(--ease-fluid);
 }
 .rail-head {
@@ -441,15 +450,14 @@ textarea {
   flex: 0 0 auto;
 }
 .rail-name {
-  font-size: 14px;
+  font-size: 19px;
 }
 .rail-beta {
-  font: 600 9.5px/1 var(--font-mono);
-  letter-spacing: 0.1em;
-  color: var(--fg-3);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  padding: 4px 8px;
+  font: 500 11px/1 var(--font-sans);
+  color: var(--fg-2);
+  background: var(--bg-raised);
+  border-radius: var(--radius-chip);
+  padding: 4px 6px;
 }
 .rail-nav {
   flex: 1;
@@ -465,8 +473,8 @@ textarea {
   gap: 1px;
 }
 .rail-group .eyebrow {
-  letter-spacing: 0.16em;
-  padding: 0 8px 8px;
+  padding: 0 10px 6px;
+  color: var(--fg-3);
 }
 .nav-btn {
   position: relative;
@@ -475,11 +483,12 @@ textarea {
   gap: 10px;
   width: 100%;
   text-align: left;
-  padding: 8px 10px;
+  min-height: 36px;
+  padding: 6px 10px;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-action);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   background: transparent;
   color: var(--fg-2);
@@ -503,24 +512,24 @@ textarea {
   transition: background var(--dur-hover);
 }
 .nav-btn:hover {
-  background: color-mix(in srgb, var(--fg-1) 5%, transparent);
+  background: var(--bg-raised);
   color: var(--fg-1);
 }
-/* The current destination is the one raised surface in the rail, the same
-   surface the content uses, so the current row and the content panel read as
-   one. The brand hue stays on the icon only. */
+/* The current destination is a tint and a weight, as on the platform: never a
+   colored edge, and never a second surface with a shadow. The destination's
+   hue stays on its icon only. */
 .nav-btn.active {
-  background: var(--bg-surface);
+  background: var(--bg-hover);
   color: var(--fg-1);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.06), 0 6px 14px -10px rgba(12, 10, 9, 0.24);
 }
 .nav-btn.active .nav-ico {
   background: color-mix(in srgb, currentColor 18%, transparent);
 }
 .nav-btn .count {
   margin-left: auto;
-  font: 500 11px/1 var(--font-mono);
+  font: 500 12px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
   color: var(--fg-3);
 }
 .rail-foot {
@@ -569,7 +578,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  font: 700 10px/1 var(--font-mono);
+  font: 600 10px/1 var(--font-sans);
   /* The same box holds an <img> or two initials, so a non-square picture is
      cropped rather than distorted (006m). */
   object-fit: cover;
@@ -619,14 +628,8 @@ textarea {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  /* Inset on three sides: the rail's own padding is the fourth, so the gap
-     between the last nav row and the paper's edge is even all the way round. */
-  margin: 8px 8px 8px 0;
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.04), 0 18px 40px -30px rgba(12, 10, 9, 0.3);
 }
 .topbar {
   height: 56px;
@@ -634,7 +637,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 20px;
+  padding: 0 var(--page-gutter);
   border-bottom: 1px solid var(--border);
   background: transparent;
 }
@@ -702,7 +705,7 @@ textarea {
      these, and three outlined boxes per row would dominate the row. The
      border and fill appear on hover. */
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--fg-3);
   cursor: pointer;
@@ -713,9 +716,8 @@ textarea {
   transition: color var(--dur-hover), border-color var(--dur-hover), background var(--dur-hover);
 }
 .icon-btn:hover {
-  color: var(--brand);
-  background: var(--brand-soft);
-  border-color: var(--brand-line);
+  color: var(--fg-1);
+  background: var(--bg-raised);
 }
 /* A destructive icon button turns red on hover only, not at rest. */
 .icon-btn.danger:hover {
@@ -725,8 +727,11 @@ textarea {
 }
 
 /* ── Buttons ── */
+/* latere-ui's console button (047): a capsule, 32px or 28px in a row, set in
+   13px. The primary action is the ink fill and inverts between the themes; the
+   rest are a hairline. Hover darkens or tints and never changes the hue. */
 .btn {
-  height: 30px;
+  height: 32px;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -735,41 +740,34 @@ textarea {
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  /* Ink, not brand (034). The brand hue marks what an operator acts on within
-     a screen; the one control that starts work should be the darkest element
-     on the bar rather than compete with every link under it. It inverts
-     correctly in dark mode because both fill and text are tokens that swap. */
-  background: var(--fg-1);
-  color: var(--bg);
-  font-size: 12.5px;
-  font-weight: 600;
+  background: var(--accent);
+  color: var(--lu-preset-on-accent);
+  font-size: 13px;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 0.14s var(--ease-fluid), background var(--dur-hover), opacity 0.14s;
+  transition: transform var(--motion-fast) var(--motion-ease), background var(--dur-hover), border-color var(--dur-hover), opacity var(--motion-fast);
 }
 .btn:hover {
-  background: var(--brand);
-  color: var(--brand-fg);
+  background: var(--accent-hover);
 }
 .btn:active {
-  transform: scale(0.96);
+  transform: scale(0.98);
 }
 .btn:disabled {
   opacity: 0.45;
   cursor: default;
-  background: var(--fg-1);
-  color: var(--bg);
+  background: var(--accent);
+  color: var(--lu-preset-on-accent);
 }
 .btn.ghost {
-  background: var(--bg-raised);
+  background: transparent;
   color: var(--fg-1);
   border-color: var(--border-strong);
-  font-weight: 500;
 }
 .btn.ghost:hover {
-  background: var(--brand-soft);
-  color: var(--brand);
-  border-color: var(--brand-line);
+  background: var(--bg-raised);
+  border-color: var(--border-control);
 }
 /* Removing a collaborator, revoking a grant, stopping a run: these take the
    error tone, but only on hover. */
@@ -793,21 +791,22 @@ textarea {
   flex: none;
 }
 .btn.lg {
-  height: 38px;
+  height: 36px;
   padding: 0 18px;
+  font-size: 14px;
 }
 .btn.sm {
-  height: 26px;
-  padding: 0 11px;
-  font-size: 12px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12.5px;
 }
 
 /* ── Screen ── */
 .screen {
   flex: 1;
   overflow-y: auto;
-  padding: 22px 24px 48px;
-  animation: om-fade-up 0.3s var(--ease-fluid) both;
+  padding: 28px var(--page-gutter) 48px;
+  animation: om-fade-up var(--motion-enter) var(--motion-ease) both;
 }
 .screen-head {
   display: flex;
@@ -829,11 +828,12 @@ textarea {
 .seam {
   white-space: nowrap;
 }
+/* A screen states its title in the serif, as the landing states its headings,
+   so the app and the page a reader arrived from are one hand (047). */
 h1.screen-title {
   margin: 0;
-  font-size: 21px;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font: 400 32px/1.1 var(--font-serif);
+  letter-spacing: -0.01em;
 }
 .screen-desc {
   margin: 0;
@@ -883,9 +883,8 @@ h1.screen-title {
   flex-direction: column;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--radius-panel);
   padding: 18px 20px;
-  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.04);
 }
 .boundary-head {
   display: flex;
@@ -908,7 +907,7 @@ h1.screen-title {
   margin-bottom: 12px;
 }
 .boundary-n {
-  font: 600 28px/1 var(--font-mono);
+  font: 500 30px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
   color: var(--fg-1);
@@ -949,7 +948,7 @@ h1.screen-title {
    competing with the quantity being counted. The class is `-none`, not
    `.empty`: `.empty` is the app's no-content state and carries padding. */
 .legend-swatch-none {
-  background: var(--bg-deep);
+  background: var(--bg-hover);
   box-shadow: inset 0 0 0 1px var(--border);
 }
 /* The card's last line, separated by a rule: it is a different quantity from
@@ -966,7 +965,7 @@ h1.screen-title {
   color: var(--fg-2);
 }
 .boundary-foot-n {
-  font: 600 13px/1 var(--font-mono);
+  font: 500 13px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
 }
@@ -979,7 +978,7 @@ h1.screen-title {
   height: 8px;
   border-radius: var(--radius-pill);
   overflow: hidden;
-  background: var(--bg-deep);
+  background: var(--bg-hover);
 }
 .meter.sm {
   width: 88px;
@@ -1005,16 +1004,23 @@ h1.screen-title {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 34px;
-  padding: 0 13px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  height: 32px;
+  padding: 0 11px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
   color: var(--fg-3);
+  transition: border-color var(--dur-hover), box-shadow var(--dur-hover);
+}
+/* The platform's field: a hairline that firms on focus, and the family's ink
+   outline for the keyboard. */
+.filter-field:hover {
+  border-color: var(--border-control);
 }
 .filter-field:focus-within {
-  border-color: var(--brand-line);
-  box-shadow: 0 0 0 3px var(--brand-ring);
+  border-color: var(--border-control);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .filter-field input {
   flex: 1;
@@ -1031,9 +1037,8 @@ h1.screen-title {
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--radius-panel);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.04);
 }
 .card-pad {
   padding: 14px;
@@ -1168,29 +1173,32 @@ h1.screen-title {
   transition: color var(--dur-hover), transform var(--dur-hover) var(--ease-fluid);
 }
 .row:hover .chev {
-  color: var(--brand);
+  color: var(--fg-1);
   transform: translateX(2px);
 }
 
 /* ── Segmented control / tabs ── */
+/* The platform's segmented control: a quiet track, and the chosen item in
+   solid ink. */
 .segmented {
   display: inline-flex;
   gap: 2px;
-  padding: 3px;
-  background: color-mix(in srgb, var(--fg-1) 4.5%, transparent);
+  padding: 2px;
+  background: var(--bg-raised);
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-action);
 }
 .seg-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 12px;
+  height: 28px;
+  padding: 0 12px;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--fg-2);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background var(--dur-hover), color var(--dur-hover);
@@ -1199,42 +1207,42 @@ h1.screen-title {
   color: var(--fg-1);
 }
 .seg-btn.on {
-  background: var(--bg-surface);
-  color: var(--fg-1);
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(12, 10, 9, 0.08);
+  background: var(--fg-1);
+  color: var(--bg);
 }
-/* The theme switcher is the one segmented control whose choice is a mode
-   rather than a filter, so it keeps the brand hue. */
+/* The appearance switcher chooses a mode, not a filter, and sits on every
+   screen's bar, so its choice is marked quietly: the page's own ground with a
+   hairline, rather than the solid ink a filter's choice takes. */
 .segmented.compact .seg-btn.on {
-  color: var(--brand);
+  background: var(--bg);
+  color: var(--fg-1);
+  box-shadow: 0 0 0 1px var(--border-strong);
 }
 /* The icon-only form, used by the appearance switcher, needs square hit targets. */
 .segmented.compact .seg-btn {
   width: 28px;
-  height: 26px;
+  height: 28px;
   padding: 0;
   justify-content: center;
 }
 
 /* ── Badges ── */
+/* A state is a dot and a word, in the page's sans and sentence case (047). */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font: 600 10px/1 var(--font-mono);
-  letter-spacing: 0.09em;
-  padding: 5px 10px;
-  border-radius: var(--radius-pill);
+  gap: 6px;
+  font: 500 12px/1 var(--font-sans);
+  padding: 5px 8px;
+  border-radius: var(--radius-chip);
   border: 1px solid transparent;
   background: var(--bg-raised);
   color: var(--fg-2);
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .badge .dot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -1273,12 +1281,10 @@ h1.screen-title {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 9px;
-  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+  border-radius: var(--radius-chip);
   border: 1px solid transparent;
-  font: 600 10px/1.5 var(--font-mono);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font: 500 11.5px/1.5 var(--font-sans);
   white-space: nowrap;
 }
 .pill svg {
@@ -1332,9 +1338,8 @@ h1.screen-title {
 }
 .detail-title {
   margin: 0;
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font: 400 30px/1.15 var(--font-serif);
+  letter-spacing: -0.01em;
   /* `break-word`, not `anywhere`: `anywhere` lets a word break to make the line
      box narrower even where the word would have fitted, and it takes the
      element's min-content width down with it. Beside a button that cannot
@@ -1435,7 +1440,7 @@ input.text.title-input {
   align-items: center;
   gap: 7px;
   flex-wrap: wrap;
-  font: 400 11.5px/1 var(--font-mono);
+  font: 400 11.5px/1 var(--font-sans);
   color: var(--fg-3);
   margin-top: 7px;
 }
@@ -1488,7 +1493,7 @@ input.text.title-input {
 .member-email {
   flex: 1;
   min-width: 16ch;
-  font: 400 12.5px/1 var(--font-mono);
+  font: 400 12.5px/1 var(--font-sans);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1516,16 +1521,26 @@ input.text.title-input {
   margin-left: auto;
 }
 /* What is left to spend, beside the button that spends it (006l). */
+/* The balance on the bar, at the console's control height. A button when it
+   opens the top-up, so it clears the browser's own button fill. */
 .quota-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font: 500 11px/1 var(--font-mono);
-  color: var(--fg-2);
-  padding: 6px 10px;
+  height: 32px;
+  font: 500 13px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+  padding: 0 12px;
+  background: transparent;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   white-space: nowrap;
+  transition: background var(--dur-hover), border-color var(--dur-hover);
+}
+button.quota-pill:hover {
+  background: var(--bg-raised);
+  border-color: var(--border-control);
 }
 /* Running low is a warning and empty is an error; the pill's tone says which. */
 .quota-pill.low {
@@ -1763,7 +1778,7 @@ input.text.title-input {
   border: none;
   background: transparent;
   color: var(--fg-3);
-  font: 500 11.5px/1 var(--font-mono);
+  font: 500 11.5px/1 var(--font-sans);
   cursor: pointer;
   text-align: left;
 }
@@ -1952,10 +1967,8 @@ textarea::placeholder {
   color: var(--ok);
 }
 .attestation {
-  font: 400 10.5px/1.5 var(--font-mono);
+  font: 400 11.5px/1.5 var(--font-sans);
   color: var(--fg-3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 .detail-grid {
   display: grid;
@@ -2217,12 +2230,12 @@ input.submit-input {
   align-items: center;
   justify-content: flex-end;
   gap: 5px;
-  font: 600 9.5px/1 var(--font-mono);
-  letter-spacing: 0.12em;
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--fg-3);
 }
 .tx-stat-value {
-  font: 600 13px/1 var(--font-mono);
+  font: 500 13px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums;
 }
 /* a pulsing "live" pill for an in-flight run's streaming transcript */
@@ -2235,9 +2248,7 @@ input.submit-input {
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--ok) 16%, transparent);
   color: var(--ok);
-  font: 600 9.5px/1 var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 11.5px/1 var(--font-sans);
   vertical-align: middle;
 }
 .live-dot::before {
@@ -2311,11 +2322,12 @@ input.submit-input {
   gap: 2px;
 }
 .tl-phase {
-  font: 500 12px/1 var(--font-mono);
+  font: 500 12px/1 var(--font-sans);
 }
 .tl-dur {
-  font: 500 10px/1 var(--font-mono);
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2335,10 +2347,11 @@ input.submit-input {
   background: var(--bg-surface);
 }
 .scrub-clock {
-  font: 500 10px/1 var(--font-mono);
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
   flex: none;
+  font-variant-numeric: tabular-nums;
 }
 .scrub-bar {
   position: relative;
@@ -2365,9 +2378,7 @@ input.submit-input {
   pointer-events: none;
 }
 .scrub-band span {
-  font: 600 8.5px/1 var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--fg-3);
   white-space: nowrap;
 }
@@ -2437,7 +2448,7 @@ input.submit-input {
 .scrub-legend {
   flex: none;
   max-width: 250px;
-  font: 500 10px/1.35 var(--font-mono);
+  font: 500 11.5px/1.35 var(--font-sans);
   color: var(--fg-3);
 }
 
@@ -2495,8 +2506,9 @@ input.submit-input {
 }
 .kind-btn .n {
   margin-left: auto;
-  font: 500 11px/1 var(--font-mono);
+  font: 500 11px/1 var(--font-sans);
   color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums;
 }
 .tx-stream {
@@ -2557,12 +2569,14 @@ input.submit-input {
   align-items: flex-start;
 }
 .event-clock {
-  font: 500 10.5px/1 var(--font-mono);
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
 }
 .event-offset {
-  font: 400 9.5px/1 var(--font-mono);
+  font: 400 11.5px/1 var(--font-sans);
   color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
 }
 /* The kind, as a soft chip in its own tone. The fill is currentColor at low
    alpha, so setting the text color per kind tints the whole chip with one
@@ -2576,10 +2590,8 @@ input.submit-input {
   padding: 3px 7px;
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, currentColor 14%, transparent);
-  font: 600 9px/1 var(--font-mono);
-  letter-spacing: 0.09em;
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--fg-3);
-  text-transform: uppercase;
 }
 .event.message .event-kind {
   color: var(--brand);
@@ -2638,8 +2650,9 @@ input.submit-input {
 .event-cost {
   margin-left: auto;
   flex: none;
-  font: 400 10.5px/1 var(--font-mono);
+  font: 400 11.5px/1 var(--font-sans);
   color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
 }
 .event-body {
   font-size: 12.5px;
@@ -2678,7 +2691,7 @@ input.submit-input {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  font: 400 11px/1 var(--font-mono);
+  font: 400 11px/1 var(--font-sans);
   color: var(--fg-3);
 }
 .ev-detail-meta code {
@@ -2770,9 +2783,10 @@ input.submit-input {
      compress the amount until it clips to "$". */
   flex: none;
   white-space: nowrap;
-  font: 500 12px/1 var(--font-mono);
+  font: 500 12px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
+  font-variant-numeric: tabular-nums;
 }
 /* Everything left of the value may shrink and wrap, so a long title wraps within
    the space it has rather than shoving the amount out of the row. */
@@ -3329,9 +3343,9 @@ input.submit-input {
   flex-wrap: wrap;
 }
 .findings-rate {
-  font: 600 17px/1 var(--font-mono);
+  font: 500 17px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 /* Verified and partial are filled; blocked is the unfilled track, so it reads
    as work not done rather than as a third result. */
@@ -3355,8 +3369,7 @@ input.submit-input {
 .grid-table th {
   text-align: left;
   padding: 9px 14px;
-  font: 600 10px/1 var(--font-mono);
-  letter-spacing: 0.13em;
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--fg-3);
 }
 .grid-table td {
@@ -3380,8 +3393,7 @@ input.submit-input {
   padding: 3px 7px;
   border: 1px solid var(--border-strong);
   border-radius: 5px;
-  font: 600 10px/1 var(--font-mono);
-  letter-spacing: 0.1em;
+  font: 500 11.5px/1 var(--font-sans);
   color: inherit;
 }
 
@@ -3399,9 +3411,7 @@ input.submit-input {
   border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
 }
 .mismatch-kind {
-  font: 600 9.5px/1 var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--warn);
 }
 .mismatch b {
