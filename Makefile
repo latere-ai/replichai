@@ -141,8 +141,8 @@ down:
 
 # Run the store contracts that need a real Postgres against the running compose
 # database: job, access, platform, credit and project. In job, SELECT ... FOR
-# UPDATE SKIP LOCKED gets a real disjointness assertion and the quota a real
-# concurrency one. job and access run directly against the database in the URL
+# UPDATE SKIP LOCKED gets a real disjointness assertion and settling a charge a
+# real concurrency one. job and access run directly against the database in the URL
 # and migrate and truncate it. platform, credit and project each create a
 # private database on the same server, named replichai_*_test, and leave the
 # URL's own tables alone. profile has the same shape and is not in the list;

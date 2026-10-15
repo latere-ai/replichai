@@ -40,7 +40,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       # Card payments (022b). Substituted from .env. Unset selects a refusing
-      # adapter, so a clone without Stripe keys still boots and runs unmetered.
+      # adapter, so a clone without Stripe keys still boots; checkout answers
+      # payments_unconfigured and credits come only from an admin.
       # There is no publishable key: hosted Checkout redirects, so the browser
       # never talks to Stripe directly and the server does not read one.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}

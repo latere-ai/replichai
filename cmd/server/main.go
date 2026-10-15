@@ -262,8 +262,8 @@ func run() error {
 	}
 
 	// The payment processor reads its keys from the environment; with none it is
-	// a refusing adapter, so the checkout route reports payments_unconfigured and
-	// the rest of the app runs unmetered (022b).
+	// a refusing adapter, so the checkout route reports payments_unconfigured.
+	// Sessions are still metered; credits then come only from an admin (022b).
 	payments := paystripe.New(paystripe.Config{
 		SecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
 		WebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
