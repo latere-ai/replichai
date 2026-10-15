@@ -98,6 +98,8 @@ Two traits of the platform are not taken. Its monospace, upper-case eyebrow read
 
 **The landing lists every file a session commits.** Table 1 names the six files `method.Deliverables()` lists, which the publication gate reads too, and `src/`. The four reports come first, because they are what a reader opens. The two JSON files follow, because they carry the same findings and the study as data.
 
+**The way in is offered once.** The hero's "Sign in with Latere" and the sticky header's were the same button twice on the first screen. The header's now stands down while the hero's or the close's sign-in is fully on screen below it, and fades in the moment the reader scrolls past. It fades out of the tab order and the accessibility tree as well. So a sign-in is still on screen at every scroll position (029), but there is never more than one. Hiding keeps the button's box, so nothing in the bar moves. A browser without `IntersectionObserver` keeps the header's button throughout.
+
 **The registry strip is a reference list.** Each published reproduction is set as a citation (authors, year, title, venue) with the signer and the session count after it, in a hanging indent. That is the form an academic reader scans a list of works in, and it is what the registry's data already is (043).
 
 ### Motion: exact, and only where something changes
@@ -151,11 +153,13 @@ Inside the card the primitives are the platform's:
 
 The mechanisms are untouched: 030's drawer and breakpoint, the fold and its persistence, the tooltips on a folded rail, and 034's two evidence cards and filter row.
 
+**Elastic scrolling stays inside the pane.** The console is a fixed frame whose rail and main pane scroll on their own. On a trackpad or a phone the whole frame, rail and bar included, used to rubber-band at either end. The root's overscroll is now off while the frame is mounted (`overscroll-behavior: none` on `html` and `body`). Every pane that scrolls sets `overscroll-behavior: contain`: the rail, the main pane, the transcript's panes, a modal and a rendered file. Each still bounces at its own ends, and the bounce never carries to the frame. The landing scrolls as one document and keeps the browser's own behavior.
+
 ## What stays
 
 Every guarantee the browser suite holds survives, and only the measures that encode the old look change:
 
-- 029's sticky sign-in at the top and the bottom, on both viewports;
+- 029's guarantee that a sign-in is on screen at every scroll position, on both viewports, now with exactly one on screen at a time;
 - the reduced-motion resting state;
 - the walkthrough's driver and its stand-down at 900px;
 - the live strip's absence on an empty registry;
@@ -189,4 +193,6 @@ These are recorded here rather than edited into the older files. When this spec 
 9. The mark renders at 16, 24, 48 and 160px in both themes. Its outer ring has exactly one gap, and its inner ring is closed. The favicon swaps its ink for a dark tab.
 10. The wordmark reads "ReplicHAI", in Inter, with its seam.
 11. Every guarantee in "What stays" still holds, at 1440×900 and 390×844.
+11a. At the top of the landing, a third of the way down and at the bottom, exactly one sign-in button is visible and reachable by Tab.
+11b. With the console mounted, `html` and `body` compute `overscroll-behavior: none`, and the rail and the main pane compute `contain`.
 12. The whole browser suite, the unit tests and the repository's full check (`make check`, which runs `go tool lateregate`) pass.
