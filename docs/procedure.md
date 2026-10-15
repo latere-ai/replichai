@@ -24,6 +24,8 @@ The artifact pointer is often not where you would expect. In one audited paper t
 
 Search the paper's own footnotes and availability statement, the preprint page and its ancillary files, the publisher's artifact and supplementary tabs, the authors' personal and lab pages, code-hosting sites by author name and by system name, and the open research repositories.
 
+In a study, the materials the project lists as released are snapshotted once and handed to every run, so every run reproduces from the same code and data. The hunt still happens in every run and is still scored: what a run finds is a finding about the paper, and what it reproduces from is fixed.
+
 Three rules make this useful:
 
 - **"Nothing found" is a finding**, but only after a search you can list. The search log is part of the deliverable.
