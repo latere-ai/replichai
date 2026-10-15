@@ -45,7 +45,7 @@ SessionSpec ─▶ latere adapter ─▶ api.latere.ai/v1/agents
 **The worker.** The adapter applies one agent in the person's own context, named from a digest of its manifest (`replichai-<digest>`), so the same method and runtime configuration reuse one agent and a changed one gets its own. Its manifest carries:
 
 - the session's instructions;
-- the built-in tools a reproduction needs (read, write, edit, bash, grep, glob, web_fetch, todo), the `record_verdict` client tool, and the grader below as its one subagent. A thread holds only the tools its parent holds, so the worker must hold `record_verdict` for the grader to have it; the adapter, not the tool list, is what keeps the worker from using it;
+- the built-in tools a reproduction needs (read, write, edit, bash, grep, glob, web_fetch, todo), and the grader below as its one subagent;
 - the Cella permissions a machine needs (`cella:sandbox.*`, `cella:secret.*`, `cella:environment.use`), without which the first tool call is refused;
 - approvals in `progressive` mode with every built-in tool always allowed, because a session nobody attends would otherwise stop on a confirmation forever;
 - the platform's base image, and a turn timeout long enough for a reproduction, since the default two hours ends a long turn.
@@ -58,22 +58,21 @@ The session is created with `attended: false`, so a question the agent asks is a
 
 ## Grading
 
-Topos has no grader of its own. It has the two pieces one is built from, and the adapter composes them:
+Topos has no grader of its own. It has the piece one is built from: a **subagent**, declared in the worker's manifest, which runs as a thread of the session in a context of its own, with only its own instructions and tools, on the same machine and therefore reading the same files. The adapter composes the grading loop from it, as the local runtime composes its judge stage from a second run of the harness.
 
-- a **subagent**, declared in the worker's manifest, which runs as a thread of the session in a context of its own, with only its own instructions and tools, on the same machine and therefore reading the same files; and
-- a **client tool**, whose call Topos validates against a schema and then hands to the client to answer, which makes the verdict data rather than prose.
-
-The grader subagent holds the rubric and the judge's instructions, read-only tools, and one client tool, `record_verdict`, whose schema is the judge verdict the local runtime already reads (grade, explanation, one row per criterion). A round is:
+The grader subagent holds the judge's instructions and read-only tools (read, grep, glob), so it can read the work and cannot change it. A round is:
 
 1. The worker's turn ends.
-2. The adapter sends the worker a short message asking it to run the grader for round *n*.
-3. The worker starts the grader thread. The adapter reads the thread's start from the events and checks that it is the declared grader with the round's task; anything else fails the round.
-4. The grader reads the work and calls `record_verdict`. The session stops for the client tool's answer; the adapter reads the validated verdict from the call, checks that the call came from the grader's thread, records it, and answers the call.
+2. The adapter sends the worker a short message asking it to spawn the grader with the round's task, which carries the rubric and the findings check.
+3. The worker calls `spawn`. The adapter reads the thread's start from the events and checks that it is the declared grader, with exactly the round's task and only the read-only tools; anything else fails the attempt.
+4. The grader reads the work and ends its turn with the verdict as a JSON object in its final message, in the shape the local runtime's judge writes (grade, explanation, one row per criterion). The adapter reads that message from the grader's own thread, never from the worker's relay of it, and validates it as the local runtime validates its judge's file. A grader that answers anything else has failed the attempt, and the adapter asks for another spawn, up to the same attempt limit the local runtime uses.
 5. Passed ends the session done. Needs-revision with revisions left sends the worker the verdict's failed criteria as its next task; otherwise the session ends failed with `evaluation_failed`.
 
-The worker never writes the verdict and cannot answer the call: a `record_verdict` call from any thread but the grader's fails the round. The grader is a separate context that reads the work and the rubric, not the worker's account of it, which is what 041a and the managed-agent port require of a runtime that declares `Evaluation`.
+The worker never writes the verdict: the adapter reads it only from the grader's thread. The grader is a separate context that reads the work and the rubric, not the worker's account of it, which is what 041a and the managed-agent port require of a runtime that declares `Evaluation`.
 
-When `EvaluationSpec.Findings` names a findings file, the adapter reads it from the machine after each worker turn, checks it against its schema, and hands the problems to the grader's task and to the revision, as the local runtime does (`FindingsRounds`).
+Two facts of the platform, both found by a probe on 2026-10-16, shape this. A subagent's model must be a model, not an Effort level, since the platform resolves a level only for the session's own model, and a free model cannot be named at all; so the grader runs on the first paid model of the session's level, or on the specific model the person chose. And a client tool, which would have made the verdict a schema-checked call rather than a message, is not offered to a subagent's thread; if Topos offers it later, the verdict moves to it without changing what a round is.
+
+When `EvaluationSpec.Findings` names a findings file, the adapter reads it after each worker turn, checks it against its schema, and puts the problems in the grader's task and in the revision, as the local runtime does (`FindingsRounds`).
 
 ## What the platform does not give, and what follows
 
@@ -125,7 +124,7 @@ A token never enters a locator, an event, a log line or a job row.
 
 1. The adapter passes the shared conformance suite against a stub of the platform's API, including restart, graded and ungraded sessions, cancellation keeping evidence, and release.
 2. A specification asking for a network mode the person's preference does not give, a package the image lacks, a bootstrap command, an input or a repository is refused before the first request that changes anything on the platform.
-3. A round's verdict is accepted only from the declared grader's thread, through `record_verdict`; a verdict call from the worker's thread, or a grader started with another task, fails the round.
+3. A round's verdict is accepted only from the declared grader's thread, started with exactly the round's task and read-only tools; a verdict in the worker's own messages, or a grader started with another task or other tools, fails the attempt.
 4. Usage tests prove the normalization from a recorded Topos transcript: fresh, cached, written and output tokens, reasoning as a detail, cost as a meter, cumulative and monotonic.
 5. No token appears in a locator, an event, an error or a log line.
 6. `replichai audit <paper> --runtime latere` runs a real paper on the live platform, graded, and publishes its reproduction.
