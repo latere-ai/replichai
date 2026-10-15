@@ -17,6 +17,7 @@ import (
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
+	"github.com/latere-ai/replichai/internal/verdict"
 )
 
 const repositoryCredentialRef = "audit-repository"
@@ -92,11 +93,13 @@ func WithSessionModel(preference string) SessionOption {
 	return func(a *SessionAuditor) { a.model = preference }
 }
 
-// WithSessionMaxRevisions overrides how many times the worker may revise. A
-// value of zero or less is ignored, leaving DefaultMaxRevisions in place.
+// WithSessionMaxRevisions overrides how many times the worker may revise. Zero
+// grades the first attempt and never revises it, which is how a study keeps
+// what a run produced before the rubric pushed it (046). A negative value is
+// ignored, leaving DefaultMaxRevisions in place.
 func WithSessionMaxRevisions(maximum int) SessionOption {
 	return func(a *SessionAuditor) {
-		if maximum > 0 {
+		if maximum >= 0 {
 			a.maxRevisions = maximum
 		}
 	}
@@ -235,6 +238,13 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 			Network:  networkFor(capabilities),
 		},
 		Evaluation: &managed.EvaluationSpec{Rubric: a.method.Rubric, MaxRevisions: a.maxRevisions},
+	}
+	// A runtime that runs the grading loop itself keeps each round's
+	// findings and checks them before the grader reads them. One that grades
+	// on a vendor's side cannot, and its findings are checked once, when the
+	// run is finalized.
+	if capabilities.FindingsRounds {
+		spec.Evaluation.Findings = verdict.File
 	}
 	if mount.Set() {
 		destination := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(mount.MountPath)), "/workspace/")

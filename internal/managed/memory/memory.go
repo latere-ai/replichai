@@ -57,6 +57,10 @@ type Config struct {
 	Files           map[string][]byte
 	Events          []managed.Event
 	Failures        map[FailurePoint]error
+	// FindingsRounds declares that the runtime checks the findings of each
+	// grading round, so a caller that asks for it only where it is declared
+	// can be tested both ways. This runtime keeps no rounds either way.
+	FindingsRounds bool
 }
 
 // Store holds the sessions. It is deliberately separate from Runtime, which
@@ -148,6 +152,7 @@ func (r *Runtime) capabilities() managed.Capabilities {
 		Cancellation:       true,
 		MaxAttachmentBytes: 64 << 20,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
+		FindingsRounds:     r.config.FindingsRounds,
 	}
 }
 

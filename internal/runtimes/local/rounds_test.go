@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
@@ -17,33 +16,14 @@ import (
 	"github.com/latere-ai/replichai/internal/verdict"
 )
 
-// readableFindings is a verdict.json the system can read in full.
+// readableFindings is the scripted sandbox's readable verdict.json, checked
+// here so a test that relies on it fails on the fixture and not on the code.
 func readableFindings(t *testing.T) string {
 	t.Helper()
-	findings := verdict.Verdict{
-		Schema: verdict.Schema, Verdict: verdict.Partial, Summary: "One claim checked.",
-		GradedAt:   time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC),
-		Components: verdict.Components{Verified: 1, Total: 1},
-		Boundary: []verdict.Claim{{
-			Claim: "The model reaches 91%", Loop: verdict.Inner, Outcome: verdict.Verified,
-			Citation: "§6", Evidence: "Retrained; 91%",
-		}},
-		Scorecard: []verdict.Score{
-			{Criterion: verdict.Code, Found: true, URL: "https://github.com/authors/x"},
-			{Criterion: verdict.Data, Searched: []string{"OSF"}},
-			{Criterion: verdict.License, Searched: []string{"the repository"}},
-			{Criterion: verdict.Preregistration, Searched: []string{"OSF registries"}},
-			{Criterion: verdict.Supplement, Searched: []string{"the publisher page"}},
-		},
-	}
-	body, err := json.Marshal(findings)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if _, problems, err := verdict.Validate(body); err != nil || len(problems) > 0 {
+	if _, problems, err := verdict.Validate([]byte(localtest.ReadableFindings)); err != nil || len(problems) > 0 {
 		t.Fatalf("the readable fixture is not readable: %v %v", problems, err)
 	}
-	return string(body)
+	return localtest.ReadableFindings
 }
 
 // unreadableFindings breaks one rule: the component counts do not add up.

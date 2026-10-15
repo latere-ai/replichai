@@ -281,6 +281,20 @@ func TestAuditRequiresExactlyOnePaper(t *testing.T) {
 	}
 }
 
+// A negative revision budget is refused by both commands that take one, and
+// named. Zero is a budget, not a mistake.
+func TestANegativeRevisionBudgetIsRefused(t *testing.T) {
+	for _, args := range [][]string{
+		{"audit", "paper", "--max-revisions", "-1", "--method", writeMethod(t)},
+		{"run", "papers.txt", "--max-revisions", "-1"},
+	} {
+		_, stderr, err := capture(t, args...)
+		if !errors.Is(err, errExitQuiet) || !strings.Contains(stderr, "0 means never") {
+			t.Errorf("%v: err = %v, stderr = %q", args, err, stderr)
+		}
+	}
+}
+
 func TestUnknownCommandAndHelp(t *testing.T) {
 	t.Run("no arguments", func(t *testing.T) {
 		_, stderr, err := capture(t)

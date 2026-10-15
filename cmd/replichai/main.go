@@ -57,6 +57,17 @@ func main() {
 // errExitQuiet signals a non-zero exit whose reason was already reported.
 var errExitQuiet = errors.New("exit")
 
+// checkRevisions refuses a negative revision budget. Zero is a budget: the run
+// is graded once and never revised, which is how a study keeps what a run
+// produced before the rubric pushed it.
+func checkRevisions(maximum int, stderr *os.File) error {
+	if maximum >= 0 {
+		return nil
+	}
+	_, _ = fmt.Fprintf(stderr, "--max-revisions is %d; it is how many times a run may revise, and 0 means never\n", maximum)
+	return errExitQuiet
+}
+
 func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error {
 	fs := flagSet("audit", stderr)
 	var (
@@ -65,7 +76,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		methodDir    = fs.String("method", "", "path to a method directory")
 		interval     = fs.Duration("interval", audit.DefaultPollInterval, "time between status checks")
 		timeout      = fs.Duration("timeout", audit.DefaultTimeout, "maximum time for the run")
-		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "maximum number of revisions")
+		maxRevisions = fs.Int("max-revisions", audit.DefaultMaxRevisions, "maximum number of revisions; 0 grades the run once and never revises it")
 		doPublish    = fs.Bool("publish", false, "create a GitHub repository and publish the reproduction to it")
 		owner        = fs.String("owner", envOr("REPLICHAI_GITHUB_OWNER", publish.DefaultOrg), "GitHub owner for --publish")
 		invite       = fs.String("invite", "", "GitHub login to invite as a collaborator")
@@ -82,6 +93,9 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	if len(positional) != 1 {
 		_, _ = fmt.Fprintln(stderr, "audit takes exactly one paper reference")
 		return errExitQuiet
+	}
+	if err := checkRevisions(*maxRevisions, stderr); err != nil {
+		return err
 	}
 	paper := positional[0]
 
