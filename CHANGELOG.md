@@ -34,6 +34,14 @@ committed. The commit log already holds that.
   building a paper's experiment and running it with simulated participants is
   coming soon. The audit itself still never simulates participants.
 
+### Fixed
+
+- Local runs no longer share a temporary folder. Under the host sandbox, every
+  codex run, and the setup step of every run, kept its temporary files in one
+  folder on the machine, `/tmp/claude`, so one run could find what another had
+  downloaded or built. Each run now keeps them in its own session's `tmp/`, and
+  the shared folder is denied.
+
 ## v0.34.0 - 2026-10-16
 
 ### Added
