@@ -10,12 +10,28 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- The price list in Admin → Platform policy can be edited. An admin adds a
+  model, edits its input, output, cache-read and cache-write prices, or removes
+  it, and Save policy writes the card. A new row starts blank, and the card
+  cannot be saved while a row lacks a model id or a price, lists a model twice,
+  or prices a model at zero for everything.
+
+### Changed
+
+- The server refuses a price list with a row that names no model, a negative
+  price, a model listed twice, or a model id its reference does not match, and
+  answers `bad_card`, so a card that cannot be priced from is never stored.
+
 ### Fixed
 
 - Starting a session that the project pays for no longer hangs. With a
   database pooler holding a single server connection, the start waited for a
   second connection while its own transaction held the only one, and every
   other request to the app waited behind it until the pooler gave up.
+- Scrolling the list of models in the runtime picker no longer closes it. Only
+  a scroll of the page behind the picker does.
 
 ## v0.31.0 - 2026-10-16
 
