@@ -14,7 +14,7 @@
 // row's ref renamed with it and every field the console does not edit carried
 // through untouched; a card that cannot be priced from is never sent; and the
 // table fits a phone. Run it with `bun run test:browser`.
-import { fail, settled, start } from './harness.mjs'
+import { fail, settled, start, waitUntil } from './harness.mjs'
 
 const EMAIL = 'admin@example.com'
 const M = 1_000_000
@@ -152,6 +152,33 @@ try {
     if (saved.start_reserve !== 5 * M) fail(`Save changed the start reserve to ${saved.start_reserve}`)
   }
   await page.close()
+
+  /* ── A card left alone never blocks the rest of the policy ── */
+
+  // The server may hold a row this form would refuse to save, here one priced
+  // at zero. An admin who only edits the reserve must still be able to save,
+  // and the card goes back exactly as the server gave it.
+  {
+    const odd = { models: [...card.models, { model: 'claude-zero', input: 0, output: 0, cache_read: 0, cache_write_5m: 0, cache_write_1h: 0 }] }
+    saved = null
+    const p = await h.page({ routes: [['GET /admin/settings', { start_reserve: 5 * M, overdraft_cap: 20 * M, rates: odd }], ...routes] })
+    await p.open('/console')
+    await p.waitForSelector('[data-test="rate-row"]', { timeout: 15000 })
+    await settled(p)
+    if (await p.evaluate(() => document.querySelector('[data-test="rate-error"]')?.textContent.trim())) {
+      fail('a card nobody edited shows a problem')
+    }
+    await p.evaluate(() => {
+      const input = document.querySelector('#start-reserve')
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, '7')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await p.evaluate(() => document.querySelector('[data-test="save-policy"]')?.click())
+    await waitUntil(() => saved, { what: 'the policy save to be sent' }).catch(() => {})
+    if (!saved) fail('a card nobody edited blocked saving the start reserve')
+    else if (JSON.stringify(saved.rates) !== JSON.stringify(odd)) fail(`a card nobody edited went back changed: ${JSON.stringify(saved.rates)}`)
+    await p.close()
+  }
 
   /* ── The card fits a phone ── */
 

@@ -143,8 +143,13 @@ function PlatformPolicy({
     (draftCfg.provider !== (settings.draft?.provider ?? '') ||
       draftCfg.base_url !== (settings.draft?.base_url ?? '') ||
       draftCfg.model !== (settings.draft?.model ?? ''))
-  const card = cardOf(rates, t)
-  const cardChanged = !!settings && !!card.card && JSON.stringify(card.card) !== JSON.stringify(settings.rates ?? { models: [] })
+  // Only a card the admin edited is checked and rebuilt. One they left alone is
+  // sent back as the server gave it, so a row this form would refuse, such as
+  // an empty card or a row priced at zero, never blocks saving the reserve.
+  const serverCard = settings?.rates ?? { models: [] }
+  const edited = !!settings && JSON.stringify(rates.map(shownOf)) !== JSON.stringify(serverCard.models.map(draftOf).map(shownOf))
+  const card = edited ? cardOf(rates, t) : { card: serverCard, problem: '' }
+  const cardChanged = edited && !!card.card && JSON.stringify(card.card) !== JSON.stringify(serverCard)
   const dirty =
     !!settings && valid && !card.problem && (nextReserve !== settings.start_reserve || nextFloor !== settings.overdraft_cap || draftChanged || cardChanged)
   const save = () => {
@@ -283,6 +288,8 @@ const draftOf = (m: ModelRates): RateDraft => ({
   cache_write_5m: toDollars(m.cache_write_5m),
   cache_write_1h: toDollars(m.cache_write_1h),
 })
+// shownOf is what a row shows the admin, the part an edit can change.
+const shownOf = (r: RateDraft) => [r.model, ...PRICES.map((f) => r[f])]
 // A new row is blank, prices included: the console never picks a price for the
 // admin, and a row that cannot be saved until it is filled in says so.
 const blankDraft = (): RateDraft => ({ key: draftKey++, base: {}, model: '', input: '', output: '', cache_read: '', cache_write_5m: '', cache_write_1h: '' })
