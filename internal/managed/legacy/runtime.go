@@ -7,11 +7,16 @@
 package legacy
 
 import (
+	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,7 +31,18 @@ type Config struct {
 	Name          managed.RuntimeName
 	ModelProvider string
 	Provider      provider.Provider
+	// Environments are the environments the backend offers by name, each the
+	// packages installed on top of the backend's base image, per manager.
+	// With any configured, a session's workspace is shared by every session
+	// asking for the same environment, packages and network, which a backend
+	// that caches packages per workspace installs once. Nil offers none, and
+	// each session gets a workspace of its own.
+	Environments map[string]map[string][]string
 }
+
+// DefaultEnvironment is the environment a session that names none runs on,
+// where a runtime offers environments.
+const DefaultEnvironment = "base"
 
 // Runtime adapts the provider resource graph to the managed session contract,
 // so callers hold one managed.Runtime whichever backend sits underneath.
@@ -44,6 +60,9 @@ func New(config Config) (*Runtime, error) {
 	}
 	if config.Provider == nil {
 		return nil, fmt.Errorf("legacy managed runtime %q has no provider", config.Name)
+	}
+	if _, ok := config.Environments[DefaultEnvironment]; len(config.Environments) > 0 && !ok {
+		return nil, fmt.Errorf("legacy managed runtime %q offers environments without %q, the one a session that names none runs on", config.Name, DefaultEnvironment)
 	}
 	return &Runtime{config: config}, nil
 }
@@ -67,6 +86,7 @@ func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
 		OutputDir:          r.config.Provider.OutputDir(),
 		PackageManagers:    map[string]bool{"pip": true},
+		Environments:       environmentSet(r.config.Environments),
 		NetworkModes:       map[managed.NetworkMode]bool{managed.NetworkNone: true, managed.NetworkOpen: true},
 		RepositoryModes:    map[managed.AccessMode]bool{managed.AccessReadOnly: true, managed.AccessReadWrite: true},
 		Evaluation:         true,
@@ -113,12 +133,16 @@ func (r *Runtime) Validate(spec managed.SessionSpec) error {
 }
 
 type locator struct {
-	WorkspaceID   string           `json:"workspace_id"`
-	WorkerID      string           `json:"worker_id"`
-	WorkerVersion int              `json:"worker_version"`
-	Model         managed.ModelRef `json:"model"`
-	Graded        bool             `json:"graded"`
-	FileIDs       []string         `json:"file_ids,omitempty"`
+	WorkspaceID string `json:"workspace_id"`
+	// SharedWorkspace marks a workspace other sessions use, which releasing
+	// this one leaves in place. A locator written before it existed names a
+	// workspace of the session's own.
+	SharedWorkspace bool             `json:"shared_workspace,omitempty"`
+	WorkerID        string           `json:"worker_id"`
+	WorkerVersion   int              `json:"worker_version"`
+	Model           managed.ModelRef `json:"model"`
+	Graded          bool             `json:"graded"`
+	FileIDs         []string         `json:"file_ids,omitempty"`
 }
 
 // Start creates the workspace, worker and run the spec asks for, and returns a
@@ -146,7 +170,19 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if spec.Sandbox.Network.Mode == managed.NetworkOpen {
 		network = provider.NetworkOpen
 	}
-	workspace, err := r.config.Provider.EnsureWorkspace(ctx, provider.WorkspaceSpec{Name: "managed-session", Packages: packages, Network: network})
+	workspaceSpec := provider.WorkspaceSpec{Name: "managed-session", Packages: packages, Network: network}
+	if len(r.config.Environments) > 0 {
+		environment := cmp.Or(spec.Sandbox.Environment, DefaultEnvironment)
+		for manager, names := range r.config.Environments[environment] {
+			packages[manager] = append(packages[manager], names...)
+		}
+		for manager := range packages {
+			slices.Sort(packages[manager])
+			packages[manager] = slices.Compact(packages[manager])
+		}
+		workspaceSpec.Name, workspaceSpec.Shared = sharedWorkspaceName(environment, packages, network), true
+	}
+	workspace, err := r.config.Provider.EnsureWorkspace(ctx, workspaceSpec)
 	if err != nil {
 		return managed.SessionRef{}, fmt.Errorf("create sandbox: %w", err)
 	}
@@ -180,7 +216,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 		return managed.SessionRef{}, errors.Join(fmt.Errorf("start session: %w", err), r.releaseResources(ctx, worker, workspace))
 	}
 	encoded, err := json.Marshal(locator{
-		WorkspaceID: workspace.ID, WorkerID: worker.ID, WorkerVersion: worker.Revision,
+		WorkspaceID: workspace.ID, SharedWorkspace: workspace.Shared, WorkerID: worker.ID, WorkerVersion: worker.Revision,
 		Model: managed.ModelRef{Provider: r.config.ModelProvider, ID: modelID}, Graded: spec.Evaluation != nil,
 		FileIDs: append([]string(nil), handle.Files...),
 	})
@@ -347,13 +383,40 @@ func (r *Runtime) handle(ref managed.SessionRef) (provider.RunHandle, locator, e
 		return provider.RunHandle{}, locator{}, fmt.Errorf("invalid %s session locator", r.Name())
 	}
 	return provider.RunHandle{
-		ID: ref.ID, Workspace: provider.WorkspaceRef{ID: metadata.WorkspaceID},
+		ID: ref.ID, Workspace: provider.WorkspaceRef{ID: metadata.WorkspaceID, Shared: metadata.SharedWorkspace},
 		Worker: provider.WorkerRef{ID: metadata.WorkerID, Revision: metadata.WorkerVersion},
 		Files:  append([]string(nil), metadata.FileIDs...),
 	}, metadata, nil
 }
 
 func workspacePath(relative string) string { return path.Join("/workspace", relative) }
+
+// sharedWorkspaceName names the workspace every session with the same
+// environment, packages and network shares. The packages and the network are
+// in the name through a digest, so a session asking for something else gets
+// a workspace of its own rather than one missing what it asked for.
+func sharedWorkspaceName(environment string, packages map[string][]string, network provider.Network) string {
+	h := sha256.New()
+	for _, manager := range slices.Sorted(maps.Keys(packages)) {
+		// hash.Hash.Write never returns an error.
+		_, _ = fmt.Fprintf(h, "%s=%s\n", manager, strings.Join(packages[manager], ","))
+	}
+	_, _ = fmt.Fprintf(h, "network=%s\n", network)
+	return "managed-" + environment + "-" + hex.EncodeToString(h.Sum(nil))[:12]
+}
+
+// environmentSet is the set of the configured environments' names, nil for
+// none.
+func environmentSet(environments map[string]map[string][]string) map[string]bool {
+	if len(environments) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(environments))
+	for name := range environments {
+		set[name] = true
+	}
+	return set
+}
 
 func translateState(state provider.RunState) managed.State {
 	switch state {

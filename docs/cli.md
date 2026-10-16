@@ -60,7 +60,14 @@ pingouin and the spatial libraries, and R with lme4, lmerTest, ordinal, car,
 emmeans, afex, psych, spdep and the tidyverse) and `gui` (adds a display and a
 browser). A deployment offers the ones it lists in `LATERE_ENVIRONMENTS`, comma
 separated, because one is usable only once the platform holds it; unset offers
-`base` alone. The other runtimes offer no named environment yet.
+`base` alone.
+
+On `anthropic-managed`, `base` is Anthropic's own image and `science` installs
+the same Python packages on it, and R with the same packages from Ubuntu's R
+packages. Sessions that ask for the same environment, packages and network
+share one Anthropic environment, so Anthropic installs the packages once and
+reuses them; the first session on a new combination waits for the install.
+The other runtimes offer no named environment yet.
 
 The runtime is chosen by `--runtime`, then by `REPLICHAI_RUNTIME`, then by the
 command's own default: `anthropic-managed` for `audit`, `finish` and `rates`,

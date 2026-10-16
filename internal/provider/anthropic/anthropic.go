@@ -194,13 +194,29 @@ func (p *Provider) ResolveModel(ctx context.Context, pref string) (string, error
 	return first, nil
 }
 
-// EnsureWorkspace creates the sandbox.
+// EnsureWorkspace creates the sandbox's environment, or for a shared one
+// returns the environment already created under its name. Anthropic installs
+// an environment's packages once and caches them for every session that uses
+// it, so a shared environment is what makes that cache apply.
 func (p *Provider) EnsureWorkspace(ctx context.Context, spec provider.WorkspaceSpec) (provider.WorkspaceRef, error) {
+	if spec.Shared {
+		id, found, err := p.findEnvironment(ctx, spec.Name)
+		if err != nil {
+			return provider.WorkspaceRef{}, err
+		}
+		if found {
+			return provider.WorkspaceRef{ID: id, Shared: true}, nil
+		}
+	}
 	cloud := anthropic.BetaCloudConfigParams{}
 	if spec.Network == provider.NetworkLimited {
-		cloud.Networking = anthropic.BetaCloudConfigParamsNetworkingUnion{
-			OfLimited: &anthropic.BetaLimitedNetworkParams{},
+		limited := &anthropic.BetaLimitedNetworkParams{}
+		// Anthropic refuses an environment that installs packages behind a
+		// limited network unless the network lets it reach the registries.
+		if len(spec.Packages["pip"]) > 0 || len(spec.Packages["apt"]) > 0 {
+			limited.AllowPackageManagers = param.NewOpt(true)
 		}
+		cloud.Networking = anthropic.BetaCloudConfigParamsNetworkingUnion{OfLimited: limited}
 	} else {
 		cloud.Networking = anthropic.BetaCloudConfigParamsNetworkingUnion{
 			OfUnrestricted: &anthropic.BetaUnrestrictedNetworkParam{},
@@ -208,6 +224,9 @@ func (p *Provider) EnsureWorkspace(ctx context.Context, spec provider.WorkspaceS
 	}
 	if pip := spec.Packages["pip"]; len(pip) > 0 {
 		cloud.Packages.Pip = pip
+	}
+	if apt := spec.Packages["apt"]; len(apt) > 0 {
+		cloud.Packages.Apt = apt
 	}
 
 	env, err := p.client.Beta.Environments.New(ctx, anthropic.BetaEnvironmentNewParams{
@@ -217,7 +236,24 @@ func (p *Provider) EnsureWorkspace(ctx context.Context, spec provider.WorkspaceS
 	if err != nil {
 		return provider.WorkspaceRef{}, fmt.Errorf("create environment: %w", err)
 	}
-	return provider.WorkspaceRef{ID: env.ID}, nil
+	return provider.WorkspaceRef{ID: env.ID, Shared: spec.Shared}, nil
+}
+
+// findEnvironment returns the live environment named name, if there is one.
+// Two runs that both find none create one each; the next run reuses either,
+// which costs one package install and nothing else.
+func (p *Provider) findEnvironment(ctx context.Context, name string) (string, bool, error) {
+	pages := p.client.Beta.Environments.ListAutoPaging(ctx, anthropic.BetaEnvironmentListParams{})
+	for pages.Next() {
+		env := pages.Current()
+		if env.Name == name && env.ArchivedAt == "" {
+			return env.ID, true, nil
+		}
+	}
+	if err := pages.Err(); err != nil {
+		return "", false, fmt.Errorf("list environments: %w", err)
+	}
+	return "", false, nil
 }
 
 // EnsureWorker creates the worker.
@@ -613,7 +649,8 @@ func (p *Provider) ReleaseResources(ctx context.Context, worker provider.WorkerR
 		_, err := p.client.Beta.Agents.Archive(ctx, worker.ID, anthropic.BetaAgentArchiveParams{})
 		failures = append(failures, releaseError("archive agent", err))
 	}
-	if workspace.ID != "" {
+	// A shared environment outlives the run; other runs reuse it.
+	if workspace.ID != "" && !workspace.Shared {
 		_, err := p.client.Beta.Environments.Delete(ctx, workspace.ID, anthropic.BetaEnvironmentDeleteParams{})
 		failures = append(failures, releaseError("delete environment", err))
 	}

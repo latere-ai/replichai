@@ -898,3 +898,70 @@ func TestPollCarriesCacheWritesSplitByLifetime(t *testing.T) {
 		t.Errorf("cache written = %d, want %d", got, want)
 	}
 }
+
+// TestASharedWorkspaceIsFoundOrCreated checks that a shared workspace reuses
+// the live environment already created under its name, creates one when there
+// is none, and that releasing a run leaves a shared environment in place.
+func TestASharedWorkspaceIsFoundOrCreated(t *testing.T) {
+	var requests []string
+	existing := []map[string]any{
+		{"id": "env_archived", "name": "managed-science-abc", "archived_at": "2026-10-01T00:00:00Z"},
+		{"id": "env_live", "name": "managed-science-abc", "archived_at": nil},
+	}
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/environments":
+			writeJSON(t, w, map[string]any{"data": existing, "has_more": false})
+		default:
+			writeJSON(t, w, map[string]any{"id": "env_new"})
+		}
+	})
+	found, err := p.EnsureWorkspace(context.Background(), provider.WorkspaceSpec{Name: "managed-science-abc", Shared: true})
+	if err != nil || found.ID != "env_live" || !found.Shared {
+		t.Fatalf("EnsureWorkspace of an existing name = (%+v, %v), want env_live, shared", found, err)
+	}
+	created, err := p.EnsureWorkspace(context.Background(), provider.WorkspaceSpec{Name: "managed-base-def", Shared: true})
+	if err != nil || created.ID != "env_new" || !created.Shared {
+		t.Fatalf("EnsureWorkspace of a new name = (%+v, %v), want env_new, shared", created, err)
+	}
+	if err := p.ReleaseResources(context.Background(), provider.WorkerRef{}, found); err != nil {
+		t.Fatalf("ReleaseResources: %v", err)
+	}
+	for _, request := range requests {
+		if strings.HasPrefix(request, "DELETE /v1/environments/") {
+			t.Fatalf("a shared environment was deleted: %v", requests)
+		}
+	}
+	if creates := strings.Count(strings.Join(requests, "\n"), "POST /v1/environments"); creates != 1 {
+		t.Fatalf("%d environments created, want 1: %v", creates, requests)
+	}
+}
+
+// TestPackagesBehindALimitedNetworkReachTheirRegistries checks that apt
+// packages are installed too, and that an environment installing packages
+// behind a limited network lets the package managers through, which Anthropic
+// requires.
+func TestPackagesBehindALimitedNetworkReachTheirRegistries(t *testing.T) {
+	var payload map[string]any
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &payload)
+		writeJSON(t, w, map[string]any{"id": "env_1"})
+	})
+	if _, err := p.EnsureWorkspace(context.Background(), provider.WorkspaceSpec{
+		Name: "w", Network: provider.NetworkLimited,
+		Packages: map[string][]string{"pip": {"scipy"}, "apt": {"r-base-core"}},
+	}); err != nil {
+		t.Fatalf("EnsureWorkspace: %v", err)
+	}
+	config, _ := payload["config"].(map[string]any)
+	networking, _ := config["networking"].(map[string]any)
+	if networking["type"] != "limited" || networking["allow_package_managers"] != true {
+		t.Errorf("networking = %v, want limited with the package managers allowed", networking)
+	}
+	packages, _ := config["packages"].(map[string]any)
+	if apt, _ := packages["apt"].([]any); len(apt) != 1 || apt[0] != "r-base-core" {
+		t.Errorf("apt packages = %v", packages["apt"])
+	}
+}

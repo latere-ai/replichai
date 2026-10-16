@@ -59,6 +59,10 @@ type WorkspaceSpec struct {
 	Name     string
 	Packages map[string][]string
 	Network  Network
+	// Shared asks for a workspace several runs use: one the backend already
+	// holds under Name is reused, and releasing a run leaves it in place, so
+	// a backend that caches packages per workspace installs them once.
+	Shared bool
 }
 
 // WorkerSpec describes the worker itself.
@@ -125,7 +129,13 @@ func (m RepoMount) Set() bool { return m.URL != "" }
 
 // WorkspaceRef identifies a sandbox. It, WorkerRef, and RunHandle are opaque:
 // only the adapter that produced an ID interprets it.
-type WorkspaceRef struct{ ID string }
+//
+// Shared reports a workspace several runs use, which releasing one run
+// leaves in place.
+type WorkspaceRef struct {
+	ID     string
+	Shared bool
+}
 
 // WorkerRef identifies a worker and the revision of it that is pinned.
 type WorkerRef struct {
