@@ -21,6 +21,11 @@ committed. The commit log already holds that.
 
 ### Fixed
 
+- A session started in the app no longer fails at its end with `retain
+  evidence: create destination: mkdir /tmp: permission denied`. The container
+  image had no `/tmp`, where the server writes a session's evidence, so every
+  session ran to its end and then failed. The image now carries one, and a
+  server that cannot write its work directory refuses to start instead.
 - A Latere run that was stopped or timed out kept none of its work: it was
   read before the platform had saved the last turn's files. It is now read
   once that turn has stopped.
