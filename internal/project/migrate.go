@@ -6,19 +6,26 @@ package project
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/latere-ai/replichai/internal/paper"
 )
 
 // migrations is the project schema, in its own version namespace so it
 // composes with job.Migrate and access.Migrate on one database. It runs after
-// job.Migrate, because its backfill reads the jobs table.
+// job.Migrate, because its backfills read the jobs table.
 var migrations = []struct {
 	version int
 	sql     string
+	// run is a step that needs Go rather than SQL, run in place of sql in the
+	// same transaction and under the same lock.
+	run func(ctx context.Context, tx pgx.Tx) error
 }{
-	{1, `
+	{version: 1, sql: `
 CREATE TABLE projects (
 	id          TEXT PRIMARY KEY,
 	owner       TEXT NOT NULL,
@@ -47,18 +54,18 @@ ON CONFLICT (id) DO NOTHING;
 ALTER TABLE jobs ADD CONSTRAINT jobs_project_fk
 	FOREIGN KEY (project_id) REFERENCES projects (id) NOT VALID;
 `},
-	{2, `
+	{version: 2, sql: `
 -- The public-flip provenance (006f): the recorded responsibility sign-off.
 ALTER TABLE projects ADD COLUMN signed_off_by       TEXT NOT NULL DEFAULT '';
 ALTER TABLE projects ADD COLUMN signed_off_at       TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN attestation_version TEXT NOT NULL DEFAULT '';
 `},
-	{3, `
+	{version: 3, sql: `
 -- The owner's standing consent to cover their members' sessions (006l). Off by
 -- default: sponsorship is always something the owner turned on.
 ALTER TABLE projects ADD COLUMN sponsored BOOLEAN NOT NULL DEFAULT false;
 `},
-	{4, `
+	{version: 4, sql: `
 -- The signer snapshot (006n): who the owner said they were when they signed,
 -- copied onto the project rather than read from their profile, so a later
 -- profile edit never rewrites a published attestation. Every column defaults to
@@ -72,7 +79,7 @@ ALTER TABLE projects ADD COLUMN signed_off_scholar     TEXT NOT NULL DEFAULT '';
 -- Already redacted when written; the full address is never stored.
 ALTER TABLE projects ADD COLUMN signed_off_email       TEXT NOT NULL DEFAULT '';
 `},
-	{5, `
+	{version: 5, sql: `
 -- The retraction (006o). A withdrawal ends a publication without erasing the
 -- sign-off it retracts, so these columns are beside the signed_off_* ones rather
 -- than replacing them. NULL withdrawn_at means never withdrawn, which is the
@@ -82,21 +89,21 @@ ALTER TABLE projects ADD COLUMN withdrawn_at     TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN withdrawn_by     TEXT NOT NULL DEFAULT '';
 ALTER TABLE projects ADD COLUMN withdrawn_reason TEXT NOT NULL DEFAULT '';
 `},
-	{6, `
+	{version: 6, sql: `
 -- 011 makes a project pay for its own sessions out of its own credits, so the
 -- owner's standing consent to cover a collaborator's run no longer has a
 -- meaning. A project holding money is that consent, expressed once and in the
 -- only unit that can be drawn down.
 ALTER TABLE projects DROP COLUMN sponsored;
 `},
-	{7, `
+	{version: 7, sql: `
 -- This project's own overdraft floor, overriding the platform default (011).
 -- Zero means the platform default applies. It is not exposed on any payload a
 -- member reads, because a published overdraft becomes an allowance somebody
 -- plans around.
 ALTER TABLE projects ADD COLUMN credit_cap BIGINT NOT NULL DEFAULT 0;
 `},
-	{8, `
+	{version: 8, sql: `
 -- The papers a project is about (012). Before this a paper existed only as the
 -- ref of a session that had been started, so a project could not hold a paper it
 -- had not run, and a paper whose only session failed left no record of having
@@ -130,7 +137,7 @@ WHERE j.paper_key <> '' AND j.project_id <> ''
 ORDER BY j.project_id, j.paper_key, j.created_at
 ON CONFLICT (project_id, paper_key) DO NOTHING;
 `},
-	{9, `
+	{version: 9, sql: `
 -- The trash (019). A project an owner deleted leaves every list without taking
 -- its papers, its sessions, or its published repositories with it, so the act is
 -- reversible until the owner confirms it.
@@ -145,7 +152,7 @@ ALTER TABLE projects ADD COLUMN deleted_at TIMESTAMPTZ;
 CREATE INDEX projects_by_owner_live ON projects (owner, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX projects_trashed ON projects (owner, deleted_at DESC) WHERE deleted_at IS NOT NULL;
 `},
-	{10, `
+	{version: 10, sql: `
 -- The paper's bibliographic record, not only its title (037). The record comes
 -- from the identifier's own metadata service or the publisher's own
 -- declaration, and resolution was already fetching all of it and keeping only
@@ -168,7 +175,7 @@ ALTER TABLE project_papers ADD COLUMN publisher TEXT   NOT NULL DEFAULT '';
 -- name must not freeze the year nobody has looked up yet.
 ALTER TABLE project_papers ADD COLUMN edited TEXT[] NOT NULL DEFAULT '{}';
 `},
-	{11, `
+	{version: 11, sql: `
 -- What the project is about, in its owner's own words (038). A title is either
 -- what somebody typed or the first paper's reference, so half the projects here
 -- are named after a doi: string and none of them can explain why they exist.
@@ -177,7 +184,7 @@ ALTER TABLE project_papers ADD COLUMN edited TEXT[] NOT NULL DEFAULT '{}';
 -- which is a state the screen already has to render, not a missing value.
 ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';
 `},
-	{12, `
+	{version: 12, sql: `
 -- The paper's own abstract, as its source publishes it (037). A title says what
 -- a paper is called and the record says where it appeared; this is the only
 -- field that says what it is about, which is what somebody reading a project
@@ -188,7 +195,7 @@ ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';
 -- than a summary somebody wrote for it.
 ALTER TABLE project_papers ADD COLUMN abstract TEXT NOT NULL DEFAULT '';
 `},
-	{13, `
+	{version: 13, sql: `
 -- Crossref and publisher pages carry HTML entities in plain-text fields, and
 -- records stored before they were decoded show "Computers &amp; Graphics". The
 -- reader decodes them now; this decodes the common ones already stored.
@@ -198,6 +205,7 @@ UPDATE project_papers SET
 	publisher = replace(replace(replace(replace(replace(publisher, '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&')
 WHERE title ~ '&(lt|gt|quot|#39|amp);' OR venue ~ '&(lt|gt|quot|#39|amp);' OR publisher ~ '&(lt|gt|quot|#39|amp);';
 `},
+	{version: 14, run: keyUnkeyedSessions},
 }
 
 // migrationLock is this migrator's advisory lock id. A rolling deploy runs the
@@ -248,13 +256,80 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 			if exists {
 				return nil
 			}
-			if _, err := tx.Exec(ctx, m.sql); err != nil {
+			if m.run != nil {
+				if err := m.run(ctx, tx); err != nil {
+					return fmt.Errorf("apply project migration %d: %w", m.version, err)
+				}
+			} else if _, err := tx.Exec(ctx, m.sql); err != nil {
 				return fmt.Errorf("apply project migration %d: %w", m.version, err)
 			}
 			_, err := tx.Exec(ctx, `INSERT INTO project_migrations (version) VALUES ($1)`, m.version)
 			return err
 		}); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// keyUnkeyedSessions gives each finished audit session that has no paper key
+// the key its ref derives, and lists that paper on the session's project.
+//
+// Sessions recorded before job migration 2 added the key hold an empty one:
+// the column was added empty and nothing filled it, and migration 8 listed only
+// the papers of keyed sessions. A project holding only such sessions listed no
+// paper, so the registry showed it with no citation.
+//
+// The key is derived by paper.Key rather than in SQL. A key derived any other
+// way could differ from the one a later add of the same paper computes, and the
+// project would then list that paper twice.
+//
+// The paper is listed with an empty record, as migration 8 listed its papers,
+// because a migration does not call the network. The paper sweep fills the
+// record in. A ref paper.Key cannot read is left without a key. Only finished
+// sessions are keyed: a key on a live one could collide with another live
+// session of the same paper in the partial unique indexes, and fail the
+// migration on every start.
+func keyUnkeyedSessions(ctx context.Context, tx pgx.Tx) error {
+	type session struct {
+		id, project, principal, ref string
+		created                     time.Time
+	}
+	// Oldest first, so when several sessions of one project share a paper,
+	// the paper is credited to whoever added it first, as migration 8 does.
+	rows, err := tx.Query(ctx, `
+		SELECT j.id, j.project_id, j.principal, j.ref, j.created_at
+		FROM jobs j
+		JOIN projects p ON p.id = j.project_id
+		WHERE j.paper_key = '' AND j.kind <> 'experiment' AND j.phase IN ('done', 'failed')
+		ORDER BY j.created_at, j.id`)
+	if err != nil {
+		return fmt.Errorf("read unkeyed sessions: %w", err)
+	}
+	sessions, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (session, error) {
+		var s session
+		err := row.Scan(&s.id, &s.project, &s.principal, &s.ref, &s.created)
+		return s, err
+	})
+	if err != nil {
+		return fmt.Errorf("read unkeyed sessions: %w", err)
+	}
+	for _, s := range sessions {
+		key, err := paper.Key(s.ref)
+		if err != nil {
+			slog.WarnContext(ctx, "project migration: a session's ref has no paper key",
+				"job", s.id, "ref", s.ref, "error", err)
+			continue
+		}
+		if _, err := tx.Exec(ctx, `UPDATE jobs SET paper_key = $2 WHERE id = $1`, s.id, key); err != nil {
+			return fmt.Errorf("key session %s: %w", s.id, err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO project_papers (project_id, paper_key, ref, title, added_by, added_at)
+			VALUES ($1, $2, $3, '', $4, $5)
+			ON CONFLICT (project_id, paper_key) DO NOTHING`,
+			s.project, key, s.ref, s.principal, s.created); err != nil {
+			return fmt.Errorf("list the paper of session %s: %w", s.id, err)
 		}
 	}
 	return nil

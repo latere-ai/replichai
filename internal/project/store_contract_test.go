@@ -643,6 +643,125 @@ func seedSession(t *testing.T, pool *pgxpool.Pool, s legacySession) {
 	}
 }
 
+// TestMigrationKeysUnkeyedSessions checks migration 14 on the shape two
+// published projects were left in: one finished session whose ref is a bare
+// DOI and whose paper key is empty, so the project listed no paper and the
+// registry showed it with no citation. After the migration the session carries
+// the key paper.Key derives and the project lists the paper. A ref with no key,
+// an experiment and a live session are left alone, and running the step again
+// changes nothing. Postgres-only.
+func TestMigrationKeysUnkeyedSessions(t *testing.T) {
+	pool := freshDB(t)
+	defer pool.Close()
+	ctx := context.Background()
+	if err := job.Migrate(ctx, pool); err != nil {
+		t.Fatalf("job migrate: %v", err)
+	}
+
+	const (
+		videos  = "short-form-videos-degrade-our-capacity-to-retain-wtmk"
+		placebo = "placebo-effect-of-artificial-intelligence-in-4bev"
+		other   = "an-unreadable-reference-zq9x"
+	)
+	day := func(d int) time.Time { return time.Date(2026, 7, d, 9, 0, 0, 0, time.UTC) }
+	for _, s := range []legacySession{
+		{id: "videos", project: videos, principal: "owner", ref: "10.1145/3544548.3580778", created: day(20)},
+		// A later run of the same paper by somebody else: the paper is listed
+		// once, credited to the first.
+		{id: "videos-again", project: videos, principal: "member", ref: "https://doi.org/10.1145/3544548.3580778", phase: "failed", created: day(22)},
+		// A live session is not keyed, so it cannot collide in the guard.
+		{id: "videos-live", project: videos, principal: "owner", ref: "10.1145/3544548.3580778", phase: "running", created: day(23)},
+		{id: "placebo", project: placebo, principal: "owner", ref: "10.1145/3529225", created: day(21)},
+		// A keyed session of the same paper already listed it, through
+		// migration 8; the listing it made is kept.
+		{id: "placebo-keyed", project: placebo, principal: "member", ref: "10.1145/3529225", key: "doi:10.1145/3529225", created: day(24)},
+		{id: "experiment", project: placebo, principal: "owner", ref: "exp-1", kind: "experiment", created: day(25)},
+		{id: "unreadable", project: other, principal: "owner", ref: "not a reference", created: day(26)},
+	} {
+		seedSession(t, pool, s)
+	}
+
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("project migrate: %v", err)
+	}
+
+	keys := func() map[string]string {
+		t.Helper()
+		rows, err := pool.Query(ctx, `SELECT id, paper_key FROM jobs`)
+		if err != nil {
+			t.Fatalf("read keys: %v", err)
+		}
+		got := map[string]string{}
+		for rows.Next() {
+			var id, key string
+			if err := rows.Scan(&id, &key); err != nil {
+				t.Fatalf("scan: %v", err)
+			}
+			got[id] = key
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("read keys: %v", err)
+		}
+		return got
+	}
+	want := map[string]string{
+		"videos":        "doi:10.1145/3544548.3580778",
+		"videos-again":  "doi:10.1145/3544548.3580778",
+		"videos-live":   "",
+		"placebo":       "doi:10.1145/3529225",
+		"placebo-keyed": "doi:10.1145/3529225",
+		"experiment":    "",
+		"unreadable":    "",
+	}
+	if got := keys(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paper keys = %v, want %v", got, want)
+	}
+
+	store := NewPGStore(pool)
+	papers := func(id string) []Paper {
+		t.Helper()
+		ps, err := store.ListPapers(ctx, id)
+		if err != nil {
+			t.Fatalf("ListPapers %s: %v", id, err)
+		}
+		return ps
+	}
+	got := papers(videos)
+	if len(got) != 1 {
+		t.Fatalf("%s lists %d papers, want 1: %+v", videos, len(got), got)
+	}
+	if p := got[0]; p.Key != "doi:10.1145/3544548.3580778" || p.Ref != "10.1145/3544548.3580778" ||
+		p.AddedBy != "owner" || !p.AddedAt.Equal(day(20)) || p.Title != "" {
+		t.Errorf("%s paper = %+v; want the first session's ref, credited to its principal, record empty", videos, p)
+	}
+	if got := papers(placebo); len(got) != 1 || got[0].Key != "doi:10.1145/3529225" || got[0].AddedBy != "member" {
+		t.Errorf("%s papers = %+v; want the one listing migration 8 made", placebo, got)
+	}
+	if got := papers(other); len(got) != 0 {
+		t.Errorf("%s lists %+v; a ref with no key has no paper to list", other, got)
+	}
+	// The registry reads the papers through this, so a published project now
+	// has a paper to cite once the sweep fills its record.
+	byProject, err := store.PapersByProjects(ctx, []string{videos, placebo})
+	if err != nil || len(byProject[videos]) != 1 || len(byProject[placebo]) != 1 {
+		t.Errorf("PapersByProjects = %+v, %v; want one paper each", byProject, err)
+	}
+
+	// Running the step again finds nothing left to key and adds nothing.
+	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error { return keyUnkeyedSessions(ctx, tx) }); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate again: %v", err)
+	}
+	if got := keys(); !reflect.DeepEqual(got, want) {
+		t.Errorf("after a second run, paper keys = %v, want %v", got, want)
+	}
+	if got := papers(videos); len(got) != 1 {
+		t.Errorf("after a second run, %s lists %d papers, want 1", videos, len(got))
+	}
+}
+
 // projectTestDB is the dedicated database the project PG tests run in. The
 // project migration adds a foreign key to the shared jobs table, which
 // internal/job's own contract test, which inserts sessions with dangling
