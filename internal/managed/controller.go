@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"reflect"
 	"time"
@@ -42,6 +43,11 @@ type Hooks struct {
 	// still exist. Only a successful Retain permits release, so a failure here
 	// deliberately leaves the session unreleased and recoverable.
 	Retain func(context.Context, EvidenceReader) error
+	// Snapshot receives the work so far, as Retain does, every
+	// WaitPolicy.SnapshotEvery while the session runs, for a runtime that
+	// declares LiveArtifacts (049). It is best effort: a failure is reported
+	// and the run carries on, and Retain still runs at the end.
+	Snapshot func(context.Context, EvidenceReader) error
 }
 
 // EvidenceReader is the view of a finished or cancelled session handed to
@@ -61,8 +67,8 @@ type EvidenceReader struct {
 }
 
 // Fetch reads one artifact's bytes from the still-live runtime. Call it only
-// from inside the Retain hook: afterwards the session is released and the
-// remote copy may be gone.
+// from inside the Retain or Snapshot hook: afterwards the session may be
+// released and the remote copy gone.
 func (e EvidenceReader) Fetch(ctx context.Context, artifact Artifact) ([]byte, error) {
 	return e.runtime.FetchArtifact(ctx, e.Status.Ref, artifact)
 }
@@ -113,12 +119,17 @@ type WaitPolicy struct {
 	// produced, which can take far longer than cancelling it. Zero is
 	// CleanupTimeout.
 	RetainTimeout time.Duration
+	// SnapshotEvery is how often the work so far is handed to
+	// Hooks.Snapshot while the session runs; zero takes no snapshot. Each
+	// snapshot is bounded by RetainTimeout.
+	SnapshotEvery time.Duration
 }
 
 // DefaultWaitPolicy returns the budget tuned for production: poll from two
 // seconds up to fifteen, tolerate five consecutive temporary failures or two
 // minutes of silence, allow thirty seconds to cancel an abandoned session, and
-// ten minutes to hand over its evidence. Tests shrink these
+// ten minutes to hand over its evidence, with a snapshot of the work every
+// five minutes while it runs. Tests shrink these
 // durations instead of inventing their own policy.
 func DefaultWaitPolicy() WaitPolicy {
 	return WaitPolicy{
@@ -128,6 +139,7 @@ func DefaultWaitPolicy() WaitPolicy {
 		MaxSilence:         2 * time.Minute,
 		CleanupTimeout:     30 * time.Second,
 		RetainTimeout:      10 * time.Minute,
+		SnapshotEvery:      5 * time.Minute,
 	}
 }
 
@@ -281,6 +293,8 @@ func (c *Controller) Cancel(ctx context.Context, ref SessionRef, hooks Hooks) (R
 
 func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, hooks Hooks, graded *bool) (Result, error) {
 	var previous Status
+	live := c.takesSnapshots(ctx, runtime, hooks)
+	lastSnapshot := c.clock.now()
 	lastSuccess := c.clock.now()
 	temporaryErrors := 0
 	delay := c.policy.InitialDelay
@@ -326,6 +340,10 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 			defer cancel()
 			return c.retainAndRelease(retainCtx, runtime, status, hooks, nil)
 		}
+		if live && c.clock.now().Sub(lastSnapshot) >= c.policy.SnapshotEvery {
+			c.snapshot(ctx, runtime, status, hooks)
+			lastSnapshot = c.clock.now()
+		}
 		if err := c.clock.sleep(ctx, delay); err != nil {
 			return c.abort(ctx, runtime, ref, status, hooks, err)
 		}
@@ -363,6 +381,47 @@ func (c *Controller) abort(ctx context.Context, runtime Runtime, ref SessionRef,
 		return result, errors.Join(append([]error{cause}, cleanupErrors...)...)
 	}
 	return result, cause
+}
+
+// takesSnapshots reports whether this wait hands the work to Hooks.Snapshot:
+// the caller asked for snapshots, the policy sets an interval, and the runtime
+// can hand over its files mid-run. A runtime whose capabilities cannot be read
+// is waited on without snapshots, since they are best effort.
+func (c *Controller) takesSnapshots(ctx context.Context, runtime Runtime, hooks Hooks) bool {
+	if hooks.Snapshot == nil || c.policy.SnapshotEvery <= 0 {
+		return false
+	}
+	capabilities, err := runtime.Capabilities(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "managed: the runtime's capabilities could not be read; no snapshots this run", "runtime", runtime.Name(), "error", err)
+		return false
+	}
+	return capabilities.LiveArtifacts
+}
+
+// snapshot hands the session's work so far to Hooks.Snapshot. A failure is
+// reported and the run carries on: Retain is the handover that counts.
+func (c *Controller) snapshot(ctx context.Context, runtime Runtime, status Status, hooks Hooks) {
+	timeout := c.policy.RetainTimeout
+	if timeout <= 0 {
+		timeout = c.policy.CleanupTimeout
+	}
+	snapshotCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	err := func() error {
+		events, err := runtime.Events(snapshotCtx, status.Ref)
+		if err != nil {
+			return fmt.Errorf("read events: %w", err)
+		}
+		artifacts, err := runtime.ListArtifacts(snapshotCtx, status.Ref)
+		if err != nil {
+			return fmt.Errorf("list artifacts: %w", err)
+		}
+		return hooks.Snapshot(snapshotCtx, EvidenceReader{Status: status, Events: events, Artifacts: artifacts, runtime: runtime})
+	}()
+	if err != nil {
+		slog.WarnContext(ctx, "managed: a snapshot of the session's work failed; the run carries on", "session", status.Ref.ID, "error", err)
+	}
 }
 
 // retainContext is the context evidence is handed over on: detached from the

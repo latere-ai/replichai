@@ -389,6 +389,12 @@ type Capabilities struct {
 	// EvaluationSpec asks for by naming Findings. A runtime that grades on a
 	// vendor's side cannot reach inside that loop and declares false.
 	FindingsRounds bool
+	// LiveArtifacts reports that ListArtifacts and FetchArtifact may be
+	// called while the session runs, and return what it has saved so far.
+	// The controller then takes snapshots of the work as the session runs
+	// (049); a runtime that does not declare it is asked for its files only
+	// once the session has ended.
+	LiveArtifacts bool
 }
 
 // Runtime is one backend able to execute a managed session. The interface is

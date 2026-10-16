@@ -15,6 +15,14 @@ import (
 
 func TestRuntimeContract(t *testing.T) { contracttest.Run(t, func() managed.Runtime { return New() }) }
 
+// The suite again on a runtime that declares live artifacts, so its mid-run
+// case runs and the capability is held to both declarations.
+func TestRuntimeContractWithLiveArtifacts(t *testing.T) {
+	contracttest.Run(t, func() managed.Runtime {
+		return NewWithStore(nil, Config{LiveArtifacts: true, Files: map[string][]byte{"outputs/answer.md": []byte("so far")}})
+	})
+}
+
 // TestFailingEvaluationContract checks that a rejected evaluation ends in
 // StateFailed, which is the state every runtime is held to.
 func TestFailingEvaluationContract(t *testing.T) {

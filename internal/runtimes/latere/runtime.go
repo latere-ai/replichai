@@ -206,6 +206,10 @@ func (r *Runtime) capabilities() managed.Capabilities {
 		DurableEvents:   true,
 		Artifacts:       true,
 		Cancellation:    true,
+		// The session's folder holds what the platform has saved of the
+		// working directory, which it updates at the end of every turn, so
+		// it can be read while the session runs (049).
+		LiveArtifacts:   true,
 		MaxLocatorBytes: managed.DefaultMaxLocatorBytes,
 	}
 }

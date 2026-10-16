@@ -70,6 +70,30 @@ func Run(t *testing.T, factory Factory) {
 		}
 	})
 
+	t.Run("live artifacts are listable while running", func(t *testing.T) {
+		runtime := factory()
+		capabilities, err := runtime.Capabilities(context.Background())
+		if err != nil {
+			t.Fatalf("Capabilities: %v", err)
+		}
+		if !capabilities.LiveArtifacts {
+			t.Skip("runtime hands over its files only once a session has ended")
+		}
+		ref := start(t, runtime, spec(false))
+		artifacts, err := runtime.ListArtifacts(context.Background(), ref)
+		if err != nil {
+			t.Fatalf("ListArtifacts while running: %v", err)
+		}
+		for _, artifact := range artifacts {
+			if _, err := runtime.FetchArtifact(context.Background(), ref, artifact); err != nil {
+				t.Errorf("FetchArtifact(%s) while running: %v", artifact.Path, err)
+			}
+		}
+		if err := runtime.Release(context.Background(), ref); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+	})
+
 	t.Run("runtime mismatch", func(t *testing.T) {
 		runtime := factory()
 		ref := start(t, runtime, spec(false))
