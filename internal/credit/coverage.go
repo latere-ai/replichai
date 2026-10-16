@@ -169,7 +169,7 @@ func (c Card) namesRef(model managed.ModelRef) bool {
 		if r.Zero() {
 			continue
 		}
-		ref := r.modelRef()
+		ref := r.ModelRef()
 		if ref.Provider == model.Provider && ref.BillingVariant == model.BillingVariant && (ref.ID == model.ID || isSnapshotOf(ref.ID, model.ID)) {
 			return true
 		}

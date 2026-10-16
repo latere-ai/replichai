@@ -104,12 +104,12 @@ func FetchPriceList(ctx context.Context, client *http.Client, url string) ([]Rat
 func (c Card) WithListed(listed []Rates) (Card, bool) {
 	byRef := make(map[managed.ModelRef]Rates, len(listed))
 	for _, l := range listed {
-		byRef[l.modelRef()] = l
+		byRef[l.ModelRef()] = l
 	}
 	out := Card{Models: make([]Rates, 0, len(c.Models)+len(listed))}
 	changed := false
 	for _, r := range c.Models {
-		ref := r.modelRef()
+		ref := r.ModelRef()
 		if l, ok := byRef[ref]; ok {
 			delete(byRef, ref)
 			next := r

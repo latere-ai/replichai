@@ -216,9 +216,11 @@ func run() error {
 		return err
 	}
 	offers := runtimeOffers(offered, selected, built, minter)
+	var prices *platform.PriceList
 	if url := priceListURL(os.Getenv); url != "" {
 		if syncer, ok := st.platform.(platform.RateSyncer); ok {
-			startPriceSync(ctx, syncer, url)
+			prices = platform.NewPriceList(url, time.Now)
+			startPriceSync(ctx, prices.Recording(syncer), url)
 		}
 	}
 	reportRateCoverage(ctx, modelResolver, st.platform)
@@ -345,7 +347,7 @@ func run() error {
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), router.SweepPapers, *dev, baseURL, signIns)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), router.SweepPapers, prices, *dev, baseURL, signIns)
 	if err != nil {
 		return err
 	}
@@ -380,7 +382,7 @@ func newServer(addr string, handler http.Handler) *http.Server {
 // OIDC login routes in production or the dev bypass locally. The auth
 // middleware wraps everything and resolves a session, or the dev principal,
 // onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, sweep webauth.PaperSweep, dev bool, baseURL string, signIns signin.Store) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, sweep webauth.PaperSweep, prices *platform.PriceList, dev bool, baseURL string, signIns signin.Store) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
 	// /me reports whether the account is frozen (022d), over the same predicate
@@ -396,7 +398,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
-	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc), webauth.WithPaperSweep(sweep), webauth.WithLatereEnvironments(builtin.LatereEnvironmentNames())))
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc), webauth.WithPaperSweep(sweep), webauth.WithLatereEnvironments(builtin.LatereEnvironmentNames()), webauth.WithPriceList(prices)))
 
 	// The freeze gate sits inside the auth middleware, where identity is already
 	// on the request, and outside the mux, so every mutating request from a

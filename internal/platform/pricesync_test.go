@@ -85,6 +85,65 @@ func TestSyncPricesStopsWithItsContext(t *testing.T) {
 	}
 }
 
+// failingSyncer refuses every list, as a store whose write fails does.
+type failingSyncer struct{ err error }
+
+func (f failingSyncer) SyncRates(context.Context, []credit.Rates) (bool, error) { return false, f.err }
+
+// TestPriceListRecordsWhatTheStoreAccepted checks the record the console
+// reads: nothing before the first application, the time and the models once
+// the store accepts a list, even a list that changes nothing, and nothing new
+// when the store refuses one.
+func TestPriceListRecordsWhatTheStoreAccepted(t *testing.T) {
+	now := time.Date(2026, 10, 16, 14, 2, 0, 0, time.FixedZone("CEST", 2*60*60))
+	list := NewPriceList("https://reader:secret@openrouter.ai/api/v1/models?key=k#top", func() time.Time { return now })
+	if v := list.View(); !v.AppliedAt.IsZero() || len(v.Models) != 0 || list.Listed() != nil {
+		t.Fatalf("before any application the record is %+v, want none", v)
+	}
+	if v := list.View(); v.URL != "https://openrouter.ai/api/v1/models" {
+		t.Errorf("the record shows the address %q, want it without credentials, query or fragment", v.URL)
+	}
+
+	s := NewMemStore(nil)
+	fetch := func(context.Context) ([]credit.Rates, error) { return listedOpus(), nil }
+	if _, err := ApplyPriceList(ctx, list.Recording(s), fetch); err != nil {
+		t.Fatalf("ApplyPriceList: %v", err)
+	}
+	v := list.View()
+	want := managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5-5"}
+	if !v.AppliedAt.Equal(now) || v.AppliedAt.Location() != time.UTC || len(v.Models) != 1 || v.Models[0] != want {
+		t.Fatalf("after an application the record is %+v, want %v in UTC and %v", v, now, want)
+	}
+
+	// A second application changes nothing on the card and still moves the
+	// time: the card matched the list then.
+	now = now.Add(time.Hour)
+	if changed, err := ApplyPriceList(ctx, list.Recording(s), fetch); err != nil || changed {
+		t.Fatalf("a second application = (%v, %v), want no change", changed, err)
+	}
+	if v := list.View(); !v.AppliedAt.Equal(now) {
+		t.Errorf("an application that changed nothing left the time at %v, want %v", v.AppliedAt, now)
+	}
+
+	// A store that refuses the list leaves the record as it was.
+	applied := now
+	now = now.Add(time.Hour)
+	refused := errors.New("write refused")
+	if _, err := ApplyPriceList(ctx, list.Recording(failingSyncer{refused}), fetch); !errors.Is(err, refused) {
+		t.Fatalf("err = %v, want the store's", err)
+	}
+	if v := list.View(); !v.AppliedAt.Equal(applied) {
+		t.Errorf("a refused list moved the time to %v, want %v", v.AppliedAt, applied)
+	}
+
+	// What Listed returns is a copy: a caller that changes it changes no record.
+	got := list.Listed()
+	got[0].Input = 1
+	if list.Listed()[0].Input != listedOpus()[0].Input {
+		t.Error("changing what Listed returned changed the record")
+	}
+}
+
 // TestPGSyncRatesOnOneConnection checks the Postgres store against the
 // production pooler, which holds one server connection: the sync's
 // transaction must not need a second one. It also checks that the sync writes

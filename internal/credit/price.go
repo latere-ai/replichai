@@ -103,8 +103,8 @@ func (r Rates) genericCacheWriteRate() int64 {
 
 // PriceManaged prices normalized usage, refusing negative or unpriced meters.
 func (r Rates) PriceManaged(u managed.Usage) (int64, error) {
-	if u.Model.Valid() && r.modelRef() != u.Model {
-		return 0, fmt.Errorf("usage model %s/%s does not match rates %s/%s", u.Model.Provider, u.Model.ID, r.modelRef().Provider, r.modelRef().ID)
+	if u.Model.Valid() && r.ModelRef() != u.Model {
+		return 0, fmt.Errorf("usage model %s/%s does not match rates %s/%s", u.Model.Provider, u.Model.ID, r.ModelRef().Provider, r.ModelRef().ID)
 	}
 	values := []int64{u.InputFresh, u.InputCached, u.CacheWrite, u.CacheWrite5m, u.CacheWrite1h, u.Output}
 	for _, value := range values {
@@ -143,7 +143,9 @@ func (r Rates) Zero() bool {
 	return !r.Free && r.Input == 0 && r.Output == 0 && r.CacheRead == 0 && r.CacheWrite5m == 0 && r.CacheWrite1h == 0 && r.CacheWrite == 0 && len(r.Extra) == 0
 }
 
-func (r Rates) modelRef() managed.ModelRef {
+// ModelRef is the model a row prices: its provider-qualified ref, or an
+// Anthropic model of the row's name for a row written before refs.
+func (r Rates) ModelRef() managed.ModelRef {
 	if r.Ref.Valid() {
 		return r.Ref
 	}
@@ -179,7 +181,7 @@ func (c Card) Validate() error {
 				return fmt.Errorf("%w: %s prices %s below zero", ErrBadCard, model, m.Meter)
 			}
 		}
-		ref := r.modelRef()
+		ref := r.ModelRef()
 		if seen[ref] {
 			return fmt.Errorf("%w: %s is listed twice", ErrBadCard, ref.ID)
 		}
@@ -227,7 +229,7 @@ func (c Card) ForRef(model managed.ModelRef) (Rates, error) {
 	}
 	priced := make([]Rates, 0, len(c.Models))
 	for _, r := range c.Models {
-		if r.Zero() || r.Free || r.modelRef().Provider != model.Provider || r.modelRef().BillingVariant != model.BillingVariant {
+		if r.Zero() || r.Free || r.ModelRef().Provider != model.Provider || r.ModelRef().BillingVariant != model.BillingVariant {
 			continue // a free row prices nothing; it cannot stand in for a model
 		}
 		priced = append(priced, r)
@@ -286,7 +288,7 @@ func (c Card) PricedRef(model managed.ModelRef) (Rates, bool) {
 		if r.Zero() {
 			continue // a free row prices nothing; it cannot stand in for a model
 		}
-		ref := r.modelRef()
+		ref := r.ModelRef()
 		if ref.Provider != model.Provider || ref.BillingVariant != model.BillingVariant {
 			continue
 		}
