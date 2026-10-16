@@ -163,6 +163,17 @@ logs at every start whether the rate card names the models the runtime
 resolves to; `replichai rates` runs the same check from a terminal (see
 [`cli.md`](cli.md#replichai-rates-flags)).
 
+You do not type Anthropic's prices into the rate card. At every start and then
+every hour, the server reads OpenRouter's public model list, which states
+Anthropic's list prices, and writes the price of every Anthropic model into the
+card, adding the models the card lacks. A row for a model the list prices
+follows the list, so an edit to it lasts until the next hour; a row for any
+other model stays as you set it. A model priced by prompt length, such as
+Claude Haiku 5.5, is charged at its lower tier, because a session's usage is a
+total over many requests. Set `REPLICHAI_PRICE_LIST_URL` to read another list
+in the same format, or to `off` to price every model by hand. If the list
+cannot be read, the card keeps the prices it has.
+
 Card payments add a second way in. Set `STRIPE_SECRET_KEY`, create a webhook
 endpoint in Stripe at `$BASE_URL/stripe/webhook`, and put its signing secret in
 `STRIPE_WEBHOOK_SECRET`. The webhook is the only path that credits a payment.
