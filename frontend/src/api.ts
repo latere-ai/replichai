@@ -772,7 +772,7 @@ type DraftConfig = { provider?: string; base_url?: string; model?: string }
 
 // A model's price, in micro-USD per million tokens, the unit vendors quote, so
 // an admin copying a price list types the number they read.
-type ModelRates = { model: string; input: number; output: number; cache_read: number; cache_write_5m: number; cache_write_1h: number }
+export type ModelRates = { model: string; input: number; output: number; cache_read: number; cache_write_5m: number; cache_write_1h: number }
 
 export type RateCard = { models: ModelRates[] }
 
