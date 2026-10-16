@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.32.0 - 2026-10-16
+
 ### Added
 
 - The price list in Admin → Platform policy can be edited. An admin adds a
