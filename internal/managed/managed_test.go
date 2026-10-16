@@ -256,6 +256,7 @@ func TestValidateCapabilities(t *testing.T) {
 		alter func(*SessionSpec)
 	}{
 		{"manager", func(s *SessionSpec) { s.Sandbox.Packages[0].Manager = "conda" }},
+		{"environment", func(s *SessionSpec) { s.Sandbox.Environment = "science" }},
 		{"network", func(s *SessionSpec) { s.Sandbox.Network = NetworkPolicy{Mode: NetworkOpen} }},
 		{"evaluation", func(s *SessionSpec) { capabilities.Evaluation = false }},
 		{"attachment size", func(s *SessionSpec) {
@@ -483,5 +484,25 @@ func TestEnumErrorPathsAndModelRef(t *testing.T) {
 	}
 	if !(ModelRef{Provider: "anthropic", ID: "m"}).Valid() || (ModelRef{Provider: "", ID: "m"}).Valid() {
 		t.Fatal("model ref validity is wrong")
+	}
+}
+
+// TestAnEnvironmentIsCheckedByName checks that a specification naming an
+// environment is valid only with a well-formed name, and runs only on a
+// runtime that offers it.
+func TestAnEnvironmentIsCheckedByName(t *testing.T) {
+	spec := validSpec()
+	spec.Sandbox.Environment = "Science Lab"
+	if err := spec.Validate(); err == nil {
+		t.Fatal("a malformed environment name validated")
+	}
+	spec.Sandbox.Environment = "science"
+	capabilities := Capabilities{
+		PackageManagers: map[string]bool{"pip": true}, Environments: map[string]bool{"science": true},
+		NetworkModes: map[NetworkMode]bool{NetworkAllowlist: true}, RepositoryModes: map[AccessMode]bool{AccessReadOnly: true},
+		Evaluation: true, MaxAttachmentBytes: 10,
+	}
+	if err := ValidateCapabilities("memory", capabilities, spec); err != nil {
+		t.Fatalf("an offered environment was refused: %v", err)
 	}
 }

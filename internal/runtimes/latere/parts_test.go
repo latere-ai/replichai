@@ -540,7 +540,7 @@ func TestAContextSourceWinsAndNoneIsAnError(t *testing.T) {
 	if _, err := bare.Capabilities(context.Background()); !errors.Is(err, ErrNoCredential) {
 		t.Fatalf("Capabilities = %v", err)
 	}
-	if bare.Name() != Name || bare.image != DefaultImage {
+	if bare.Name() != Name || bare.environment("").Image != "base" {
 		t.Fatal("defaults")
 	}
 	if _, err := New(Config{BaseURL: "ftp://example.org"}); err == nil {
