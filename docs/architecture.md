@@ -36,7 +36,9 @@ flowchart LR
 ```
 
 Postgres holds `jobs`, `projects`, `project_papers`, `project_members`,
-`access_grants`, `freeze_overrides`, `platform_settings`, `profiles`, and the
+`access_grants`, `freeze_overrides`, `platform_settings`, `profiles`,
+`platform_sign_ins` (each person's sealed Latere sign-in, which lets a session
+on the `latere` runtime act for the person who started it), and the
 ledger's `ledger_entries`, whose schema the `latere.ai/x/pay` module owns. On a
 database created by an older release, the rows of the earlier `credit_entries`
 table are copied into `ledger_entries` once, and that table is left in place
@@ -52,7 +54,7 @@ One binary. The HTTP server and the worker run in the same process; the database
 
 **Managed-session contract** (`internal/managed/`) is the seam: one `SessionSpec` starts one session and returns a provider-tagged, versioned `SessionRef`. That complete reference is persisted before the first poll and routes every later poll, transcript, artifact, cancel, and release back to its owning runtime, even after a restart or a change of default.
 
-**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Three runtimes ship: `anthropic-managed`, which adapts Anthropic's Managed Agents backend; `memory`, a deterministic reference runtime that produces a fake audit, for tests and local development; and `local`, which runs a session on the operator's own machine. Here and below, the **operator** is whoever runs replichai: the person at the terminal for the CLI, or whoever administers a deployment of the server. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
+**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Four runtimes ship: `anthropic-managed`, which adapts Anthropic's Managed Agents backend; `latere`, which runs a session as a hosted agent session on the Latere platform, on any model the platform serves, paid from the Latere wallet of the person who starts it (`internal/runtimes/latere/`); `memory`, a deterministic reference runtime that produces a fake audit, for tests and local development; and `local`, which runs a session on the operator's own machine. Here and below, the **operator** is whoever runs replichai: the person at the terminal for the CLI, or whoever administers a deployment of the server. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
 
 Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Other adapters, such as one that calls OpenAI directly, are not built.
 
@@ -111,7 +113,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **Platform policy** (`internal/platform/`) is the settings row an admin tunes at runtime: the start reserve (what a project must hold before a session may start), the overdraft floor, and the **rate card**, the per-model price list, in dollars per million input and output tokens, that a session's usage is charged at. It stores policy and does not enforce it; enforcement lives where the money moves.
 
-**The ledger** (`internal/credit/`) is append-only, in micro-USD, and no balance is stored anywhere: every number in the product is computed by summing the table. A session takes a reserve inside the transaction that inserts it and settles in the transaction that ends it. There is no payment package of its own: the card processor is the shared `latere.ai/x/pay` seam (open a hosted checkout, verify and read a webhook) with its Stripe adapter composed in `cmd/server`. `internal/httpapi/payments.go` holds the checkout and webhook routes. The webhook is the only thing that posts a credit, and it dedupes on an external reference so a retried delivery cannot double it. `internal/webauth/freeze.go` is where a negative wallet turns into a view-only account.
+**The ledger** (`internal/credit/`) is append-only, in micro-USD, and no balance is stored anywhere: every number in the product is computed by summing the table. A session takes a reserve inside the transaction that inserts it and settles in the transaction that ends it. A session on the `latere` runtime takes neither: the platform charges the person who started it, so its job records that the person pays, and its cost is the figure the platform reports. There is no payment package of its own: the card processor is the shared `latere.ai/x/pay` seam (open a hosted checkout, verify and read a webhook) with its Stripe adapter composed in `cmd/server`. `internal/httpapi/payments.go` holds the checkout and webhook routes. The webhook is the only thing that posts a credit, and it dedupes on an external reference so a retried delivery cannot double it. `internal/webauth/freeze.go` is where a negative wallet turns into a view-only account.
 
 **Profiles** (`internal/profile/`) are who a principal says they are: the researcher identity a public sign-off is published under, and the handle a public page resolves. It is deliberately not part of `access`: a grant is an authorization, a profile is an assertion, and they have different lifetimes.
 
