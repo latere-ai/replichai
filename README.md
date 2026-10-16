@@ -1,17 +1,11 @@
 # ReplicHAI
 
-**Replicates research with human participants, from the paper to the study.**
-Give it a paper. It finds what the authors released, works out which parts of
-the work a machine can re-run and which parts need people, implements and runs
-the machine-runnable part, records every decision the paper left unwritten, and
-returns a verdict: a per-component table saying what was reproduced, what only
-partly, and what was blocked, each with its evidence or its specific blocker.
-
-That is the first half. The goal is the study itself: where the analysis
-reproduces reliably across repeated runs, an agent builds the paper's
-experiment, simulated participants drawn from the population the paper sampled
-take part in it, and the paper's conclusion is checked against what they did.
-The second half is coming soon.
+**Find out whether a research paper reproduces.** Give it a paper. It finds
+what the authors released, works out which parts of the work a machine can
+re-run and which parts need people, implements and runs the machine-runnable
+part, records every decision the paper left unwritten, and returns a verdict: a
+per-component table saying what was reproduced, what only partly, and what was
+blocked, each with its evidence or its specific blocker.
 
 [![CI](https://github.com/latere-ai/replichai/actions/workflows/ci.yml/badge.svg)](https://github.com/latere-ai/replichai/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/latere-ai/replichai)](https://github.com/latere-ai/replichai/releases)
@@ -34,25 +28,30 @@ A paper of that kind almost always contains two loops:
   a machine can re-run;
 - an **outer loop**: the study that validates it with human participants.
 
-ReplicHAI works through both, in order:
+The audit re-runs the inner loop and says, claim by claim, what reproduced. It
+names the outer loop and does not run it: that evidence comes from people, and
+a reproducibility claim goes wrong when a machine stands in for them.
 
-1. **What replicates.** An audit re-runs the inner loop from what the authors
-   released and says, claim by claim, what reproduced. The audit never
-   simulates participants: it places the boundary between the two loops and
-   reports the inner one.
-2. **Whether to go on.** Repeated runs of one paper show whether its inner
-   loop reproduces reliably, and whether its study could be served by a
-   machine. Only a paper that passes continues. *Repeated runs are built; the
-   gate is coming soon.*
-3. **The experiment.** An agent builds the study the paper ran, for example
-   the website that shows participants its stimuli, and checks it against the
-   paper's protocol. *Coming soon.*
-4. **The study, simulated.** Simulated participants with a declared
-   population profile take part in that experiment through its interface, the
-   paper's own analysis runs over their responses, and the result is compared
-   with the paper's conclusion. A simulated result is always labeled as one,
-   and reported with how well simulation matched people on studies whose
-   human replications are known. *Coming soon.*
+## Where it is going
+
+The audit is the first of four stages toward replicating the study as well as
+its analysis:
+
+1. **What reproduces.** The audit above.
+2. **Whether to go on.** Repeated runs of one paper show whether its inner loop
+   reproduces reliably and whether its study could be served by a machine. Only
+   a paper that passes continues.
+3. **The experiment.** An agent builds the study the paper ran, for example the
+   website that shows participants its stimuli, and checks it against the
+   paper's protocol.
+4. **The study, simulated.** Simulated participants with a declared population
+   profile take part in that experiment through its interface, and the paper's
+   own analysis runs over their responses. The result is reported as a
+   simulation, with how well simulation matched people on studies whose human
+   replications are known, and never as evidence about people.
+
+The audit and the repeated runs are built. The gate in stage 2 and stages 3
+and 4 are in development.
 
 ## Try it
 
