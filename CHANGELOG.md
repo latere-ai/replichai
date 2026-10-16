@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.35.0 - 2026-10-16
+
 ### Added
 
 - A run can name the environment its machine runs: `--environment` on `audit`
