@@ -41,6 +41,15 @@ func (CodexHarness) VersionArgv() []string { return []string{"codex", "--version
 // has to hold the credential itself.
 const CodexKeyEnv = "REPLICHAI_MODEL_KEY"
 
+// CodexNoShellSnapshot switches off Codex's shell snapshot. With it on, Codex
+// sources the user's ~/.zshrc, writes every variable the shell then exports
+// into a file under CODEX_HOME, and loads that file before each command. The
+// snapshots the operator's own Codex wrote there hold the operator's exported
+// secrets, so a stage is denied that directory (Needs) and is not asked to
+// write a snapshot it could not read back. An older Codex that does not know
+// the feature ignores the key.
+const CodexNoShellSnapshot = "features.shell_snapshot=false"
+
 // Argv returns the stage's command. The harness's own sandbox is switched off
 // because this stage is already inside a real one. A second boundary that the
 // model can be persuaded to bypass adds nothing, and the runtime refuses to
@@ -55,7 +64,8 @@ func (CodexHarness) Argv(stage Stage, request Request) ([]string, error) {
 	// repository it has never seen. The boundary here is the sandbox, not
 	// Codex's own trust list.
 	argv := []string{"codex", "exec", "--json", "--skip-git-repo-check",
-		"--sandbox", "danger-full-access", "--cd", workdir}
+		"--sandbox", "danger-full-access", "--cd", workdir,
+		"--config", CodexNoShellSnapshot}
 	if request.Model.ID != "" {
 		argv = append(argv, "--model", request.Model.ID)
 	}
@@ -170,7 +180,9 @@ wire_api = %q
 // and never touches the operator's directory, so it is granted nothing there.
 //
 // The operator's standing instructions are denied for the same reason as for
-// every harness: they are not the method.
+// every harness: they are not the method. The operator's shell snapshots are
+// denied because they hold every variable the operator's shell exports,
+// credentials included.
 func (CodexHarness) Needs(machine Machine) Needs {
 	// Codex is a Rust binary and does not read an injected certificate
 	// authority, so a sandbox that terminates TLS to inspect egress breaks
@@ -185,7 +197,10 @@ func (CodexHarness) Needs(machine Machine) Needs {
 	}
 	if machine.Home != "" {
 		needs.Login = []Grant{{Path: filepath.Join(machine.Home, ".codex"), Write: true}}
-		needs.Denies = []string{filepath.Join(machine.Home, ".codex", "AGENTS.md")}
+		needs.Denies = []string{
+			filepath.Join(machine.Home, ".codex", "AGENTS.md"),
+			filepath.Join(machine.Home, ".codex", "shell_snapshots"),
+		}
 	}
 	return needs
 }

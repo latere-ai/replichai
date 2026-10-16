@@ -174,6 +174,26 @@ func TestCodexSkipsItsOwnTrustCheck(t *testing.T) {
 	}
 }
 
+// TestCodexTakesNoShellSnapshot checks that Codex is told not to snapshot the
+// user's shell. A snapshot is built from ~/.zshrc and stored in Codex's
+// configuration directory, where the snapshots the operator's own Codex wrote
+// hold the operator's exported secrets; a stage is denied them.
+func TestCodexTakesNoShellSnapshot(t *testing.T) {
+	argv, err := NewCodex().Argv(StageWorker, Request{
+		Task: "reproduce it", Paths: Paths{Workspace: "/s/workspace", Home: "/s/home"},
+	})
+	if err != nil {
+		t.Fatalf("Argv: %v", err)
+	}
+	at := slices.Index(argv, CodexNoShellSnapshot)
+	if at < 1 || argv[at-1] != "--config" {
+		t.Fatalf("argv = %v, want --config %s", argv, CodexNoShellSnapshot)
+	}
+	if separator := slices.Index(argv, "--"); separator < at {
+		t.Fatalf("the setting comes after the task separator, where codex reads it as the prompt: %v", argv)
+	}
+}
+
 // TestCodexSpeaksTheOpenAIDialects checks that Codex speaks both OpenAI
 // dialects, which makes it the harness to pair with an open-weights model
 // behind an OpenAI-compatible gateway, and that it does not speak the
@@ -197,8 +217,11 @@ func TestCodexLoginProfile(t *testing.T) {
 	if len(login.Login) != 1 || login.Login[0].Path != "/Users/x/.codex" || !login.Login[0].Write {
 		t.Fatalf("login = %+v, want the configuration directory, writable", login.Login)
 	}
-	if len(login.Denies) != 1 || !strings.Contains(login.Denies[0], "AGENTS.md") {
-		t.Errorf("denies = %v", login.Denies)
+	// The operator's shell snapshots hold every variable the operator's shell
+	// exports, so they are withheld beside the standing instructions.
+	wantDenied := []string{"/Users/x/.codex/AGENTS.md", "/Users/x/.codex/shell_snapshots"}
+	if !slices.Equal(login.Denies, wantDenied) {
+		t.Errorf("denies = %v, want %v", login.Denies, wantDenied)
 	}
 	// Every stage gets the scratch area, regardless of which login it runs
 	// on. The configuration directory is not in this list, because a session
