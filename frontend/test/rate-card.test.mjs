@@ -1,0 +1,175 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// A browser test for the price list in the Admin console's platform policy.
+//
+// The bug it guards: the card was read-only. Production's levels moved to new
+// model ids, the card had no row for them, and they were charged the card's
+// dearest rates with no way in the console to add the rows. An admin now adds,
+// edits and removes a model's prices, and the existing Save writes the whole
+// card through PUT /admin/settings.
+//
+// What needs a browser is the round trip: the fields the admin types become the
+// card the request carries, in micro-USD per million tokens, with a renamed
+// row's ref renamed with it and every field the console does not edit carried
+// through untouched; a card that cannot be priced from is never sent; and the
+// table fits a phone. Run it with `bun run test:browser`.
+import { fail, settled, start } from './harness.mjs'
+
+const EMAIL = 'admin@example.com'
+const M = 1_000_000
+
+// What the server holds: three rows, the first with a provider-qualified ref
+// and a meter the console does not edit, which must survive a save.
+const card = {
+  models: [
+    {
+      model: 'claude-opus-5',
+      model_ref: { provider: 'anthropic', id: 'claude-opus-5' },
+      input: 5 * M,
+      output: 25 * M,
+      cache_read: M / 2,
+      cache_write_5m: 6.25 * M,
+      cache_write_1h: 10 * M,
+      extra: [{ meter: 'container_second', rate: 50 }],
+    },
+    { model: 'claude-sonnet-5', input: 3 * M, output: 15 * M, cache_read: 300_000, cache_write_5m: 3.75 * M, cache_write_1h: 6 * M },
+    { model: 'claude-haiku-4-5', input: M, output: 5 * M, cache_read: 100_000, cache_write_5m: 1.25 * M, cache_write_1h: 2 * M },
+  ],
+}
+let saved = null
+
+const routes = [
+  ['/me', { authenticated: true, principal: 'admin', email: EMAIL, tier: 'admin', credits: { wallet: 0, start_reserve: 5 * M } }],
+  ['GET /admin/access', [{ email: EMAIL, tier: 'admin', bound: true, wallet: 0 }]],
+  ['GET /admin/settings', { start_reserve: 5 * M, overdraft_cap: 20 * M, rates: card }],
+  [
+    '/admin/settings',
+    ({ body }) => {
+      saved = body
+      return { ...body, updated_by: EMAIL }
+    },
+  ],
+]
+
+const h = await start()
+try {
+  const page = await h.page({ routes })
+  await page.open('/console')
+  await page.waitForSelector('[data-test="rate-row"]', { timeout: 15000 })
+  await settled(page)
+
+  const rows = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[data-test="rate-row"]')].map((r) =>
+        Object.fromEntries([...r.querySelectorAll('input[data-field]')].map((i) => [i.dataset.field, i.value])),
+      ),
+    )
+  // The nth row of the card, counted from one; the column heads are not a row.
+  const row = async (n) => (await page.$$('[data-test="rate-row"]'))[n - 1]
+  const type = async (n, name, value) => {
+    const input = await (await row(n)).$(`input[data-field="${name}"]`)
+    // Select the whole value, then clear it with a key a person would press:
+    // a triple click selects only a word in a value with hyphens.
+    await input.focus()
+    await input.evaluate((el) => el.select())
+    await page.keyboard.press('Backspace')
+    if (value !== '') await input.type(value)
+  }
+  const canSave = () => page.$eval('[data-test="save-policy"]', (b) => !b.disabled)
+  const error = () => page.evaluate(() => document.querySelector('[data-test="rate-error"]')?.textContent.trim() ?? '')
+
+  /* ── The card is a form, filled with what the server holds ── */
+
+  const first = await rows()
+  if (first.length !== 3) fail(`the card shows ${first.length} rows, want 3`)
+  if (first[0]?.model !== 'claude-opus-5' || first[0]?.input !== '5' || first[0]?.cache_read !== '0.5') {
+    fail(`the first row reads ${JSON.stringify(first[0])}; the fields are the server's prices in dollars`)
+  }
+  if (await canSave()) fail('Save is enabled before anything changed')
+
+  /* ── Add a row: it starts empty, and an empty row cannot be saved ── */
+
+  await page.click('[data-test="rate-add"]')
+  const added = await rows()
+  if (added.length !== 4) fail(`adding a model left ${added.length} rows, want 4`)
+  // No price is chosen for the admin: a new row is blank until they type one.
+  if (Object.values(added[3] ?? {}).some((v) => v !== '')) fail(`a new row arrives filled in: ${JSON.stringify(added[3])}`)
+  const focused = await page.evaluate(() => document.activeElement?.dataset.field)
+  if (focused !== 'model') fail(`adding a model put the cursor in ${focused}, want the new row's model id`)
+  if (await canSave()) fail('a card with a blank row can be saved')
+  if (!(await error())) fail('a blank row says nothing about why the card cannot be saved')
+
+  await type(4, 'model', 'claude-opus-5-5')
+  await type(4, 'input', '5')
+  await type(4, 'output', '25')
+  await type(4, 'cache_read', '0.5')
+  await type(4, 'cache_write_5m', '6.25')
+  if (await canSave()) fail('a row missing a price can be saved')
+  await type(4, 'cache_write_1h', '10')
+  if (!(await canSave())) fail(`a complete new row still cannot be saved: ${await error()}`)
+
+  /* ── A card that cannot be priced from is never sent ── */
+
+  await type(2, 'model', 'claude-opus-5-5')
+  if (await canSave()) fail('a card naming one model twice can be saved')
+  if (!/twice/i.test(await error())) fail(`a model listed twice says "${await error()}"`)
+  await type(2, 'model', 'claude-sonnet-5')
+  await type(2, 'output', '-1')
+  if (await canSave()) fail('a negative price can be saved')
+  await type(2, 'output', '16')
+
+  /* ── Edit, rename and remove ── */
+
+  // A rename carries the row's ref with it: the ref is what pricing matches.
+  await type(1, 'model', 'claude-opus-5-legacy')
+  await (await (await row(3)).$('[data-test="rate-remove"]')).click()
+  const after = await rows()
+  if (after.map((r) => r.model).join() !== 'claude-opus-5-legacy,claude-sonnet-5,claude-opus-5-5') {
+    fail(`after the edits the card lists ${after.map((r) => r.model).join(', ')}`)
+  }
+  if (!(await canSave())) fail(`the edited card cannot be saved: ${await error()}`)
+  await page.click('[data-test="save-policy"]')
+  await page.waitForFunction(() => document.querySelector('[data-test="save-policy"]')?.disabled === true, { timeout: 5000 }).catch(() => {})
+  if (!saved) fail('Save sent nothing')
+  else {
+    const got = saved.rates?.models ?? []
+    const want = [
+      {
+        model: 'claude-opus-5-legacy',
+        model_ref: { provider: 'anthropic', id: 'claude-opus-5-legacy' },
+        input: 5 * M,
+        output: 25 * M,
+        cache_read: M / 2,
+        cache_write_5m: 6.25 * M,
+        cache_write_1h: 10 * M,
+        extra: [{ meter: 'container_second', rate: 50 }],
+      },
+      { model: 'claude-sonnet-5', input: 3 * M, output: 16 * M, cache_read: 300_000, cache_write_5m: 3.75 * M, cache_write_1h: 6 * M },
+      { model: 'claude-opus-5-5', input: 5 * M, output: 25 * M, cache_read: M / 2, cache_write_5m: 6.25 * M, cache_write_1h: 10 * M },
+    ]
+    if (JSON.stringify(got) !== JSON.stringify(want)) fail(`Save sent the card ${JSON.stringify(got)}, want ${JSON.stringify(want)}`)
+    if (saved.start_reserve !== 5 * M) fail(`Save changed the start reserve to ${saved.start_reserve}`)
+  }
+  await page.close()
+
+  /* ── The card fits a phone ── */
+
+  const phone = await h.page({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true }, routes })
+  await phone.open('/console')
+  await phone.waitForSelector('[data-test="rate-row"]', { timeout: 15000 })
+  await settled(phone)
+  const spill = await phone.evaluate(() => {
+    const card = document.querySelector('.rate-card')
+    const inputs = [...card.querySelectorAll('input')].filter((i) => i.getBoundingClientRect().right > window.innerWidth + 1).length
+    return { doc: document.documentElement.scrollWidth - window.innerWidth, card: card.scrollWidth - card.clientWidth, inputs }
+  })
+  if (spill.doc > 1 || spill.card > 1 || spill.inputs) fail(`on a phone the card spills: ${JSON.stringify(spill)}`)
+  await phone.close()
+
+  h.ok('an admin adds, edits and removes a model on the card, and Save sends a card that can be priced from')
+} catch (e) {
+  fail(e)
+} finally {
+  await h.close()
+}

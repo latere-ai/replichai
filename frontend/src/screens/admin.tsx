@@ -5,7 +5,7 @@
 // headroom, and the deployment's policy, namely the start reserve, the overdraft
 // floor, the rate card and the drafting model.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getPlatformSettings,
   getSolvency,
@@ -13,6 +13,7 @@ import {
   type GrantView,
   listGrants,
   type PlatformSettings,
+  type ModelRates,
   type RateCard,
   refreezeAccount,
   revokeAccess,
@@ -121,6 +122,8 @@ function PlatformPolicy({
   const [provider, setProvider] = useState('')
   const [baseURL, setBaseURL] = useState('')
   const [model, setModel] = useState('')
+  // The price list, as the rows the admin is editing (rateDrafts below).
+  const [rates, setRates] = useState<RateDraft[]>([])
   useEffect(() => {
     if (!settings) return
     setReserve(toDollars(settings.start_reserve))
@@ -128,6 +131,7 @@ function PlatformPolicy({
     setProvider(settings.draft?.provider ?? '')
     setBaseURL(settings.draft?.base_url ?? '')
     setModel(settings.draft?.model ?? '')
+    setRates((settings.rates?.models ?? []).map(draftOf))
   }, [settings])
 
   const nextReserve = parseUSD(reserve)
@@ -139,9 +143,12 @@ function PlatformPolicy({
     (draftCfg.provider !== (settings.draft?.provider ?? '') ||
       draftCfg.base_url !== (settings.draft?.base_url ?? '') ||
       draftCfg.model !== (settings.draft?.model ?? ''))
-  const dirty = !!settings && valid && (nextReserve !== settings.start_reserve || nextFloor !== settings.overdraft_cap || draftChanged)
+  const card = cardOf(rates, t)
+  const cardChanged = !!settings && !!card.card && JSON.stringify(card.card) !== JSON.stringify(settings.rates ?? { models: [] })
+  const dirty =
+    !!settings && valid && !card.problem && (nextReserve !== settings.start_reserve || nextFloor !== settings.overdraft_cap || draftChanged || cardChanged)
   const save = () => {
-    if (settings && valid) onSave({ start_reserve: nextReserve, overdraft_cap: nextFloor, rates: settings.rates, draft: draftCfg })
+    if (settings && valid && card.card) onSave({ start_reserve: nextReserve, overdraft_cap: nextFloor, rates: card.card, draft: draftCfg })
   }
 
   return (
@@ -235,7 +242,7 @@ function PlatformPolicy({
           )}
         </>
       )}
-      {settings && <RateCardTable i18n={i18n} card={settings.rates} />}
+      {settings && <RateCardEditor i18n={i18n} rows={rates} onChange={setRates} problem={card.problem} />}
       {/* One Save, at the foot of the card it saves. Beside the overdraft floor
           it read as that field's control, and an admin who edited the start
           reserve had no reason to believe the button below it applied. One
@@ -251,34 +258,164 @@ function PlatformPolicy({
   )
 }
 
-// RateCardTable shows what each model costs. It is here because a reserve and a
-// floor mean nothing without the prices they bound: an admin setting a $200
-// floor should be able to see what output tokens cost and work out what it buys.
-function RateCardTable({ i18n, card }: { i18n: I18n; card: RateCard }) {
+// The prices a row carries, in the order the card's columns show them. Every one
+// is micro-USD per million tokens on the wire and dollars per million in the
+// field, the unit vendors quote, so an admin copying a price list types the
+// number they read.
+const PRICES = ['input', 'output', 'cache_read', 'cache_write_5m', 'cache_write_1h'] as const
+type PriceField = (typeof PRICES)[number]
+
+// RateDraft is one row of the price list as the admin is editing it: the model
+// id and the prices as typed, beside the row the server sent. A save starts
+// from that row, so it changes only what was edited and carries every field
+// this form does not show, a provider-qualified ref or a meter's price, through
+// untouched.
+type RateDraft = { key: number; base: Partial<ModelRates> & Record<string, unknown>; model: string } & Record<PriceField, string>
+
+let draftKey = 0
+const draftOf = (m: ModelRates): RateDraft => ({
+  key: draftKey++,
+  base: m,
+  model: m.model,
+  input: toDollars(m.input),
+  output: toDollars(m.output),
+  cache_read: toDollars(m.cache_read),
+  cache_write_5m: toDollars(m.cache_write_5m),
+  cache_write_1h: toDollars(m.cache_write_1h),
+})
+// A new row is blank, prices included: the console never picks a price for the
+// admin, and a row that cannot be saved until it is filled in says so.
+const blankDraft = (): RateDraft => ({ key: draftKey++, base: {}, model: '', input: '', output: '', cache_read: '', cache_write_5m: '', cache_write_1h: '' })
+
+// cardOf turns the rows back into the card a save sends, or names the first
+// thing that keeps it from being one. The rules are the server's own
+// (credit.Card.Validate), checked here so the admin learns which row is wrong
+// before they press Save rather than from a refusal after it, plus one the
+// server tolerates: a row priced at zero for everything is ignored when a
+// session is priced, so it would read as a price and charge as the dearest.
+function cardOf(rows: RateDraft[], t: I18n['t']): { card: RateCard | null; problem: string } {
+  if (rows.length === 0) return { card: null, problem: t('rateEmpty') }
+  const seen = new Set<string>()
+  const models: ModelRates[] = []
+  for (const r of rows) {
+    const model = r.model.trim()
+    if (!model) return { card: null, problem: t('rateNoModel') }
+    if (seen.has(model)) return { card: null, problem: t('rateTwice', { model }) }
+    seen.add(model)
+    const prices = PRICES.map((f) => parseUSD(r[f]))
+    if (prices.some((p) => p === null || p < 0)) return { card: null, problem: t('ratePrice', { model }) }
+    if (prices.every((p) => p === 0) && !r.base.free && !(Array.isArray(r.base.extra) && r.base.extra.length)) {
+      return { card: null, problem: t('rateAllZero', { model }) }
+    }
+    const next: Record<string, unknown> = { ...r.base, model }
+    // A rename carries the row's ref with it, keeping its provider: the ref is
+    // what pricing matches, and one left behind would price the row under its
+    // old name.
+    const ref = r.base.model_ref
+    if (ref && typeof ref === 'object') next.model_ref = { ...ref, id: model }
+    PRICES.forEach((f, i) => {
+      next[f] = prices[i]
+    })
+    models.push(next as ModelRates)
+  }
+  return { card: { models }, problem: '' }
+}
+
+// RateCardEditor is the price list, as a table the admin edits in place: a row
+// per model, a model id and its five prices, a control to remove the row, and
+// one to add a row under the last. It is here because a reserve and a floor
+// mean nothing without the prices they bound, and because a vendor's new model
+// id is charged the card's dearest rates until somebody adds its row. The
+// card's Save writes it with the rest of the policy.
+function RateCardEditor({ i18n, rows, onChange, problem }: { i18n: I18n; rows: RateDraft[]; onChange: (next: RateDraft[]) => void; problem: string }) {
   const { t } = i18n
-  if (!card?.models?.length) return null
+  const added = useRef<number | null>(null)
+  const grid = useRef<HTMLDivElement | null>(null)
+  // The new row's model id takes the cursor, since naming the model is the
+  // first thing a new row needs.
+  useEffect(() => {
+    if (added.current === null) return
+    grid.current?.querySelector<HTMLInputElement>(`[data-key="${added.current}"] input[data-field="model"]`)?.focus()
+    added.current = null
+  }, [rows])
+  const set = (key: number, field: 'model' | PriceField, value: string) => onChange(rows.map((r) => (r.key === key ? { ...r, [field]: value } : r)))
+  const label: Record<PriceField, string> = {
+    input: t('rateInput'),
+    output: t('rateOutput'),
+    cache_read: t('rateCacheRead'),
+    cache_write_5m: t('rateCacheWrite5m'),
+    cache_write_1h: t('rateCacheWrite1h'),
+  }
   return (
-    <div className="stack" style={{ gap: 6 }}>
+    <div className="stack" style={{ gap: 8 }}>
       <span className="muted small">{t('rateCardHint')}</span>
-      <div className="rate-card">
-        <div className="rate-row rate-head">
+      <div className="rate-card" ref={grid}>
+        <div className="rate-row rate-head" aria-hidden="true">
           <span>{t('rateModel')}</span>
-          <span>{t('rateInput')}</span>
-          <span>{t('rateOutput')}</span>
-          <span>{t('rateCacheRead')}</span>
-          <span>{t('rateCacheWrite')}</span>
+          {PRICES.map((f) => (
+            <span key={f}>{label[f]}</span>
+          ))}
+          <span />
         </div>
-        {card.models.map((m) => (
-          <div className="rate-row" key={m.model}>
-            <span className="mono">{m.model}</span>
-            <span className="tabular">{formatUSD(i18n.lang, m.input)}</span>
-            <span className="tabular">{formatUSD(i18n.lang, m.output)}</span>
-            <span className="tabular">{formatUSD(i18n.lang, m.cache_read)}</span>
-            <span className="tabular">
-              {formatUSD(i18n.lang, m.cache_write_5m)} / {formatUSD(i18n.lang, m.cache_write_1h)}
-            </span>
+        {rows.map((r) => (
+          <div className="rate-row" key={r.key} data-key={r.key} data-test="rate-row">
+            <label className="rate-cell rate-model">
+              <span className="rate-label">{t('rateModel')}</span>
+              <input
+                className="text mono"
+                data-field="model"
+                value={r.model}
+                placeholder={t('rateModelPlaceholder')}
+                spellCheck={false}
+                onChange={(e) => set(r.key, 'model', e.target.value)}
+              />
+            </label>
+            {PRICES.map((f) => (
+              <label className="rate-cell" key={f}>
+                <span className="rate-label">{label[f]}</span>
+                <input
+                  className="text tabular"
+                  data-field={f}
+                  inputMode="decimal"
+                  value={r[f]}
+                  placeholder="0.00"
+                  aria-label={`${r.model || t('rateModel')}: ${label[f]}`}
+                  onChange={(e) => set(r.key, f, e.target.value)}
+                />
+              </label>
+            ))}
+            <button
+              type="button"
+              className="icon-btn danger rate-remove"
+              data-test="rate-remove"
+              disabled={rows.length === 1}
+              aria-label={t('rateRemove', { model: r.model || t('rateModel') })}
+              data-tip={t('rateRemove', { model: r.model || t('rateModel') })}
+              onClick={() => onChange(rows.filter((x) => x.key !== r.key))}
+            >
+              <Ico name="trash" size={14} />
+            </button>
           </div>
         ))}
+      </div>
+      <div className="rate-foot">
+        <button
+          type="button"
+          className="btn ghost sm"
+          data-test="rate-add"
+          onClick={() => {
+            const row = blankDraft()
+            added.current = row.key
+            onChange([...rows, row])
+          }}
+        >
+          <Ico name="plus" size={13} /> {t('rateAdd')}
+        </button>
+        {problem && (
+          <span className="err small" role="status" data-test="rate-error">
+            {problem}
+          </span>
+        )}
       </div>
     </div>
   )

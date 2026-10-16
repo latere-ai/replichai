@@ -264,7 +264,19 @@ const en = {
     rateInput: 'Input',
     rateOutput: 'Output',
     rateCacheRead: 'Cache read',
-    rateCacheWrite: 'Cache write 5m / 1h',
+    rateCacheWrite5m: 'Cache write, 5 min',
+    rateCacheWrite1h: 'Cache write, 1 hour',
+    // Editing the card (the price list in Platform policy). A new row is blank,
+    // so the console never picks a price; each message names what keeps the
+    // card from being saved, the same rules the server applies.
+    rateAdd: 'Add a model',
+    rateRemove: 'Remove {model}',
+    rateModelPlaceholder: 'Model id, as the vendor names it',
+    rateEmpty: 'The card needs at least one model.',
+    rateNoModel: 'Give every row its model id, as the vendor names it.',
+    rateTwice: '{model} is listed twice.',
+    ratePrice: 'Give each price of {model} as dollars per million tokens: a number, zero or more.',
+    rateAllZero: '{model} is priced at zero for everything, and a row like that is ignored, so the model is charged the highest rates. Give it its prices.',
     startReserveHint:
       'How much a project must have available before a session can start in it. The amount is held while the session runs and returned when it finishes, so it limits how many sessions one project can run at once. It is not the final cost, which is charged from the tokens the session used.',
     policyUpdatedBy: 'Last changed by {who}',
