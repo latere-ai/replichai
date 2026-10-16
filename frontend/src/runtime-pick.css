@@ -1,59 +1,26 @@
-/* The runtime and model choice on the papers card (048). It reads the design
-   system's tokens and adds no color of its own: ink is the selection, the
-   shared shadow lifts the panel, and the motion is the system's. */
+/* The runtime and model choice on the papers card (048). The trigger, the
+   panel and its rows are the Select's (.sel-btn, .sel-list, .sel-opt) and the
+   runtimes are a Segmented, so they follow the shared primitives; this sheet
+   only lays out what a Select does not have: sections, two-line rows, a search
+   and a note. It reads the platform's tokens and names no color, radius or
+   duration of its own. Its overrides name the shared class too, so they hold
+   whichever sheet the bundle loads last. */
 
-.rp-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
+.rp {
   max-width: 100%;
-  height: 32px;
-  padding: 0 9px 0 11px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--bg-raised);
-  color: var(--fg-1);
-  font: 500 13px/1 var(--font-sans);
-  cursor: pointer;
-  transition:
-    border-color var(--dur-hover) var(--ease-fluid),
-    color var(--dur-hover) var(--ease-fluid);
 }
-.rp-btn:hover,
-.rp-btn.open {
-  border-color: var(--brand);
-}
-.rp-btn:focus-visible {
-  outline: 2px solid var(--brand-ring);
-  outline-offset: 2px;
-}
-.rp-btn-value {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rp-caret {
-  flex: none;
-  color: var(--fg-3);
-  transition: transform var(--motion-enter) var(--ease-fluid);
-}
-.rp-btn.open .rp-caret {
-  transform: rotate(180deg);
+.rp-btn {
+  font-weight: 500;
 }
 
-.rp-pop {
-  position: fixed;
-  z-index: 60;
+.sel-list.rp-pop {
   width: min(360px, calc(100vw - 24px));
-  max-height: min(560px, calc(100vh - 24px));
+  /* The script caps it to the room on the side it opens toward. */
+  max-height: calc(100vh - 24px);
   overflow-y: auto;
   padding: 6px;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-pop);
-  animation: om-fade-up var(--motion-enter) var(--motion-ease) both;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-menu);
 }
 .rp-section {
   padding: 6px 6px 8px;
@@ -68,38 +35,19 @@
   font: 500 12px/1.3 var(--font-sans);
 }
 
-/* The runtimes, as a segmented control: one of a few, all visible. */
-.rp-seg {
+/* The runtimes fill the panel's width, one equal segment each. */
+.rp-section .segmented {
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-raised);
 }
-.rp-seg-opt {
+.rp-section .seg-btn {
   flex: 1;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--fg-2);
-  font: 500 13px/1 var(--font-sans);
-  cursor: pointer;
-  transition:
-    background var(--dur-hover) var(--ease-fluid),
-    color var(--dur-hover) var(--ease-fluid);
-}
-.rp-seg-opt:hover {
-  color: var(--fg-1);
-}
-.rp-seg-opt.on {
-  background: var(--bg-surface);
-  color: var(--fg-1);
-  box-shadow: 0 0 0 1px var(--border-strong);
+  justify-content: center;
 }
 
-/* A level, and a specific model, as rows: a name, then what it runs. */
-.rp-levels,
+/* A level is two lines: its name and its price per million tokens, then the
+   model it runs. The Select's row is one line, so the row is a grid here, and
+   the price sits beside the name so a long model identifier never cuts it. */
+.rp-rows,
 .rp-models {
   display: flex;
   flex-direction: column;
@@ -108,35 +56,18 @@
   padding: 0;
   list-style: none;
 }
-.rp-level,
-.rp-model {
-  position: relative;
+.sel-opt.rp-level {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  column-gap: 8px;
-  width: 100%;
-  padding: 7px 9px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
+  column-gap: 10px;
+  row-gap: 2px;
+  border-radius: var(--radius-control);
   color: var(--fg-1);
   text-align: left;
-  cursor: pointer;
-  transition: background var(--dur-hover) var(--ease-fluid);
+  white-space: normal;
 }
-.rp-level:hover:not(:disabled),
-.rp-model:hover,
-.rp-level:focus-visible,
-.rp-model:focus-visible {
-  background: var(--bg-raised);
-  outline: none;
-}
-.rp-level.on,
-.rp-model.on {
-  background: var(--brand-soft);
-}
-.rp-level:disabled {
+.sel-opt.rp-level:disabled {
   cursor: default;
   opacity: 0.55;
 }
@@ -144,25 +75,36 @@
   font: 500 13px/1.3 var(--font-sans);
 }
 .rp-level-detail {
-  grid-column: 1;
-  color: var(--fg-3);
-  font: 400 12px/1.35 var(--font-sans);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rp-model span {
+  grid-column: 1 / span 2;
   min-width: 0;
   overflow: hidden;
+  color: var(--fg-3);
+  font: 400 12px/1.35 var(--font-sans);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 400 13px/1.3 var(--font-sans);
 }
-.rp-tick {
-  grid-column: 2;
+.sel-tick.rp-tick {
+  grid-column: 3;
   grid-row: 1 / span 2;
-  color: var(--brand);
+  margin-left: 0;
 }
+.sel-opt.rp-model {
+  border-radius: var(--radius-control);
+}
+
+/* A model is named by its identifier, which may be monospace; a price lines
+   its digits up. */
+.rp-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.rp-price {
+  color: var(--fg-3);
+  font: 400 12px/1.3 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .rp-search {
   width: 100%;
   margin-bottom: 4px;
@@ -187,8 +129,5 @@
 @media (prefers-reduced-motion: reduce) {
   .rp-pop {
     animation: none;
-  }
-  .rp-caret {
-    transition: none;
   }
 }
