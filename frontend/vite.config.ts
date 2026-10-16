@@ -47,4 +47,9 @@ export default defineConfig({
     port: 5173,
     proxy: Object.fromEntries(api.map((p) => [p, { target: backend, changeOrigin: true }])),
   },
+  // `vite preview` serves the build the same way, so the browser suite can run
+  // against the bundle that ships (WEB_TEST_BUILT in test/harness.mjs).
+  preview: {
+    proxy: Object.fromEntries(api.map((p) => [p, { target: backend, changeOrigin: true }])),
+  },
 })

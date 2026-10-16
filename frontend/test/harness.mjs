@@ -316,6 +316,12 @@ async function startBackend() {
 
 // startVite serves the app on a free port, unless a runner already serves it
 // and says so in WEB_TEST_BASE, in which case the whole suite shares one server.
+// With WEB_TEST_BUILT set it serves the last `bun run build` through `vite
+// preview` instead of the dev server. CI sets it, right after building: the dev
+// server compiles each module on request, which on the shared runner made page
+// loads about twenty times slower than on a laptop and turned ordinary waits
+// into timeouts in whichever test happened to be slowest that run. Locally the
+// dev server stays the default, so a run always tests the code as it is now.
 export async function startVite() {
   if (process.env.WEB_TEST_BASE) return { base: process.env.WEB_TEST_BASE, stop() {} }
   const port = await freePort()
@@ -325,7 +331,8 @@ export async function startVite() {
     proc.kill('SIGTERM')
     backend.stop()
   }
-  const proc = spawn('npx', ['vite', '--port', String(port), '--strictPort'], {
+  const args = process.env.WEB_TEST_BUILT ? ['vite', 'preview'] : ['vite']
+  const proc = spawn('npx', [...args, '--port', String(port), '--strictPort'], {
     stdio: 'ignore',
     cwd: frontend,
     env: { ...process.env, VITE_BACKEND: backend.url },
