@@ -83,25 +83,31 @@ export function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: stri
           </span>
         </div>
 
-        <div className="card card-pad stack">
-          <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
-            <Ico name="globe" size={12} /> {t('profileSignedWork')}
-          </span>
+        {/* The work this researcher signed, set as a publication list is
+            (047): numbered, the work's title, and the year it was signed. */}
+        <section className="findings-sec">
+          <p className="table-caption">
+            <b>{t('profileSignedWork')}</b>
+          </p>
           {p.projects.length === 0 ? (
             <Empty icon="globe" text={t('profileNoSignedWork')} />
           ) : (
-            <div className="stack" style={{ gap: 8 }}>
-              {p.projects.map((proj) => (
-                <a key={proj.id} className="member-row" href={`/p/${proj.id}`}>
-                  <span className="member-email">{proj.title}</span>
-                  {proj.signed_off_at && (
-                    <span className="muted small">{dateOnly(i18n.lang, proj.signed_off_at)}</span>
-                  )}
-                </a>
+            <ol className="rows ref-list">
+              {p.projects.map((proj, i) => (
+                <li key={proj.id}>
+                  <a className="row ref-row" href={`/p/${proj.id}`}>
+                    <span className="ref-n">{i + 1}</span>
+                    <span className="ref-body">
+                      <span className="row-title">{proj.title}</span>
+                      {proj.signed_off_at && <span className="row-sub">{dateOnly(i18n.lang, proj.signed_off_at)}</span>}
+                    </span>
+                    <Ico name="chevronRight" size={15} className="chev" />
+                  </a>
+                </li>
               ))}
-            </div>
+            </ol>
           )}
-        </div>
+        </section>
       </div>
     </div>
   )
