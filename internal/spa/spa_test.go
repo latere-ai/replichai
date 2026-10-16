@@ -239,9 +239,10 @@ func TestHandlerDoesNotRecompressPackedAssets(t *testing.T) {
 	}
 }
 
-// The faces the shared footer's logotype is set in must be served from this
-// binary. The stylesheet names Instrument Serif, and without these files the
-// Latere logotype renders in whatever serif the reader has installed.
+// The face the app sets must be served from this binary, as a font and with a
+// lifetime. The stylesheet names Inter and preloads three weights of it, and
+// without these files every screen renders in whatever sans the reader has
+// installed.
 func TestHandlerServesTheFonts(t *testing.T) {
 	if _, err := fs.ReadFile(embedded, "dist/index.html"); err != nil {
 		t.Skip("no frontend build in this tree")
@@ -250,8 +251,10 @@ func TestHandlerServesTheFonts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	for _, name := range []string{"italic", "regular"} {
-		path := "/fonts/instrument-serif-" + name + ".woff2"
+	// Inter is the one face the app sets (047), in the three weights it
+	// preloads.
+	for _, weight := range []string{"400", "500", "600"} {
+		path := "/fonts/inter-" + weight + ".woff2"
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		if w.Code != http.StatusOK {
