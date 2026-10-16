@@ -5,7 +5,7 @@ status: draft
 
 # 050 — The outer loop, simulated
 
-**Status:** draft, for the owner's review. Nothing here is built beyond what the table under *Where it stands* says. Once agreed it becomes `designed` and spawns the child specs listed at the end.
+**Status:** draft, for the owner's review; what a simulated replication establishes is decided (decision 5). Nothing here is built beyond what the table under *Where it stands* says. Once agreed it becomes `designed` and spawns the child specs listed at the end.
 
 **Scope:** what ReplicHAI is for, end to end: from a paper to a replication of its whole study, the human part included, run with simulated participants. The four stages, the gate between the inner and the outer loop, the experiment the agent builds, the simulated participants and their population profiles, what a simulated replication establishes and how it is calibrated, the benchmark the runs yield, and the copy that states it. It reverses one principle of [007](007-from-reproduction-to-replication.md), [007c](007c-the-synthetic-pilot.md) and [023](023-the-outer-loop-as-a-product.md), and keeps the rest of their design.
 
@@ -88,7 +88,7 @@ A text-only path, where the model answers the protocol's questions without the w
 
 The calibration set is a large human replication project that re-ran published social science and psychology studies with people, with its data released, so every one of its studies has a human answer to compare a simulation with. The proof-of-concept papers are chosen from it (*First corpus*, below).
 
-**The alternative (B).** Once a model and profile pair passes a calibration bar, its simulated replication counts as evidence about people, beside the paper's own. This is the stronger claim and it would make the product's headline stronger. Its cost is the credibility the product rests on: a reader cannot check a simulated participant the way they can check a re-run analysis, so a claim about people from simulation alone is the claim a skeptical reviewer attacks first. A keeps that claim conditional on calibration in every sentence; B asserts it. **The owner decides; this draft is written as A.**
+**The alternative (B).** Once a model and profile pair passes a calibration bar, its simulated replication counts as evidence about people, beside the paper's own. This is the stronger claim and it would make the product's headline stronger. Its cost is the credibility the product rests on: a reader cannot check a simulated participant the way they can check a re-run analysis, so a claim about people from simulation alone is the claim a skeptical reviewer attacks first. A keeps that claim conditional on calibration in every sentence; B asserts it. **Decided by the owner on 16 October 2026: A.** A simulated replication is never reported as evidence about people.
 
 ### 6. The runs are the benchmark
 
@@ -127,11 +127,10 @@ Three papers from the calibration set, chosen to exercise every stage and to giv
 
 ## Open questions for the owner
 
-1. A or B (decision 5).
-2. The gate's cutoffs, fixed in the registration (decision 2).
-3. Which model and runtime drives simulated participants, and how many participants per condition a run uses.
-4. Where a profile comes from when the paper's sample description is thin.
-5. Whether the first release of stage 4 includes the text-only contrast or only the interface path.
+1. The gate's cutoffs, fixed in the registration (decision 2).
+2. Which model and runtime drives simulated participants, and how many participants per condition a run uses.
+3. Where a profile comes from when the paper's sample description is thin.
+4. Whether the first release of stage 4 includes the text-only contrast or only the interface path.
 
 ## The specs this spawns
 
@@ -156,4 +155,4 @@ For the whole track, verified as the children land:
 
 ## Out of scope
 
-Recruiting, paying or screening real participants, and ethics review, as in 007. Longitudinal studies, physical apparatus, confederates and interviewer-led protocols, which the servability criteria exclude. Fitting a profile, a prompt or a model to a study's result. Deciding from simulation alone that a paper's claim about people is true or false; under A the report states what the simulation showed and how well calibrated it is.
+Recruiting, paying or screening real participants, and ethics review, as in 007. Longitudinal studies, physical apparatus, confederates and interviewer-led protocols, which the servability criteria exclude. Fitting a profile, a prompt or a model to a study's result. Deciding from simulation alone that a paper's claim about people is true or false: the report states what the simulation showed and how well calibrated it is.
