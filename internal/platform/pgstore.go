@@ -62,6 +62,45 @@ func (s *PGStore) Settings(ctx context.Context) (Settings, error) {
 	return out, nil
 }
 
+// SyncRates prices the card's listed models at the listed rates
+// (credit.Card.WithListed) and reports whether that changed the card. The read
+// and the write share one transaction that holds the settings row, so an
+// admin's save in between is not lost, and the transaction uses no other
+// connection. updated_by and updated_at keep recording the admin's last save.
+func (s *PGStore) SyncRates(ctx context.Context, listed []credit.Rates) (bool, error) {
+	var changed bool
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var stored []byte
+		if err := tx.QueryRow(ctx, `SELECT rate_card FROM platform_settings WHERE id = 1 FOR UPDATE`).Scan(&stored); err != nil {
+			return err
+		}
+		var card credit.Card
+		if err := json.Unmarshal(stored, &card); err != nil || len(card.Models) == 0 {
+			// Settings reads an unreadable or empty card as the compiled-in
+			// list, so the sync starts from what pricing reads.
+			card = credit.DefaultCard()
+		}
+		next, ok := card.WithListed(listed)
+		if !ok {
+			return nil
+		}
+		if err := next.Validate(); err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(next)
+		if err != nil {
+			return err
+		}
+		// Bound as text for the reason SetSettings gives.
+		if _, err := tx.Exec(ctx, `UPDATE platform_settings SET rate_card = $1::jsonb WHERE id = 1`, string(encoded)); err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	})
+	return changed, err
+}
+
 // SetSettings writes the platform row, recording the admin who did it. The
 // row is pinned to id 1, so the write is an upsert and never creates a second
 // row.
