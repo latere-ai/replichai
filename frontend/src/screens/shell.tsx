@@ -187,8 +187,11 @@ export function Shell({
       {drawer.open && <div className="rail-scrim" onClick={drawer.hide} />}
       <nav className={'rail' + (folded ? ' rail-fold' : '') + (drawer.open ? ' rail-open' : '')}>
         <div className="rail-head">
-          <Mark size={22} className="rail-logo" />
-          <Wordmark className="rail-name" />
+          {/* Home: the projects for a signed-in reader, the landing for anyone else. */}
+          <a className="rail-brand" href="/" aria-label={t('home')}>
+            <Mark size={22} className="rail-logo" />
+            <Wordmark className="rail-name" />
+          </a>
           <span className="rail-beta">{t('beta')}</span>
           {/* The one control that must stay reachable in both states, so it is
               the only thing the head keeps when the rail folds. */}
@@ -292,7 +295,7 @@ export function Shell({
         </div>
         <div className="rail-foot">
           <SourceLink i18n={i18n} className="nav-label rail-source" />
-          {signedIn ? (
+          {signedIn && (
             <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} data-tip-side="right" onClick={() => goto({ name: 'settings' })}>
               {/* Sized to the meta stack of name, address and tier beside it, not
                   to a default: a 26px square against three rows of text left the
@@ -305,13 +308,6 @@ export function Shell({
                 <TierPill i18n={i18n} tier={me.tier} />
               </span>
             </button>
-          ) : (
-            /* Where the account would be, for somebody who has not got one. It is
-               an anchor, not a button: signing in leaves this origin and comes
-               back, and `next` carries where to (013). */
-            <a className="btn rail-signin" data-test="rail-signin" data-tip={folded ? t('signInTitle') : undefined} data-tip-side="right" href={signInHref}>
-              <LatereMark height={11} /> <span className="nav-label">{t('signInTitle')}</span>
-            </a>
           )}
         </div>
       </nav>
@@ -341,9 +337,8 @@ export function Shell({
               </>
             ) : (
               /* Reading is free and starting a session is not, so the bar offers
-                 the one act a reader here can take. It repeats the rail's foot on
-                 purpose: on a phone the rail is a drawer, and the way in must not
-                 be behind it. */
+                 the one act a reader here can take. It is in the bar rather than
+                 the rail, which is a drawer on a phone. */
               <>
                 <ThemeSwitcher i18n={i18n} theme={theme} compact />
                 <a className="btn btn-topbar" data-test="topbar-signin" href={signInHref}>

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { listPublic, type PaperCitation, type ProjectView } from './api'
 import { LatereMark, Lockup, Mark, markArc } from './brand'
 import { HeroFigure } from './hero-figure'
-import type { I18n, TKey } from './i18n'
+import { countOf, type I18n, type TKey } from './i18n'
 import { Ico } from './icons'
 import { listCitation } from './papers'
 import type { ThemeMode } from './theme'
@@ -83,41 +83,11 @@ function useReveal<T extends HTMLElement>() {
 
 const REDUCE = '(prefers-reduced-motion: reduce)'
 
-// useInlineSignIn says whether one of the page's own sign-in buttons, the hero's
-// or the close's, is fully on screen below the sticky header. The header's
-// sign-in stands down while one is, so the first screen offers the way in once
-// rather than twice, and takes over the moment the reader scrolls past it: a
-// sign-in is on screen at every scroll position (029), it is just never two.
-//
-// It starts as true, which is the page at its top, so the header button does
-// not flash in and out on load. A browser without the observer gets false, and
-// the header keeps its button throughout, which is 029's original guarantee.
-function useInlineSignIn() {
-  const [inline, setInline] = useState(() => typeof IntersectionObserver !== 'undefined')
-  useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return
-    const seen = new Map<Element, boolean>()
-    // Measured below the sticky header, and only a button the reader can see
-    // whole counts: one half under the header is not one they can press.
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) seen.set(e.target, e.isIntersecting)
-        setInline([...seen.values()].some(Boolean))
-      },
-      { rootMargin: '-57px 0px 0px 0px', threshold: 1 },
-    )
-    for (const el of document.querySelectorAll('[data-signin-inline]')) io.observe(el)
-    return () => io.disconnect()
-  }, [])
-  return inline
-}
-
 // Band is one section of the page, set like a section of a paper: a rule, its
 // number and name in the margin, a serif heading, a caption, and whatever shows
 // the thing. It carries the reveal, so no section below has to remember to.
 function Band({
   id,
-  n,
   eyebrow,
   i18n,
   titleKey,
@@ -126,7 +96,6 @@ function Band({
   children,
 }: {
   id: string
-  n: number
   i18n: I18n
   eyebrow: string
   // The key, not the sentence: the heading is set by Seams, which is the only
@@ -139,22 +108,18 @@ function Band({
   const ref = useReveal<HTMLElement>()
   return (
     <section className={className ? `lp-section ${className}` : 'lp-section'} data-test={id} ref={ref}>
-      <SectionHead i18n={i18n} n={n} eyebrow={eyebrow} titleKey={titleKey} caption={caption} />
+      <SectionHead i18n={i18n} eyebrow={eyebrow} titleKey={titleKey} caption={caption} />
       {children}
     </section>
   )
 }
 
-// SectionHead is the margin and the heading: the number and name of the section
-// on the left, the heading and its caption on the right, as a paper sets a
-// numbered section. On a phone the two stack.
-function SectionHead({ i18n, n, eyebrow, titleKey, caption }: { i18n: I18n; n: number; eyebrow: string; titleKey: TKey; caption?: string }) {
+// SectionHead is the margin and the heading: the section's name on the left,
+// the heading and its caption on the right. On a phone the two stack.
+function SectionHead({ i18n, eyebrow, titleKey, caption }: { i18n: I18n; eyebrow: string; titleKey: TKey; caption?: string }) {
   return (
     <div className="lp-head">
-      <span className="lp-eyebrow">
-        <span className="lp-n">{n}</span>
-        {eyebrow}
-      </span>
+      <span className="lp-eyebrow">{eyebrow}</span>
       <div className="lp-head-main">
         <h2>
           <Seams i18n={i18n} k={titleKey} />
@@ -185,7 +150,7 @@ function Hero({ i18n, href }: { i18n: I18n; href: string }) {
         </h1>
         <p className="landing-lead">{t('landingLead')}</p>
         <div className="lp-cta">
-          <a className="btn lg" data-test="lp-hero-signin" data-signin-inline href={href}>
+          <a className="btn lg" data-test="lp-hero-signin" href={href}>
             <LatereMark height={12} /> {t('signInWith')}
           </a>
           <a className="btn ghost lg" data-test="lp-hero-registry" href="/registry">
@@ -220,12 +185,12 @@ const SHIPS = [
 function ShipsBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-ships" n={3} i18n={i18n} eyebrow={t('lpShipsEyebrow')} titleKey="lpShipsTitle" caption={t('lpShipsCaption')}>
+    <Band id="lp-ships" i18n={i18n} eyebrow={t('lpShipsEyebrow')} titleKey="lpShipsTitle" caption={t('lpShipsCaption')}>
       {/* A table, set with three rules and nothing else; its caption above it,
           where a journal sets a table's. */}
       <div className="lp-table-wrap">
         <p className="lp-table-caption">
-          <b>{t('tableLabel', { n: '1' })}</b> {t('lpShipsTable')}
+          {t('lpShipsTable')}
         </p>
         <ol className="lp-stack">
           <li className="lp-file lp-file-head" aria-hidden="true">
@@ -268,7 +233,7 @@ const POINTS = [
 function LoopsBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-loops" n={1} i18n={i18n} className="lp-loops" eyebrow={t('lpLoopsEyebrow')} titleKey="lpLoopsTitle" caption={t('lpLoopsCaption')}>
+    <Band id="lp-loops" i18n={i18n} className="lp-loops" eyebrow={t('lpLoopsEyebrow')} titleKey="lpLoopsTitle" caption={t('lpLoopsCaption')}>
       <div className="landing-points">
         {POINTS.map((p) => (
           <div key={p.key} className={p.open ? 'landing-point open' : 'landing-point'}>
@@ -375,13 +340,15 @@ function WalkBand({ i18n }: { i18n: I18n }) {
       onScroll()
     }
 
+    // The page scrolls inside .lp-body, not the window.
+    const scroller: HTMLElement | Window = el.closest<HTMLElement>('.lp-body') ?? window
     sync()
-    window.addEventListener('scroll', onScroll, { passive: true })
+    scroller.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', sync)
     still?.addEventListener('change', sync)
     narrow?.addEventListener('change', sync)
     return () => {
-      window.removeEventListener('scroll', onScroll)
+      scroller.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', sync)
       still?.removeEventListener('change', sync)
       narrow?.removeEventListener('change', sync)
@@ -397,7 +364,7 @@ function WalkBand({ i18n }: { i18n: I18n }) {
         reveal(el)
       }}
     >
-      <SectionHead i18n={i18n} n={2} eyebrow={t('lpPipelineEyebrow')} titleKey="lpPipelineTitle" caption={t('lpPipelineCaption')} />
+      <SectionHead i18n={i18n} eyebrow={t('lpPipelineEyebrow')} titleKey="lpPipelineTitle" caption={t('lpPipelineCaption')} />
       <div className="lp-walk-grid">
         <ol className="lp-walk-steps">
           {STEPS.map((s, i) => (
@@ -493,10 +460,10 @@ const PART_ICONS = { Claim: 'layers', Evidence: 'fileText', Verdict: 'shieldChec
 function VerdictBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-anatomy" n={4} i18n={i18n} eyebrow={t('lpAnatomyEyebrow')} titleKey="lpAnatomyTitle" caption={t('lpAnatomyCaption')}>
+    <Band id="lp-anatomy" i18n={i18n} eyebrow={t('lpAnatomyEyebrow')} titleKey="lpAnatomyTitle" caption={t('lpAnatomyCaption')}>
       <div className="lp-showcase">
         <p className="lp-table-caption">
-          <b>{t('tableLabel', { n: '2' })}</b> {t('lpDemoTable')}
+          {t('lpDemoTable')}
         </p>
         <div className="lp-window">
           <div className="lp-window-bar">
@@ -583,7 +550,7 @@ const FIELDS = [
 function WhoBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-who" n={5} i18n={i18n} eyebrow={t('lpWhoEyebrow')} titleKey="lpWhoTitle" caption={t('lpWhoCaption')}>
+    <Band id="lp-who" i18n={i18n} eyebrow={t('lpWhoEyebrow')} titleKey="lpWhoTitle" caption={t('lpWhoCaption')}>
       <div className="lp-fields">
         {FIELDS.map((f) => (
           <div key={f.key} className={f.accent ? 'lp-field accent' : 'lp-field'}>
@@ -604,7 +571,7 @@ const COSTS = ['SignIn', 'Fund', 'Run'] as const
 function CostBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
-    <Band id="lp-cost" n={6} i18n={i18n} eyebrow={t('lpCostEyebrow')} titleKey="lpCostTitle" caption={t('lpCostCaption')}>
+    <Band id="lp-cost" i18n={i18n} eyebrow={t('lpCostEyebrow')} titleKey="lpCostTitle" caption={t('lpCostCaption')}>
       <ol className="lp-costs">
         {COSTS.map((c, i) => (
           <li key={c} className="lp-cost">
@@ -643,7 +610,7 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
   if (rows.length === 0) return null
   return (
     <section className="lp-section" data-test="lp-strip" ref={ref}>
-      <SectionHead i18n={i18n} n={7} eyebrow={t('lpStripEyebrow')} titleKey="lpStripTitle" caption={t('lpStripCaption')} />
+      <SectionHead i18n={i18n} eyebrow={t('lpStripEyebrow')} titleKey="lpStripTitle" caption={t('lpStripCaption')} />
       {/* Set as a paper sets its references: numbered, the citation first, the
           work's own title after it, and what makes it a reproduction last. */}
       <ol className="lp-strip">
@@ -663,7 +630,7 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
                     the reproduction. */}
                 <span className="lp-card-by">
                   {t('lpCardSigner', { name: p.signed_off_name || p.owner_name || t('ownerUnknown') })}
-                  <span className="lp-card-foot"> · {t('sessionCount', { n: String(p.session_count) })}</span>
+                  <span className="lp-card-foot"> · {countOf(t, 'sessionCount', p.session_count)}</span>
                 </span>
               </span>
               <Ico name="arrowRight" size={14} className="lp-card-go" />
@@ -688,8 +655,7 @@ function PaperCite({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
   if (bits.length === 0) return null
   return (
     <span className="lp-card-cite" data-test="lp-card-cite">
-      {bits.join(' · ')}
-      {more > 0 && <span className="lp-card-more">{t('morePapers', { n: String(more) })}</span>}
+      {[...bits, ...(more > 0 ? [countOf(t, 'morePapers', more)] : [])].join(' · ')}
     </span>
   )
 }
@@ -718,14 +684,11 @@ export function Landing({
   const { t } = i18n
   const href = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
   const closeRef = useReveal<HTMLElement>()
-  const inlineSignIn = useInlineSignIn()
 
   return (
     <div className="landing">
-      {/* The way in, at every scroll position. This replaces 017's fold: a page
-          that scrolls cannot keep a button above the fold, and a sticky header
-          keeps one visible at every position. The header's own button stands
-          down while the hero's or the close's is on screen (useInlineSignIn). */}
+      {/* The header stays put while the body scrolls under it, so the way in
+          is on screen at every scroll position. */}
       <header className="lp-bar">
         <div className="lp-bar-in">
           <HomeLockup />
@@ -733,20 +696,16 @@ export function Landing({
             <a className="lp-bar-link lp-bar-registry" href="/registry">
               {t('lpNavRegistry')}
             </a>
-            {/* Hidden, not removed, while an inline sign-in is on screen, so the
-                bar keeps its width and nothing beside it moves. `visibility`
-                takes it out of the tab order and the accessibility tree with
-                it, so a keyboard reader meets the way in once as well. */}
-            <a className={inlineSignIn ? 'btn lp-bar-signin away' : 'btn lp-bar-signin'} data-test="lp-signin" href={href}>
+            <a className="btn lp-bar-signin" data-test="lp-signin" href={href}>
               <LatereMark height={11} /> {t('signInWith')}
             </a>
           </nav>
         </div>
       </header>
 
-      {/* Everything under the sticky header, as one body: a trackpad pull past
-          the top or the end of the page stretches this and leaves the header
-          where it is (elastic.ts). */}
+      {/* The page's one scroll area. The header is outside it, so the
+          browser's own elastic overscroll moves the body and never the
+          header. */}
       <div className="lp-body">
         <Hero i18n={i18n} href={href} />
         <LoopsBand i18n={i18n} />
@@ -765,7 +724,7 @@ export function Landing({
             </h2>
             <p>{t('lpCloseBody')}</p>
             <div className="lp-cta">
-              <a className="btn lg" data-signin-inline href={href}>
+              <a className="btn lg" href={href}>
                 <LatereMark height={12} /> {t('signInWith')}
               </a>
               <a className="btn ghost lg" href="/registry">

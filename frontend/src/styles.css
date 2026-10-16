@@ -101,28 +101,19 @@
 * {
   box-sizing: border-box;
 }
-/* Elastic scrolling stays inside the pane being scrolled (047). A trackpad
-   pull past the end of the console's main pane or its rail stretches that pane,
-   and a pull past either end of the landing stretches the page under its
-   sticky header. The frame, the rail beside the pane, and the header never
-   move.
-
-   The page's own bounce is what moved them, so it is off: always under the
-   console's fixed frame, and on the landing for a fine pointer, where
-   elastic.ts draws the stretch in its place. On a touch screen the landing
-   keeps the platform's own bounce, which is what a phone reader expects. Every
-   pane that scrolls contains its overscroll, so a browser that stretches inner
-   panes itself (Safari, Firefox) stretches that pane and carries nothing to
-   the frame; in Chromium, which stretches only the page, elastic.ts draws it. */
+/* The window never scrolls under the console or the landing: each pane is its
+   own scroll area, so the browser's elastic overscroll moves the pane being
+   scrolled and leaves the frame, the rail and the header where they are.
+   Overscroll stays `auto` on the root so history swipes keep working.
+   `will-change: scroll-position` gives a pane its own compositor scroller,
+   which is what Chromium needs to rubber-band an inner pane. */
 html:has(.shell),
-html:has(.shell) body {
-  overscroll-behavior: none;
+html:has(.landing) {
+  overflow: hidden;
 }
-@media (pointer: fine) {
-  html,
-  body {
-    overscroll-behavior-y: none;
-  }
+.rail-nav,
+.screen {
+  will-change: scroll-position;
 }
 .rail-nav,
 .screen,
@@ -135,19 +126,6 @@ html:has(.shell) body {
 .ev-detail-body,
 .disc-body pre {
   overscroll-behavior: contain;
-}
-/* The stretch itself. Only while a pull or its spring-back is in progress:
-   at rest nothing carries a translate, which would otherwise make every pane a
-   containing block for the fixed menus and dialogs inside it. */
-.screen.elastic-on > *,
-.rail-nav.elastic-on > *,
-.lp-body.elastic-on {
-  translate: 0 var(--elastic, 0px);
-}
-.screen.elastic-release > *,
-.rail-nav.elastic-release > *,
-.lp-body.elastic-release {
-  transition: translate 480ms var(--motion-ease);
 }
 body {
   margin: 0;
@@ -479,8 +457,23 @@ textarea {
   line-height: 1;
   color: var(--fg-1);
 }
-/* Kept as a selector hook only: the fold rule hides it, and the SVG carries its
-   own size. */
+/* The logo and the name, one link home. */
+.rail-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border-radius: var(--radius-action);
+  color: inherit;
+}
+.rail-brand:hover {
+  background: var(--bg-hover);
+}
+.rail-fold .rail-brand {
+  display: none;
+}
 .rail-logo {
   flex: 0 0 auto;
 }
@@ -595,14 +588,6 @@ textarea {
    reader (028). It fills the rail's width when unfolded and collapses to its
    icon when the rail folds. The label is the same `.nav-label` every
    destination uses, so one rule folds them all. */
-.rail-signin {
-  width: 100%;
-  justify-content: center;
-}
-.rail-fold .rail-signin {
-  padding-left: 0;
-  padding-right: 0;
-}
 /* An avatar with no picture takes a hue derived from the address, so the same
    person is the same color in every list they appear in. */
 .user-avatar {
@@ -4104,6 +4089,9 @@ input.submit-input {
   .rail-fold .user-meta {
     display: revert;
   }
+  .rail-fold .rail-brand {
+    display: inline-flex;
+  }
   .rail-fold .rail-head {
     padding: 0 16px;
     justify-content: flex-start;
@@ -4357,71 +4345,6 @@ input.submit-input {
 .session-ref {
   font-size: 15px;
   font-weight: 500;
-}
-
-/* The registry as a list of references (047): numbered, the paper's citation
-   first, the reproduction's title upright, as a reference list sets an
-   article's title, and who signed it last. Rows are divided by hairlines
-   between two outer rules, with no card around them. */
-.ref-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: 1.5px solid var(--fg-1);
-  border-bottom: 1.5px solid var(--fg-1);
-}
-.ref-list > li + li {
-  border-top: 1px solid var(--border);
-}
-.ref-row {
-  align-items: flex-start;
-  gap: 16px;
-  padding: 16px 8px 16px 0;
-  border-top: none;
-  border-radius: 0;
-}
-.ref-row:hover {
-  background: var(--bg-surface);
-}
-.ref-n {
-  flex: none;
-  width: 32px;
-  padding-top: 1px;
-  font-size: 13.5px;
-  color: var(--fg-3);
-  font-variant-numeric: tabular-nums;
-}
-.ref-n::before {
-  content: '[';
-}
-.ref-n::after {
-  content: ']';
-}
-.ref-body {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-.ref-row .row-cite {
-  margin: 0;
-  font-size: 13.5px;
-  color: var(--fg-1);
-  white-space: normal;
-}
-.ref-row .row-title {
-  font-size: 15.5px;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: -0.01em;
-  white-space: normal;
-}
-.ref-row .row-sub {
-  font-size: 12.5px;
-  color: var(--fg-2);
-}
-.ref-row .chev {
-  margin-top: 3px;
 }
 
 /* The findings on a phone (047). A four-column table at 390px either scrolls

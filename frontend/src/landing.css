@@ -17,23 +17,32 @@
   --lp-w: min(1200px, calc(100% - 96px));
   --lp-margin: 220px;
   --lp-gutter: 40px;
-  min-height: 100vh;
+  /* The window never scrolls: the header is fixed in the column and .lp-body
+     is the page's one scroll area, so elastic overscroll moves only the body.
+     dvh follows a phone's collapsing browser bar; vh is the fallback. */
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--bg);
   color: var(--fg-1);
+}
+.lp-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  will-change: scroll-position;
 }
 
 /* ── The header ───────────────────────────────────────────────────────────── */
 
-/* Sticky, so the sign-in is on screen at every scroll position (029). The
-   platform's header: 56px, the page's own ground, and a hairline under it. */
+/* The platform's header: 56px, the page's own ground, and a hairline under it. */
 .lp-bar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  flex: none;
   height: 56px;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  backdrop-filter: saturate(1.4) blur(12px);
-  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 .lp-bar-in {
@@ -55,19 +64,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-/* The header's sign-in, while the hero's or the close's is on screen: faded
-   and lifted out of reach, then hidden outright once the fade ends, so it is
-   out of the tab order too. It comes back the same way. */
-.landing .btn.lp-bar-signin {
-  transition: opacity var(--motion-enter) var(--motion-ease), transform var(--motion-enter) var(--motion-ease), visibility 0s linear 0s, background var(--motion-fast) var(--motion-ease);
-}
-.landing .btn.lp-bar-signin.away {
-  opacity: 0;
-  transform: translateY(-4px);
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity var(--motion-enter) var(--motion-ease), transform var(--motion-enter) var(--motion-ease), visibility 0s linear var(--motion-enter);
 }
 /* A navigation link: never underlined, a tint on hover, as on the platform. */
 .lp-bar-link {
@@ -287,12 +283,6 @@
   fill: var(--fg-1);
   font-variant-numeric: tabular-nums;
 }
-.hf-panel {
-  font-family: var(--font-sans);
-  font-size: 15px;
-  font-weight: 600;
-  fill: var(--fg-1);
-}
 .hf-caption {
   display: flex;
   align-items: flex-start;
@@ -355,7 +345,7 @@
   grid-row: 1 / span 2;
   align-self: start;
   position: sticky;
-  top: 80px;
+  top: 24px;
 }
 .lp-head-main {
   grid-column: 2;
@@ -368,11 +358,6 @@
   font-weight: 500;
   line-height: 1.6;
   color: var(--fg-2);
-}
-.lp-n {
-  min-width: 1.2ch;
-  color: var(--fg-3);
-  font-variant-numeric: tabular-nums;
 }
 .lp-head h2 {
   margin: -4px 0 14px;
@@ -471,7 +456,7 @@
    while the steps scroll past it. */
 .lp-walk-panel {
   position: sticky;
-  top: 96px;
+  top: 40px;
   align-self: start;
   padding: 14px;
   border: 1px solid var(--border);
@@ -906,10 +891,6 @@
   font-size: 14px;
   color: var(--fg-1);
 }
-.lp-card-more {
-  margin-left: 6px;
-  color: var(--fg-2);
-}
 /* An article's title is upright in a reference list. */
 .lp-card-title {
   font-size: 16px;
@@ -1150,7 +1131,6 @@
   .hf-ticks,
   .hf-gap,
   .hf-gap-end,
-  .hf-panel,
   .hf-run-label,
   .hf-run-n,
   .hf-station,
@@ -1165,7 +1145,6 @@
   }
   .hf-gap,
   .hf-gap-end,
-  .hf-panel,
   .hf-run-label,
   .hf-run-n {
     animation-delay: 900ms;
