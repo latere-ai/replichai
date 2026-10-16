@@ -6,10 +6,20 @@ package job
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+// testKeys numbers the keys anyKey hands out.
+var testKeys atomic.Int64
+
+// anyKey returns a paper key no other call returns, for a session whose test
+// is not about which paper it runs. An audit must carry a key, and two
+// sessions sharing one would meet the double-trigger guard.
+func anyKey() string { return fmt.Sprintf("doi:10.0/test.%d", testKeys.Add(1)) }
 
 // TestTransitionsAreConstrained checks AC3, the invariant the state machine
 // exists to hold: a failure is reachable from every active phase, done is not,
@@ -49,7 +59,7 @@ func TestTransitionsAreConstrained(t *testing.T) {
 
 func TestAdvanceRefusesIllegalTransition(t *testing.T) {
 	s := NewMemStore()
-	j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub-1", Ref: "arxiv:1", Kind: KindAudit})
+	j, _ := s.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub-1", Ref: "arxiv:1", Kind: KindAudit})
 
 	// submitted -> running skips resolving and must be refused.
 	if err := s.Advance(context.Background(), j.ID, PhaseRunning, nil); !errors.Is(err, ErrIllegalTransition) {
@@ -68,7 +78,7 @@ func TestFailureFromAnyActivePhase(t *testing.T) {
 	ctx := context.Background()
 	for _, start := range []Phase{PhaseResolving, PhaseRunning, PhasePublishing} {
 		s := NewMemStore()
-		j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+		j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 		// Walk to the phase under test.
 		for _, p := range []Phase{PhaseResolving, PhaseRunning, PhasePublishing} {
 			if err := s.Advance(ctx, j.ID, p, nil); err != nil {
@@ -99,7 +109,7 @@ func TestLifecycleWalkRecordsEveryPhase(t *testing.T) {
 	s := NewMemStore(WithClock(func() time.Time { return <-tick }))
 	ctx := context.Background()
 
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "arxiv:2302.03714", Kind: KindAudit, Project: "proj-1"})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "arxiv:2302.03714", Kind: KindAudit, Project: "proj-1"})
 	for _, p := range []Phase{PhaseResolving, PhaseRunning, PhasePublishing, PhaseDone} {
 		if err := s.Advance(ctx, j.ID, p, nil); err != nil {
 			t.Fatalf("advance to %s: %v", p, err)
@@ -121,7 +131,7 @@ func TestLifecycleWalkRecordsEveryPhase(t *testing.T) {
 }
 
 func TestEnqueueRejectsEmptyRef(t *testing.T) {
-	if _, err := NewMemStore().Enqueue(context.Background(), Submission{Principal: "sub", Ref: "  ", Kind: KindAudit}); !errors.Is(err, ErrEmptyRef) {
+	if _, err := NewMemStore().Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "  ", Kind: KindAudit}); !errors.Is(err, ErrEmptyRef) {
 		t.Fatalf("an empty reference should be refused, got %v", err)
 	}
 }
@@ -134,7 +144,7 @@ func TestGetMissingIsNotFound(t *testing.T) {
 
 func TestStoreCopiesOnBoundary(t *testing.T) {
 	s := NewMemStore()
-	j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	j.PhaseAt[PhaseSubmitted] = time.Unix(0, 0) // mutate the returned copy
 	got, _ := s.Get(context.Background(), j.ID)
 	if got.PhaseAt[PhaseSubmitted].Equal(time.Unix(0, 0)) {
@@ -152,7 +162,7 @@ func TestConcurrentClaimsAreDisjoint(t *testing.T) {
 	ctx := context.Background()
 	const n = 50
 	for range n {
-		if _, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit}); err != nil {
+		if _, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit}); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 	}

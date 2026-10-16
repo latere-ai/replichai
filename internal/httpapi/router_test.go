@@ -1357,7 +1357,7 @@ func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job 
 func TestGetJob(t *testing.T) {
 	d := testDeps(allowAll)
 	p, _ := d.Projects.Create(context.Background(), "sub", "t")
-	j, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "sub", Ref: "ref", Kind: job.KindAudit, Project: p.ID})
+	j, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "sub", Ref: "ref", PaperKey: "doi:10.0/ref", Kind: job.KindAudit, Project: p.ID})
 	h := NewRouter(d).Handler()
 
 	if w := do(t, h, "GET", "/jobs/"+j.ID, "", "sub"); w.Code != http.StatusOK {
@@ -1699,8 +1699,8 @@ func TestSessionTranscriptLiveEvenWithRepo(t *testing.T) {
 // the same handler.
 func TestListMyJobs(t *testing.T) {
 	d := testDeps(allowAll)
-	mine, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref-mine", Kind: job.KindAudit})
-	_, _ = d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "other", Ref: "ref-other", Kind: job.KindAudit})
+	mine, _ := d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "me", Ref: "ref-mine", PaperKey: "doi:10.0/mine", Kind: job.KindAudit})
+	_, _ = d.Jobs.Enqueue(context.Background(), job.Submission{Principal: "other", Ref: "ref-other", PaperKey: "doi:10.0/other", Kind: job.KindAudit})
 	h := NewRouter(d).Handler()
 
 	w := do(t, h, "GET", "/jobs", "", "me")

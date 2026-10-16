@@ -182,7 +182,7 @@ func engineOver(t *testing.T, backend provider.Provider, repo string) (*engineRu
 	controller, router := managedStack(t, job.LegacyRuntime, legacyRuntime(t, job.LegacyRuntime, backend))
 	store := job.NewMemStore()
 	ctx := context.Background()
-	j, _ := store.Enqueue(ctx, job.Submission{Principal: "p", Project: "project", Ref: "doi:10.1234/foo", Kind: job.KindAudit})
+	j, _ := store.Enqueue(ctx, job.Submission{Principal: "p", Project: "project", Ref: "doi:10.1234/foo", PaperKey: "doi:10.1234/foo", Kind: job.KindAudit})
 	_, _, _ = store.Claim(ctx, "worker")
 	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)
 	j, _ = store.Get(ctx, j.ID)

@@ -64,6 +64,12 @@ var (
 	ErrIllegalTransition = errors.New("illegal job phase transition")
 	// ErrEmptyRef reports enqueuing with no paper or experiment reference.
 	ErrEmptyRef = errors.New("job needs a paper or experiment reference")
+	// ErrNoPaperKey reports an audit session with no paper key. The key is
+	// what joins a session to the paper its project lists, so a session
+	// without one belongs to no paper: the project shows no citation for it
+	// and the double-trigger guard cannot see it. Only an experiment, which
+	// is not about a paper, runs without one.
+	ErrNoPaperKey = errors.New("an audit session needs a paper key")
 	// ErrImportedElsewhere reports a re-push of a session record that already
 	// belongs to another project. A record is moved through the app, never by
 	// pushing it again under a different project.
@@ -89,6 +95,11 @@ var (
 	// already-completed managed run terminally failed.
 	ErrRetryablePublish = errors.New("retryable publishing failure")
 )
+
+// needsPaperKey reports whether a session of this kind must carry a paper key.
+// Every kind but an experiment is about a paper, including a row whose kind
+// was never set.
+func needsPaperKey(k Kind) bool { return k != KindExperiment }
 
 // RetryablePublish wraps cause so the worker's recovery policy treats it as
 // retryable. The server runner uses it for forge, source, and transcript reads

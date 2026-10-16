@@ -58,7 +58,7 @@ func harvestSetup(t *testing.T, files map[string][]byte) (*engineRunner, job.Job
 	runtime := managedmemory.NewWithStore(nil, managedmemory.Config{Grade: managed.GradePassed, Files: files})
 	store := job.NewMemStore()
 	ctx := context.Background()
-	j, _ := store.Enqueue(ctx, job.Submission{Principal: "p", Project: "project", Ref: "paper", Kind: job.KindAudit})
+	j, _ := store.Enqueue(ctx, job.Submission{Principal: "p", Project: "project", Ref: "paper", PaperKey: "doi:10.0/paper", Kind: job.KindAudit})
 	_, _, _ = store.Claim(ctx, "worker")
 	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)
 	j, _ = store.Get(ctx, j.ID)

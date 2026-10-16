@@ -580,21 +580,15 @@ func TestMigrationBackfillsProjectsFromSessions(t *testing.T) {
 
 	// Only the job schema exists, with no projects table and no FK, so three
 	// finished CLI sessions seed against three project slugs, as they did
-	// before 006g.
+	// before 006g. They carry no paper key, which no store now accepts, so
+	// they are written as rows.
 	if err := job.Migrate(ctx, pool); err != nil {
 		t.Fatalf("job migrate: %v", err)
 	}
 	js := job.NewPGStore(pool)
+	at := time.Date(2026, 7, 20, 9, 0, 0, 0, time.UTC)
 	for _, slug := range []string{"paper-a", "paper-b", "paper-c"} {
-		j, err := js.Enqueue(ctx, job.Submission{Principal: "cli-owner", Ref: "ref-" + slug, Kind: job.KindAudit, Project: slug})
-		if err != nil {
-			t.Fatalf("seed %s: %v", slug, err)
-		}
-		for _, p := range []job.Phase{job.PhaseResolving, job.PhaseRunning, job.PhasePublishing, job.PhaseDone} {
-			if err := js.Advance(ctx, j.ID, p, nil); err != nil {
-				t.Fatalf("advance %s: %v", slug, err)
-			}
-		}
+		seedSession(t, pool, legacySession{id: "job-" + slug, project: slug, principal: "cli-owner", ref: "ref-" + slug, created: at})
 	}
 
 	// Now run the project migration. It backfills projects from those jobs,
@@ -620,6 +614,32 @@ func TestMigrationBackfillsProjectsFromSessions(t *testing.T) {
 		if len(sessions) != 1 {
 			t.Errorf("project %s has %d sessions, want 1", p.ID, len(sessions))
 		}
+	}
+}
+
+// legacySession is a jobs row as a session recorded before job migration 2
+// left it: no paper key, and kind and phase as given (audit and done when
+// empty).
+type legacySession struct {
+	id, project, principal, ref, kind, phase, key string
+	created                                       time.Time
+}
+
+// seedSession writes one session row directly, for the shapes Enqueue no
+// longer accepts.
+func seedSession(t *testing.T, pool *pgxpool.Pool, s legacySession) {
+	t.Helper()
+	if s.kind == "" {
+		s.kind = string(job.KindAudit)
+	}
+	if s.phase == "" {
+		s.phase = string(job.PhaseDone)
+	}
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+		s.id, s.kind, s.principal, s.project, s.ref, s.key, s.phase, s.created); err != nil {
+		t.Fatalf("seed session %s: %v", s.id, err)
 	}
 }
 
