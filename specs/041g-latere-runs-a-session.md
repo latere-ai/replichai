@@ -1,134 +1,136 @@
 ---
 title: "Latere runs a session"
-status: designed
+status: built
 ---
 
 # 041g — Latere runs a session
 
-> **Amended 2026-09-16.** The Latere platform removed agent delegation on
-> 2026-09-06: one hop, one token minted for one audience, and no token that
-> carries a chain. The credential paragraph below is corrected. Where the rest
-> of this spec says Auth (Latere's identity provider) mints delegated
-> credentials, or names a delegated Auth identity for a Drive (Latere's file
-> storage service) mount, read: the caller asks Auth for a token addressed to
-> the one service it is about to call, and asks again for the next one.
+> **Rewritten 2026-10-15** against the platform as it runs today (Topos v0.41.0 behind `api.latere.ai/v1/agents`). The first design, of 2026-09, embedded Topos's agent loop in ReplicHAI's own process and composed Lux and Cella itself, and was blocked until that embedded loop could survive a crash. The platform now runs the loop as a hosted service, so the adapter is a client of it, the blocking question is answered by the platform, and most of the first design's machinery is gone. Where this text and the first design disagree, this text holds.
 
-**Status:** designed, not built. **Production enablement is blocked on durable replay at the in-flight model/tool boundary** (below). The adapter and fake/local integration may be built after 041e, but it must not be offered as a hosted runtime until that prerequisite is demonstrated.
+**Status:** built. The runtime passes the shared conformance suite against a stub of the platform, and runs graded sessions on the live platform from the command line (an opt-in test, `REPLICHAI_LATERE_E2E=1`, runs a small one). The app's half waits on Auth (048, Price and charge). A study's runs, which are handed read-only inputs (046), wait on Topos delivering a read-only input (the public Topos repository's spec 075); until it is built the runtime refuses them, and a study that fixes its runs' network waits on the platform letting a session's agent narrow it, a change written up on the platform's side.
 
-**Scope:** add `latere-topos`, a platform-native runtime composed from the embeddable Topos runtime, Lux native model access, and Cella sandboxes (Topos is Latere's agent runtime, Lux its model gateway, and Cella its sandbox control plane). Preserve replichai's durable session/evidence/billing contract, use Latere Auth delegation and cost attribution, and leave Drive mount lifecycle with Cella/Drive. Do not route managed sessions through a vendor compatibility surface.
+**Scope:** `latere`, a managed runtime that runs one ReplicHAI session as a hosted Topos session on the Latere platform, on any model the platform serves, charged to the person who starts it. It satisfies `managed.Runtime` and passes the shared conformance suite. Choosing it is [048](048-the-runtime-is-a-choice.md).
 
-**Depends on:** [041e](041e-anthropic-conforms-to-the-session-contract.md), the current `latere.ai/x/topos` public runtime/sandbox interfaces, and the platform contracts documented at [platform.latere.ai](https://platform.latere.ai/): Lux native dialect, Cella sandbox API, Latere Auth delegation, and Drive/Cella mount lifecycle.
+**Depends on:** [041e](041e-anthropic-conforms-to-the-session-contract.md), [048](048-the-runtime-is-a-choice.md), the platform's Agents API ([platform.latere.ai/docs/agents](https://platform.latere.ai/docs/agents)), and Latere Auth.
 
-## Why Latere is a composition, not a third model provider
+## Why it is a client of the platform
 
-The direct adapters bind lifecycle and inference to one vendor. Latere deliberately separates them:
+The Latere platform is a composition: Topos runs the agent and keeps the session, Cella runs the sandbox, Lux routes the model and meters it, Auth says who is acting, and platformd decides what they may do and charges their wallet. The family's rule for products is that an application calls a job, and only a job composes resources. Topos is the job. So the adapter talks to Topos's API, reads the session's own folder in Storage, and reaches nothing else: it never creates a Cella sandbox, never calls a Lux door, and holds no model provider key.
 
-- **Topos** runs the agent loop, tools, transcript, evaluation turns, and event trace;
-- **Cella** owns sandbox creation, exact command execution, filesystem, network/secret policy, and destruction;
-- **Lux** provides one native model dialect, provider-qualified routing, provider-key custody, usage/cost records, and compatibility-loss reporting;
-- **Auth** proves which principal/service the work acts for and mints delegated credentials;
-- **Drive** owns durable workspaces and their attach/materialize/sync/release contract when that integration is available.
+That one choice settles what the first design could not:
 
-The normalized identities therefore look like:
+- **Durability is the platform's.** A hosted session's loop runs on the platform's runners, which hold it by a lease and fence their writes; a runner that dies hands the session to another within a minute, and the session resumes from its log. ReplicHAI keeps only the session's id, and every later call (status, events, interrupt, end) is keyed by it, so a ReplicHAI process can restart at any point and pick the session up. The first design's gate (a crash in the middle of a model call or a command must not repeat it) has moved to the platform rather than closed: Topos recovers from a lost runner and closes an interrupted tool call as of unknown effect, and its own test of a kill at every commit point is not built yet.
+- **Inference and metering are the platform's.** Every model call is recorded on the session with the model that served it, its token counts and its cost.
+- **The sandbox and its network are the platform's.** Topos opens a machine at the agent's first tool call and closes it when idle.
+
+## The shape of a session
 
 ```
-SessionRef.Runtime       = latere-topos
-SessionRef.ID            = replichai stable session id
-SessionRef.Locator       = Topos journal + Cella sandbox/command ids
-Status.Model.Provider    = Lux effective provider (openai, anthropic, ...)
-Status.Model.ID          = Lux effective model id
+SessionSpec ─▶ latere adapter ─▶ api.latere.ai/v1/agents
+                  │                 PUT  /agents/{name}            the worker, once per distinct manifest
+                  │                 POST /sessions                 one Topos session per ReplicHAI session
+                  │                 PATCH /sessions/{id}           the chosen model
+                  │                 POST /sessions/{id}/events     the task; later, each grading and revision round
+                  │                 GET  /sessions/{id}            state and spend
+                  │                 GET  /sessions/{id}/events     the transcript and per-call usage
+                  │                 GET  /sessions/{id}/files      a findings file, while the machine runs
+                  │               api.latere.ai/v1/storage
+                  │                 GET  /files/{owner}/{folder}/work/...   the outputs, after each turn
+                  │
+                  └─ SessionRef { runtime: latere, id: <topos session id>, locator: { stage, round, seq } }
 ```
 
-Replichai may route `best` to `openai/gpt-…` and `balanced` to `anthropic/claude-…` without changing runtime code. The route snapshots one exact namespaced Lux target (or a virtual-key alias proven single-target) for the whole session, so fallback cannot silently change model/provider and invalidate the rate snapshot.
+`SessionRef.ID` is the Topos session id. The locator records the grading stage and round and the event sequence each stage began at, and nothing else: no token, no task text. Every advance of the stage is a new locator revision, persisted by the controller's checkpoint before the adapter's next call (041b).
 
-## Runtime shape
+**The worker.** The adapter applies one agent in the person's own context, named from a digest of its manifest (`replichai-<digest>`), so the same method and runtime configuration reuse one agent and a changed one gets its own. Its manifest carries:
 
-The adapter uses `topos.Runner.Turn`, not an Anthropic-like fake worker resource. It creates and owns one Cella sandbox, runs deterministic bootstrap directly through the `sandbox.Provider` exec/file API, then drives these Topos turns against that caller-owned sandbox:
+- the session's instructions;
+- the built-in tools a reproduction needs (read, write, edit, bash, grep, glob, web_fetch, todo), and the grader below as its one subagent;
+- the Cella permissions a machine needs (`cella:sandbox.*`, `cella:secret.*`, `cella:environment.use`), without which the first tool call is refused;
+- approvals in `progressive` mode with every built-in tool always allowed, because a session nobody attends would otherwise stop on a confirmation forever;
+- the platform's base image, and a turn timeout long enough for a reproduction, since the default two hours ends a long turn.
 
-1. worker turn with original instructions/task;
-2. evaluator turn when `Evaluation != nil`, with rubric, read-only evidence tools, and strict verdict schema;
-3. revision worker turn with evaluator feedback when required;
-4. repeat evaluation until pass or budget exhausted.
+The session is created with `attended: false`, so a question the agent asks is answered at once and never stops the run. Each of these is checked against the live platform before the adapter relies on it.
 
-Topos already defines the transcript as canonical turn state and accepts `InitialTranscript` to resume. Its observer emits lifecycle, text, assistant, tool, usage, and stop events with stable session/agent joins. The adapter pins a reviewed Topos module version and maps those public events; it does not import Topos internals.
+**The model.** A session is created without a message, its model is set with one `PATCH` to the chosen Effort level (`tier/quick`, `tier/thorough`, `tier/sustained`) or to the specific model the person picked, and only then is the task sent. The platform refuses a model the person may not use, with its own reason, before any model call.
 
-`Start` creates the durable adapter state row and Cella sandbox, bootstraps it, persists revision 1, then launches a supervised turn. `Poll` reads adapter state; it does not make an unbounded model call. A process supervisor reclaims non-terminal rows after restart and resumes from the persisted transcript and sandbox.
+**The task.** One `user.message` carries the session's task and its attachments. Topos writes attachments into the working directory when the machine opens.
 
-## Durable journal and the blocking prerequisite
+## Grading
 
-One adapter-owned state table, keyed by immutable session id, stores:
+Topos has no grader of its own. It has the piece one is built from: a **subagent**, declared in the worker's manifest, which runs as a thread of the session in a context of its own, with only its own instructions and tools, on the same machine and therefore reading the same files. The adapter composes the grading loop from it, as the local runtime composes its judge stage from a second run of the harness.
 
-- locator revision and current stage/attempt;
-- Cella sandbox id and owned-resource state;
-- normalized Topos event log and replayable transcript checkpoints;
-- current model/provider, cumulative usage/cost evidence, and Lux request ids;
-- cancellation flag, evaluator result/revision count, terminal result, and cleanup state.
+The grader subagent holds the judge's instructions and read-only tools (read, grep, glob), so it can read the work and cannot change it. A round is:
 
-It contains task/transcript content and is therefore private evidence storage with the same authorisation/retention as session transcripts; unlike `SessionRef.Locator`, it is never returned as opaque browser data. Writes are append/CAS, and the ref locator carries only the state-row id plus current checkpoint revision.
+1. The worker's turn ends.
+2. The adapter sends the worker a short message asking it to spawn the grader with the round's task, which carries the rubric and the findings check.
+3. The worker calls `spawn`. The adapter reads the thread's start from the events and checks that it is the declared grader, with exactly the round's task and only the read-only tools; anything else fails the attempt.
+4. The grader reads the work and ends its turn with the verdict as a JSON object in its final message, in the shape the local runtime's judge writes (grade, explanation, one row per criterion). The adapter reads that message from the grader's own thread, never from the worker's relay of it, and validates it as the local runtime validates its judge's file. A grader that answers anything else has failed the attempt, and the adapter asks for another spawn, up to the same attempt limit the local runtime uses.
+5. Passed ends the session done. Needs-revision with revisions left sends the worker the verdict's failed criteria as its next task; otherwise the session ends failed with `evaluation_failed`.
 
-Topos can resume a crashed loop from a replayed event transcript, and interruption returns a valid partial transcript. That is sufficient after a controlled cancel. It is not by itself sufficient for a process death during:
+The worker never writes the verdict: the adapter reads it only from the grader's thread. The grader is a separate context that reads the work and the rubric, not the worker's account of it, which is what 041a and the managed-agent port require of a runtime that declares `Evaluation`.
 
-- a Lux generation whose response/usage was accepted upstream but not checkpointed locally; or
-- a Cella tool command that changed the repository/filesystem but emitted no durable completion event.
+Two facts of the platform, both found by a probe on 2026-10-16, shape this. A subagent's model must be a model, not an Effort level, since the platform resolves a level only for the session's own model, and a free model cannot be named at all; so the grader runs on the first paid model of the session's level, or on the specific model the person chose. And a client tool, which would have made the verdict a schema-checked call rather than a message, is not offered to a subagent's thread; if Topos offers it later, the verdict moves to it without changing what a round is.
 
-Blind replay could double-spend a model call or repeat a side effect. `latere-topos` is therefore production-gated until one of these equivalent contracts exists and is tested end to end:
+When `EvaluationSpec.Findings` names a findings file, the adapter reads it after each worker turn, checks it against its schema, and puts the problems in the grader's task and in the revision, as the local runtime does (`FindingsRounds`).
 
-1. a durable Topos control-plane run API owns the loop and exposes retrieve/cancel/events after client death; or
-2. Lux generation accepts a stable idempotency/retrieval key and Cella commands expose stable idempotent command ids/results, allowing the embedded adapter to recover the exact in-flight operation.
+## What the platform does not give, and what follows
 
-The adapter must probe/declare the contract version it relies on. “Resume usually works” is not an acceptance criterion. Before the prerequisite lands, `latere-topos` may run only with fake/local model+sandbox in tests or an explicitly non-detached development mode; the production catalog refuses it with `UnsupportedError{Capability: durable_replay}`.
+Each is either refused before anything remote is created, as 041a requires, or is a platform change written up in that platform repository. None is worked around inside ReplicHAI.
 
-## Identity and credentials
+| The specification asks for | What the platform does today | The adapter |
+|---|---|---|
+| A network policy (`none`, an allowlist, `open`) per session | The network is the person's own account preference (listed hosts, package managers, ask, or open), for every session they start; a session cannot choose another, and under an allowlist the platform joins its own hosts to any the agent names | Declares `open` when the person's preference is open, read before any remote write, and nothing otherwise, so an audit is refused with a message naming the preference. An allowlist is not offered: the platform's joined list is wider than the one asked for, and a study must record the network its runs actually had. A session whose agent narrows the preference is a change on the platform's side, written up there |
+| Packages | No package or bootstrap field; the base image carries Python with the document and data libraries | Accepts `pip` packages the configured image already provides and refuses any other |
+| Bootstrap commands | Not built (manifest hooks are validated and never run) | Refuses |
+| A read-only input outside the workspace (`InputResource`) | Attachments are written into the working directory, where the agent can change them | Declares no `InputDir`, so a study's fixed inputs are refused. Read-only inputs are Topos's spec 075 |
+| A repository the agent pushes to with a ReplicHAI credential | No client-supplied secret (named secrets are not built); GitHub only through the person's own GitHub connection, on `agents/*` branches | Declares no repository modes. The host publishes the outputs to GitHub afterwards, as it does for the local runtime ([045g](045g-the-host-pushes.md)) |
 
-No OpenAI/Anthropic provider key enters replichai or the sandbox. Lux stores provider secrets and receives either a scoped `lux_*` virtual key or a refreshed Latere bearer. The Lux client uses the native `/lux/v1/generate` dialect through `luxsdk`, not `/compat/anthropic` or `/compat/openai`; compatibility surfaces are for wire-locked clients, while this is new code.
+## Outputs and the host's publish
 
-Background work cannot persist a user's browser bearer. Enqueue snapshots the actor subject and organization. The runtime asks Auth for a short-lived token addressed to one audience at a time, Lux or Cella, and asks again for the next; each token reaches the one service it was minted for and carries no chain. Token sources mint again per request rather than passing one token on. If Auth cannot mint for that audience, the route is unavailable. Tokens/API keys never enter job JSON, the adapter journal, events, locators, command argv, or logs.
+A Topos session's machine is stopped five minutes after its last tool call, but its files outlive the machine. At the end of every turn that changed files, Topos writes the working directory's latest state as plain files under `work/` in the session's own folder in Storage, in the person's own space, and the session names that folder. The adapter lists and reads the outputs there (`GET /v1/storage/files/{owner}/{path}`, with `?list=1` for the listing), so they are complete, independent of what the agent remembered to mention, and readable long after the machine is gone. The same token that reaches Topos reaches Storage.
 
-Cella secret inputs are vault entry references. Bootstrap/tool commands use `SecretEnv` or the platform's current egress-substitution contract; plaintext secrets are not materialized into prompts. Network access is compiled from `SessionSpec.Network` into an approved Cella policy/capability mapping. A policy that cannot exactly enforce `none|allowlist|open` is refused before sandbox creation.
+No forge credential ever reaches the platform. The host (the command line, or the server's worker) takes the files the adapter fetched, builds the reproduction repository locally, verifies the tree, and pushes it with its own GitHub credential, which is the path the local runtime already takes.
 
-## Sandbox, repository, artifacts, and Drive
+## Usage and cost
 
-Cella's exact exec API gives this runtime a stronger bootstrap than hosted shell through a model:
+Each `model.request` event carries the model that served the call, its token counts and its cost in micro-USD. The adapter normalizes each into an event usage delta: input excludes cached input on this wire, so fresh input is `input_tokens`, cached input `cache_read_input_tokens`, cache write `cache_write_input_tokens`, output `output_tokens`, and reasoning tokens a detail of output. Cost is carried as the extra meter `charged.cost_usd_micro`, which no rate card prices: a Latere job is paid by the person (048), its settlement never calls the card, and the job records the meter as the session's reported cost. Status usage is the cumulative sum, which is monotonic by construction. `Status.Model` is the model the session started on, as the platform resolved it when the session was created; a turn the platform moved to another model of the level names that model on its own calls.
 
-- package installs and bootstrap argv run directly, in order, with recorded exit status;
-- attachments are written with digest verification and bounded size;
-- repository clone/checkout uses a credential reference and exact revision;
-- read-write push authority is command-scoped and repository-scoped;
-- a nonzero/lost bootstrap command prevents the worker turn.
+The platform charges the person's wallet for every call (048). ReplicHAI does not price the session; it records what the platform reported.
 
-The Topos built-in tools operate only inside the owned sandbox and requested workdir. Tool scopes are the minimum needed for the worker; evaluator tools are read-only. Any sub-agent/delegation feature is disabled in v1 so one replichai session remains one bounded worker/evaluator trace.
+## Identity
 
-Artifacts are discovered and fetched through the sandbox provider with path/size containment. Repository publication still verifies the GitHub tree and commit history. `Cancel` cancels the active Topos context and records the valid partial transcript; it then stops outstanding Cella execution through the durable command contract. `Release` destroys the owned sandbox only after evidence retention.
+Every call to the platform carries a token for `api.latere.ai` that acts as the person who started the session, minted fresh for each call from their own sign-in:
 
-Drive is not reimplemented in this adapter. When Cella's Drive mount client is production-ready, a `DriveWorkspaceResource` may map to Cella's attach/materialize/periodic-sync/final-sync/release lifecycle and delegated Auth identity. Until then the adapter does not advertise that resource; persistent Cella disk is session-owned scratch, and Git remains the durable publication path. A failed final Drive sync must surface before release rather than claim durability.
+- **On the command line**, from the person's personal access token (`LATERE_API_KEY`), exchanged at Auth for a fifteen-minute token; later from `replichai login` once the CLI's client may mint for `api.latere.ai`.
+- **On the server**, from the person's stored refresh token, as 048 describes, once Auth allows it.
 
-## Lux routing, usage, and reconciliation
+A token never enters a locator, an event, a log line or a job row.
 
-Each model request uses the exact snapshotted namespaced target and cost tags such as `product=replichai`, `job=<id>`, and `project=<id>` (non-personal identifiers only). Lux's effective provider/model becomes `ModelRef`; a mismatch from the snapshot is a contract failure before another turn.
+## Cancellation and release
 
-Topos/Lux normalized usage maps once into `managed.Usage`: fresh input, cached input, generic cache write, output, and reported details. The adapter retains Lux request ids and reported micro-USD cost for reconciliation. Replichai still settles the project job exactly once from its enqueue snapshot; Lux's request log is compared by job cost tag and must reconcile within defined token/cost tolerance. Crash-replayed requests, once durable replay exists, must resolve to one logical Lux request and one charge.
+`Cancel` sends `user.interrupt`; the session goes idle at the next step boundary and the adapter reports it failed with `cancelled`. `Release` ends the session (`POST /sessions/{id}/end`) and then deletes it, which removes its machine; the transcript ReplicHAI kept in `Retain` is the record. Both are idempotent, and a session already ended or already gone is success.
 
-Topos' own `BudgetUSD` receives the maximum spend authorized for the session from the held project credit and a cost source consistent with the snapshot/Lux evidence. A budget breach returns partial evidence and terminal failure; it never overruns silently. Lux spend caps are an upstream guard, not the project wallet.
+## Configuration
 
-The Lux native dialect reports fields it cannot preserve. Any loss affecting tool calls, system instructions, structured evaluator output, reasoning budget promised by the selected route, or usage is fatal. Cosmetic/non-semantic loss may be retained as an event warning only when enumerated in route policy.
+| Variable | Meaning |
+|---|---|
+| `LATERE_API_URL` | the platform's API root, `https://api.latere.ai` by default |
+| `LATERE_AUTH_URL` | Latere Auth, `https://auth.latere.ai` by default |
+| `LATERE_API_KEY` | command line only: the person's personal access token |
+| `LATERE_IMAGE_PACKAGES` | optional: the `pip` packages the machine image provides, when it is not the base image |
 
 ## Acceptance criteria
 
-1. Fake Lux + local sandbox and fake Lux + fake Cella run the full managed conformance suite and exceed 90% statement coverage for the adapter/journal.
-2. The same `SessionSpec` runs through memory and Latere fakes with equivalent task/instruction roles, graded/ungraded terminal semantics, event usage, artifact bytes, cancellation, and retention-before-release.
-3. Exact bootstrap tests cover package argv, attachment digest, repository revision, command-scoped secret refs, nonzero/lost command, path containment, and zero plaintext secret in requests/journal/events/logs.
-4. Auth tests prove asynchronous token refresh/delegation by subject+audience, expiry recovery, tenant separation, and refusal when delegation is unavailable; no browser bearer is stored.
-5. Lux tests prove native dialect use, exact namespaced target, single-target route, cost tags, effective provider/model capture, compatibility-loss policy, normalized usage, and project-ledger/Lux reconciliation.
-6. Topos tests persist events/transcript checkpoints, resume after every safe event boundary, retain partial transcript on cancellation, separate evaluator context/tools, and enforce revision/budget limits.
-7. Production registration has a hard capability test for durable model and command replay. Without it, startup refuses `latere-topos`; with it, crash tests at every in-flight boundary recover the same Lux request/command/result with no duplicate side effect or charge.
-8. Cella lifecycle tests prove create, health, execution, artifact read, cancel, evidence retention, and idempotent destroy; a release failure remains cleanup-pending and resumable.
-9. A provider-table end-to-end test routes one Lux target to OpenAI and one to Anthropic through the **same** Latere runtime and proves runtime identity stays `latere-topos` while model/cost provenance changes correctly.
-10. An opt-in hosted smoke, enabled only after criterion 7, survives worker-process termination and restart, then retrieves evidence, reconciles Lux usage by cost tag, and releases the Cella sandbox.
+1. The adapter passes the shared conformance suite against a stub of the platform's API, including restart, graded and ungraded sessions, cancellation keeping evidence, and release.
+2. A specification asking for a network mode the person's preference does not give, a package the image lacks, a bootstrap command, an input or a repository is refused before the first request that changes anything on the platform.
+3. A round's verdict is accepted only from the declared grader's thread, started with exactly the round's task and read-only tools; a verdict in the worker's own messages, or a grader started with another task or other tools, fails the attempt.
+4. Usage tests prove the normalization from a recorded Topos transcript: fresh, cached, written and output tokens, reasoning as a detail, cost as a meter, cumulative and monotonic.
+5. No token appears in a locator, an event, an error or a log line.
+6. `replichai audit <paper> --runtime latere` runs a real paper on the live platform, graded, and publishes its reproduction.
 
 ## Out of scope
 
-- Using the not-yet-stable Topos cloud `/v1` merely because the console exists; only a documented durable run contract satisfies the gate.
-- Multi-agent delegation, mesh regions, or graphs. Replichai's first platform path is one worker plus separate evaluator turns.
-- Persisting provider keys or user bearers in replichai.
-- Reimplementing Drive mount synchronization or Cella network/secret policy in replichai.
-- Replacing GitHub as the published reproduction or Lux as the model credential/cost boundary.
+- Calling Lux, Cella or Origo directly.
+- Writing to Storage, or keeping anything there beyond what Topos keeps for every session. The reproduction repository on GitHub is the durable record.
+- Multi-agent work beyond the one grader subagent.

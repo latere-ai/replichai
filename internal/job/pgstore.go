@@ -70,7 +70,7 @@ func (s *PGStore) snapshot(ctx context.Context) (credit.Card, error) {
 // terminal and unsettled, and a second settlement is refused by the ledger's
 // partial unique index rather than by a check here.
 func (s *PGStore) settleTx(ctx context.Context, tx pgx.Tx, j Job) error {
-	if s.credits == nil || j.ProjectID == "" {
+	if s.credits == nil || j.ProjectID == "" || !j.Payer.PaysProject() {
 		return nil
 	}
 	_, err := s.credits.SettleTx(ctx, tx, credit.Pot(j.ProjectID), j.ID, j.cost())
@@ -87,7 +87,7 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 }
 
 // jobColumns is the column list every read selects, in scan order.
-const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier, origin, external_id`
+const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier, origin, external_id, runtime, model, payer`
 
 // encodeStatus serializes a run status for the status column.
 //
@@ -137,7 +137,7 @@ func scanJob(row pgx.Row) (Job, error) {
 	)
 	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.PaperKey, &j.Phase,
 		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw, &ratesRaw, &j.Tier,
-		&j.Origin, &j.ExternalID)
+		&j.Origin, &j.ExternalID, &j.Runtime, &j.Model, &j.Payer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -187,9 +187,13 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	card, err := s.snapshot(ctx)
-	if err != nil {
-		return Job{}, err
+	// A person-paid session is priced by the platform that charges the
+	// person, so it snapshots no card and holds no reserve.
+	var card credit.Card
+	if sub.Payer.PaysProject() {
+		if card, err = s.snapshot(ctx); err != nil {
+			return Job{}, err
+		}
 	}
 	// rate_card is jsonb NOT NULL, and the encoding binds as text for the
 	// same reason encodeStatus returns text.
@@ -201,14 +205,17 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 
 	var j Job
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := s.takeReserveTx(ctx, tx, sub.Project, id); err != nil {
-			return err
+		if sub.Payer.PaysProject() {
+			if err := s.takeReserveTx(ctx, tx, sub.Project, id); err != nil {
+				return err
+			}
 		}
 		row := tx.QueryRow(ctx, `
-			INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'','',$9,$9,$10,$11,$12)
+			INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier, runtime, model, payer)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'','',$9,$9,$10,$11,$12,$13,$14,$15)
 			RETURNING `+jobColumns,
-			id, sub.Kind, sub.Principal, sub.Project, sub.Ref, sub.PaperKey, PhaseSubmitted, status, now, phaseAt, rates, sub.Tier)
+			id, sub.Kind, sub.Principal, sub.Project, sub.Ref, sub.PaperKey, PhaseSubmitted, status, now, phaseAt, rates, sub.Tier,
+			sub.Runtime, sub.Model, string(sub.Payer))
 		var err error
 		j, err = scanJob(row)
 		return err

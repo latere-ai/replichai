@@ -86,6 +86,7 @@ judgment. [`docs/procedure.md`](docs/procedure.md) explains why.
 | The web application at [replichai.latere.ai](https://replichai.latere.ai) | an account there | you buy credits in the app |
 | The command line, `--runtime local` | a Claude Code or Codex login, or an OpenAI-compatible endpoint | your own vendor plan |
 | The command line, `--runtime anthropic-managed` (the default for `audit`) | an Anthropic API key with access to Managed Agents | Anthropic bills the key |
+| The command line, `--runtime latere` | a Latere account and a personal access token in `LATERE_API_KEY` | your own Latere wallet |
 | Your own deployment of the server | Postgres, an OpenID Connect issuer, a model credential | you |
 
 `replichai run` takes a project file and audits many papers at once, in

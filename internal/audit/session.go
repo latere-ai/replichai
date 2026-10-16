@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
@@ -98,6 +99,22 @@ type SessionOption func(*SessionAuditor)
 // WithSessionModel overrides the model tier requested for the session.
 func WithSessionModel(preference string) SessionOption {
 	return func(a *SessionAuditor) { a.model = preference }
+}
+
+// ModelSelector reads a model choice as the command line and a job give it:
+// a preference in either spelling (best, balanced, fast, or the Effort levels
+// sustained, thorough, quick) or one exact model as provider/id. Anything
+// else passes through as a preference, which is how an operator names a
+// vendor's bare model id to a runtime that resolves one.
+func ModelSelector(model string) managed.ModelSelector {
+	model = strings.TrimSpace(model)
+	if preference, ok := credit.ParsePreference(model); ok {
+		return managed.ModelSelector{Preference: preference.String()}
+	}
+	if provider, id, ok := strings.Cut(model, "/"); ok && provider != "" && id != "" {
+		return managed.ModelSelector{Exact: &managed.ModelRef{Provider: provider, ID: id}}
+	}
+	return managed.ModelSelector{Preference: model}
 }
 
 // WithSessionMaxRevisions overrides how many times the worker may revise. Zero
@@ -213,7 +230,7 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 	if err != nil {
 		return managed.SessionSpec{}, ctx, err
 	}
-	base := managed.SessionSpec{Model: managed.ModelSelector{Preference: a.model}}
+	base := managed.SessionSpec{Model: ModelSelector(a.model)}
 	capabilities, err := a.controller.Capabilities(ctx, base)
 	if err != nil {
 		return managed.SessionSpec{}, ctx, fmt.Errorf("read runtime capabilities: %w", err)
@@ -260,7 +277,7 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 		instructions += workspaceProtocol(outputDir)
 	}
 	spec := managed.SessionSpec{
-		Model: managed.ModelSelector{Preference: a.model}, Instructions: instructions, Task: task,
+		Model: ModelSelector(a.model), Instructions: instructions, Task: task,
 		Sandbox: managed.SandboxSpec{
 			Packages: []managed.Package{{Manager: "pip", Name: "pypdf"}, {Manager: "pip", Name: "requests"}},
 			Network:  network,

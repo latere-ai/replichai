@@ -54,6 +54,7 @@ import (
 	"github.com/latere-ai/replichai/internal/registry"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
+	"github.com/latere-ai/replichai/internal/signin"
 	"github.com/latere-ai/replichai/internal/spa"
 	"github.com/latere-ai/replichai/internal/webauth"
 )
@@ -144,7 +145,14 @@ func run() error {
 	credentials := runtimes.ResolveCredentials(os.LookupEnv)
 	catalog, err := builtin.Catalog(builtin.Config{Local: serverLocalConfig(), Anthropic: builtin.AnthropicConfig{
 		APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase,
-	}})
+	}, Latere: builtin.LatereConfig{BaseURL: credentials.LatereAPIURL, TokenCommand: devLatereCommand(*dev, credentials.LatereTokenCommand)}})
+	if err != nil {
+		return err
+	}
+	// The runtimes a person may start a session on (048): REPLICHAI_RUNTIMES,
+	// or the selected runtime alone. A session naming none runs on the
+	// selected one.
+	offered, err := offeredRuntimes(baseCatalog, os.Getenv("REPLICHAI_RUNTIMES"), selected)
 	if err != nil {
 		return err
 	}
@@ -167,6 +175,21 @@ func run() error {
 		}
 		installed = append(installed, anthropicRuntime)
 	}
+	built := map[managed.RuntimeName]managed.Runtime{}
+	for _, runtime := range installed {
+		built[runtime.Name()] = runtime
+	}
+	for _, name := range offered {
+		if _, ok := built[name]; ok {
+			continue
+		}
+		runtime, buildErr := catalog.Build(ctx, string(name))
+		if buildErr != nil {
+			return buildErr
+		}
+		built[name] = runtime
+		installed = append(installed, runtime)
+	}
 	runtimeRouter, err := runtimes.NewRouter(selected, installed...)
 	if err != nil {
 		return err
@@ -181,6 +204,13 @@ func run() error {
 	}
 	defer st.close()
 	jobStore, projectStore, accessStore, memberStore := st.jobs, st.projects, st.access, st.members
+	// A runtime the person pays for acts as the person, so the server keeps
+	// their Latere sign-in (048). It is required exactly when one is offered.
+	signIns, minter, err := personSignIns(st, offered, devLatereCommand(*dev, credentials.LatereTokenCommand) != "")
+	if err != nil {
+		return err
+	}
+	offers := runtimeOffers(offered, selected, built, minter)
 	reportRateCoverage(ctx, modelResolver, st.platform)
 
 	for _, email := range splitList(os.Getenv("ADMIN_EMAILS")) {
@@ -224,6 +254,8 @@ func run() error {
 		owner:      forgeOwner,
 		token:      forgeToken,
 		delay:      delay,
+		router:     runtimeRouter,
+		signIn:     signInOf(minter),
 	})
 	if err != nil {
 		return err
@@ -296,13 +328,14 @@ func run() error {
 		Payments:      payments,
 		Platform:      st.platform,
 		Models:        modelResolver,
+		Runtimes:      offers,
 		Drafter:       drafter,
 		BaseURL:       baseURL,
 		Notifier:      notifier,
 		SPA:           spaHandler,
 	})
 
-	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), router.SweepPapers, *dev, baseURL)
+	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), router.SweepPapers, *dev, baseURL, signIns)
 	if err != nil {
 		return err
 	}
@@ -337,7 +370,7 @@ func newServer(addr string, handler http.Handler) *http.Server {
 // OIDC login routes in production or the dev bypass locally. The auth
 // middleware wraps everything and resolves a session, or the dev principal,
 // onto each request.
-func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, sweep webauth.PaperSweep, dev bool, baseURL string) (http.Handler, error) {
+func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, members access.Membership, plat platform.Store, credits credit.Store, projectCaps webauth.ProjectCaps, me webauth.CreditsFunc, sweep webauth.PaperSweep, dev bool, baseURL string, signIns signin.Store) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", operator)
 	// /me reports whether the account is frozen (022d), over the same predicate
@@ -389,11 +422,14 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 		return webauth.DevMiddleware(devSub, devEmail)(h), nil
 	}
 
-	login, err := buildLogin(ctx, acc, baseURL)
+	login, err := buildLogin(ctx, acc, baseURL, signIns != nil)
 	if err != nil {
 		return nil, err
 	}
 	login.BindMemberships(members)
+	if signIns != nil {
+		login.KeepSignIns(signIns.Put)
+	}
 	mux.HandleFunc("GET /login", login.HandleLogin)
 	mux.HandleFunc("GET /callback", login.HandleCallback)
 	mux.HandleFunc("GET /logout", login.HandleLogout)
@@ -457,7 +493,7 @@ func bearerValidator(issuer, jwks, audience string) (*jwt.Validator, error) {
 // buildLogin constructs the OIDC login from the AUTH_* environment. A missing
 // cookie key or issuer is a startup error, because production must not run the
 // operator surface with a broken sign-in.
-func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webauth.Login, error) {
+func buildLogin(ctx context.Context, acc access.Access, baseURL string, keepSignIns bool) (*webauth.Login, error) {
 	cookieKey := os.Getenv("AUTH_COOKIE_KEY")
 	codec, err := webauth.NewCodec(cookieKey)
 	if err != nil {
@@ -469,6 +505,7 @@ func buildLogin(ctx context.Context, acc access.Access, baseURL string) (*webaut
 		ClientID:     os.Getenv("AUTH_CLIENT_ID"),
 		ClientSecret: os.Getenv("AUTH_CLIENT_SECRET"),
 		RedirectURL:  envOr("AUTH_REDIRECT_URL", baseURL+"/callback"),
+		Scopes:       loginScopes(keepSignIns),
 		Kind:         envOr("AUTH_PROVIDER", "latere"),
 	})
 	if err != nil {
@@ -629,7 +666,10 @@ type stores struct {
 	platform platform.Store
 	credits  credit.Store
 	profiles profile.Store
-	close    func()
+	// pool is the serving pool, nil for the in-memory stores, for a store
+	// built after the others, such as the kept sign-ins.
+	pool  *pgxpool.Pool
+	close func()
 }
 
 // servingURL is the DSN the serving pool opens: the pooler's endpoint when one
@@ -695,6 +735,7 @@ func openStores(ctx context.Context, serving, migration string) (stores, error) 
 		platform: plat,
 		credits:  ledger,
 		profiles: profile.NewPGStore(pool),
+		pool:     pool,
 		close:    pool.Close,
 	}, nil
 }
@@ -741,6 +782,7 @@ func migrateAll(ctx context.Context, migrationURL string) error {
 		{"platform", platform.Migrate},
 		{"profile", profile.Migrate},
 		{"credit", credit.Migrate},
+		{"signin", signin.Migrate},
 	} {
 		if err := m.fn(ctx, pool); err != nil {
 			return fmt.Errorf("%s migrate: %w", m.name, err)

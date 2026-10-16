@@ -231,7 +231,8 @@ func (w *Worker) Cancel(ctx context.Context, id string) error {
 	if ref, ok, refErr := j.ManagedSessionRef(); refErr != nil {
 		return fmt.Errorf("read backend session reference: %w", refErr)
 	} else if ok {
-		if err := w.call("close", func() error { return w.runner.Close(ctx, ref) }); err != nil {
+		owned := WithSessionOwner(ctx, j.Principal)
+		if err := w.call("close", func() error { return w.runner.Close(owned, ref) }); err != nil {
 			return fmt.Errorf("stop backend run %s: %w", ref.ID, err)
 		}
 	}

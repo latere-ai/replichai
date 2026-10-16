@@ -35,9 +35,19 @@ The groups, and what to decide in each:
   optional, for a transaction-mode pooler in front of the same database. With
   no `DATABASE_URL` the server keeps everything in memory and loses it on
   restart, which is for development only. `REPLICHAI_RUNTIME` picks the
-  runtime.
+  runtime a session runs on when it names none; `REPLICHAI_RUNTIMES` offers
+  others beside it, so a person chooses when they start a session.
 - **Runtime credentials.** `ANTHROPIC_API_KEY` for `anthropic-managed`. Each
-  runtime reads only its own variables.
+  runtime reads only its own variables. Offering `latere` (the Latere
+  platform, where a session runs as a hosted agent session) needs no platform
+  key of the server's own: each session acts for the person who started it
+  and is paid from their own Latere wallet, and the project's credits are not
+  touched. To act for them while the session runs, the server asks the issuer
+  for `offline_access` and keeps each person's sign-in sealed with
+  `REPLICHAI_SIGNIN_KEY`, without which the server refuses to start. It
+  refreshes the sign-in as its browser client, public or confidential. This
+  works only with Latere's own issuer, whose client for the deployment must
+  allow `offline_access` and a token for the platform's API.
 - **Signing in through the browser.** The issuer, the client registered with
   it, and the key that signs the session cookie. See the next section.
 - **The terminal talking to this deployment.** Read by the CLI on users'
@@ -80,6 +90,7 @@ Register a client with your provider for this deployment:
   secret in `AUTH_CLIENT_SECRET`.
 - The server requests the scopes `openid`, `email` and `profile`, and needs
   the email: from the ID token, or from the provider's userinfo endpoint.
+  When it offers the `latere` runtime it also requests `offline_access`.
 
 Then set, together, `AUTH_ISSUER`, `AUTH_CLIENT_ID`, `AUTH_AUDIENCE`,
 `AUTH_COOKIE_KEY` (`openssl rand -hex 32`) and `BASE_URL`. They are one unit:

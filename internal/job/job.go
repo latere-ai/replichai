@@ -132,6 +132,9 @@ func resolveCard(ctx context.Context, seam credit.CardSnapshot) (credit.Card, er
 // A session with no rates costs nothing: an unpriced deployment holds and
 // releases the reserve and charges no money.
 func (j Job) cost() int64 {
+	if !j.Payer.PaysProject() {
+		return j.Status.ChargedCost
+	}
 	modelProvider := j.Status.ModelProvider
 	if modelProvider == "" {
 		modelProvider = "anthropic"
@@ -213,6 +216,15 @@ type Job struct {
 	// different process on a different pod. A tier that stopped at the handler
 	// would not reach the worker.
 	Tier credit.Preference `json:"tier,omitempty"`
+	// Runtime and Model are what the submitter chose (048): the runtime the
+	// session runs on, and one exact model as provider/id when they chose
+	// one rather than a tier. An empty runtime is the deployment's default.
+	Runtime string `json:"runtime,omitempty"`
+	Model   string `json:"model,omitempty"`
+	// Payer is who pays for the session. A person-paid session is charged to
+	// the person's own Latere wallet by the platform, so it holds nothing,
+	// settles nothing, and costs what the platform reported.
+	Payer Payer `json:"payer,omitempty"`
 	// Rates is the price list this session was admitted under, snapshotted at
 	// enqueue (011). Settlement prices from it rather than from whatever the
 	// admin console holds when the run ends, so the ceiling a run was measured

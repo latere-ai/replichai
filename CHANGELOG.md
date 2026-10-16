@@ -12,6 +12,23 @@ committed. The commit log already holds that.
 
 ### Added
 
+- Sessions can run on the Latere platform, on any model the platform serves.
+  `replichai audit <paper> --runtime latere --model thorough` runs a graded
+  audit as a hosted agent session, charged to your own Latere wallet; sign in
+  with a personal access token in `LATERE_API_KEY`. A deployment offers it
+  beside its default runtime with `REPLICHAI_RUNTIMES=latere`.
+- `--model` takes an Effort level, `quick`, `thorough` or `sustained` (the
+  names `fast`, `balanced` and `best` still work), or one exact model as
+  `provider/id`; `replichai models --runtime <name>` lists what a runtime
+  accepts.
+- A session started in the app records the runtime and model it was started
+  on and who pays for it. A session the person pays for on the Latere platform
+  takes nothing from the project's credits and shows the cost the platform
+  reported.
+- `replication.json` lists every model that served a session when more than
+  one did, as a Latere Effort level can when the platform moves a turn.
+- A run that did not succeed prints how it ended.
+
 - A command reference, `docs/cli.md`, covering every command and flag, and a
   guide to running your own deployment, `docs/self-hosting.md`, covering
   Postgres, any OpenID Connect issuer, publishing to your own GitHub
@@ -98,6 +115,8 @@ committed. The commit log already holds that.
 
 ### Fixed
 
+- A session on the Latere platform reaches every file it left, not only the
+  first page of its folder.
 - A run that wrote no `instrument.json` now says the rubric's Instrument
   criterion requires one. It used to name criterion 7, which is Findings as
   data, and to say the run failed when the grader had not said so.

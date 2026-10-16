@@ -420,3 +420,20 @@ func TestAResumedSessionHasNoPromptDigest(t *testing.T) {
 		t.Errorf("a resumed session carries prompt digest %q (hook saw %q), want none", result.PromptDigest, seen)
 	}
 }
+
+func TestAModelChoiceIsAPreferenceOrAnExactModel(t *testing.T) {
+	cases := map[string]managed.ModelSelector{
+		"thorough":                    {Preference: "balanced"},
+		"best":                        {Preference: "best"},
+		"anthropic/claude-sonnet-4.6": {Exact: &managed.ModelRef{Provider: "anthropic", ID: "claude-sonnet-4.6"}},
+		"free/google/gemma":           {Exact: &managed.ModelRef{Provider: "free", ID: "google/gemma"}},
+		"claude-opus-5":               {Preference: "claude-opus-5"},
+		"/nothing":                    {Preference: "/nothing"},
+	}
+	for model, want := range cases {
+		got := ModelSelector(model)
+		if got.Preference != want.Preference || (got.Exact == nil) != (want.Exact == nil) || (got.Exact != nil && *got.Exact != *want.Exact) {
+			t.Errorf("ModelSelector(%q) = %+v, want %+v", model, got, want)
+		}
+	}
+}

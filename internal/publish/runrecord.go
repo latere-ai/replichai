@@ -35,6 +35,11 @@ func RunOf(status managed.Status) Run {
 		Tokens:             status.Usage.TotalTokens(),
 		VendorCostMicroUSD: status.Usage.Details[managed.DetailVendorCost],
 	}
+	// A runtime whose own platform charged for the session reports that
+	// charge as a meter; it is what the session cost.
+	if run.VendorCostMicroUSD == 0 {
+		run.VendorCostMicroUSD = status.Usage.Extra[managed.MeterChargedCost]
+	}
 	if status.State != managed.StateUnknown {
 		run.State = status.State.String()
 	}
@@ -48,6 +53,27 @@ func RunOf(status managed.Status) Run {
 		run.FinishedAt = status.FinishedAt.UTC()
 	}
 	return run
+}
+
+// WithModels adds every model that served one of the events' calls, when
+// more than the one the record already names served: a single-model run's
+// record stays as it was.
+func (r Run) WithModels(events []managed.Event) Run {
+	var served []RunModel
+	for _, event := range events {
+		if event.Usage == nil || !event.Usage.Model.Valid() {
+			continue
+		}
+		model := RunModel{Provider: event.Usage.Model.Provider, ID: event.Usage.Model.ID}
+		if !slices.Contains(served, model) {
+			served = append(served, model)
+		}
+	}
+	if len(served) == 0 || (len(served) == 1 && r.Model != nil && *r.Model == served[0]) {
+		return r
+	}
+	r.Models = served
+	return r
 }
 
 // WithOutputs adds what a local session's own outputs say about the run: the
