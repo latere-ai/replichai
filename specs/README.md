@@ -39,7 +39,7 @@ and this index agree.
 
 ## What replichai is
 
-Give it a paper. It resolves the paper's identity, runs an agent that reproduces the machine-runnable inner loop, publishes the reproduction as its own GitHub repository with the agent's commit history, and returns an independent verdict, recording every decision the paper left unwritten. It never simulates the outer loop (the human study); placing and defending that boundary is the point.
+Give it a paper. It decides what of the paper can be replicated: it resolves the paper's identity, runs an agent that reproduces the machine-runnable inner loop, publishes the reproduction as its own GitHub repository with the agent's commit history, and returns an independent verdict, recording every decision the paper left unwritten. The audit itself never simulates the human study. The goal is the whole study ([050](050-the-outer-loop-simulated.md)): repeat runs measure whether the inner loop is stable enough to build on, and a paper that passes that gate continues to the outer loop, where an agent builds the paper's experiment, simulated participants with a declared population profile take part in it, and the paper's conclusion is checked against what they did, calibrated against human replications. The audit is built; the outer loop is designed and not built.
 
 ## Current status
 
@@ -314,7 +314,7 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 048 | [The runtime is a choice](048-the-runtime-is-a-choice.md) | built: runtime and model on the command line and in the app's picker, person-paid jobs, kept sign-ins; the app offers Latere since Latere Auth allows it | 041c, 041d, 041g, 031, 011 |
 | 049 | [The work is kept as it runs](049-the-work-is-kept-as-it-runs.md) | built for the command line: snapshots to the output directory and, for a hosted session that publishes, to its repository; the server's snapshots and the platform's saving during a turn designed | 041, 041b, 041g, 044, 045g, 009 |
 
-### Not built (13)
+### Not built (14)
 
 Designed, deferred, or still an argument. Nothing here is in the product; [What is left](#what-is-left) says why each one is waiting.
 
@@ -330,6 +330,7 @@ Designed, deferred, or still an argument. Nothing here is in the product; [What 
 | 023b | [The experiment HTTP surface](023b-the-experiment-http-surface.md) | draft | 023a, 006a, 006c |
 | 023c | [Running an experiment from the app](023c-running-an-experiment-from-the-app.md) | draft | 023b, 006e, 013, 021 |
 | 023d | [Ground truth for a cohort](023d-ground-truth-for-a-cohort.md) | draft | 023c, 007c |
+| 050 | [The outer loop, simulated](050-the-outer-loop-simulated.md) | draft, for review: the four stages, the gate, the experiment the agent builds, simulated participants with population profiles, calibration, the benchmark | 046, 007a, 007b, 007c, 007d |
 | 026 | [The people table at scale](026-the-people-table-at-scale.md) | designed | 006k, 022f, 011 |
 | 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
 | 045m | [The role reaches the agent](045m-the-role-reaches-the-agent.md) | draft | 045d, 045a, 005 |
@@ -352,7 +353,7 @@ Sign-in is open ([006q](006q-sign-in-is-open-budget-is-not.md)): anyone with a L
 
 **Replication (007): the track past the inner loop.** It turns a reproduction into a re-runnable **instrument** (the study protocol, the analysis entrypoint, and a servability verdict, declared as data: **007a**), then generalizes the unit of work: an **experiment** binds one instrument to one **data source**, of which there are four. The paper's released data gives re-analysis; a researcher's uploaded dataset gives a new finding on the paper's instrument (**007b**); an LLM cohort gives a *pilot* that tests the apparatus and never becomes evidence about people (**007c**); real participants, through a page the platform hosts, give re-observation (**007d**). One generalization, four bindings: "run it on my own data" is a row in a table, not a feature of its own.
 
-What 007 does **not** do is touch the audit: the never-simulate-the-outer-loop boundary is a rubric failure condition and the product's thesis. 007 also revised **006b** (a job runs an audit *or* an experiment) and **006c** (project membership beside the tiers), written before either was built, because afterwards it would have been a migration.
+What 007 does **not** do is touch the audit: the never-simulate-the-outer-loop boundary is a rubric failure condition of the audit. It was also the product's thesis until [050](050-the-outer-loop-simulated.md), which keeps it for the audit and makes a simulated, calibrated outer loop the product's goal. 007 also revised **006b** (a job runs an audit *or* an experiment) and **006c** (project membership beside the tiers), written before either was built, because afterwards it would have been a migration.
 
 007a is built and every audit writes its `instrument.json`. The engine halves of 007b/007c are built and nothing user-facing reaches them. Within 007 the order inverted how the capabilities were first asked for: the synthetic pilot (007c) came third, because a cohort is only checkable where the paper released real data to check it against.
 

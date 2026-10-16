@@ -5,6 +5,8 @@ status: draft
 
 # 007 — From reproduction to replication
 
+**A second was reversed by [050](050-the-outer-loop-simulated.md).** The rule that a model cohort is only a synthetic pilot and must never be described as simulating the outer loop no longer holds: 050 makes simulating the outer loop, with participants that use the experiment the agent built, the product's goal, labeled as simulated and calibrated against human replications. The firewall, `verdict` and `rate` written only by an audit, and the indelible label are kept.
+
 **One decision below was reversed.** This spec scopes a project as the replication effort around *one paper*; [012](012-a-project-holds-papers.md) made a project hold many, and [015](015-a-verdict-belongs-to-a-session.md)/[023a](023a-experiments-persisted-and-dispatched.md) key an experiment to the session that produced its instrument rather than to the project. The two revisions this spec asked for did land (a job runs an audit *or* an experiment, and project membership sits beside the tiers), and the firewall holds: `internal/audit` never imports `internal/experiment`. The product half of 007b/007c is now the [023](023-the-outer-loop-as-a-product.md) chain.
 
 **Status:** draft
