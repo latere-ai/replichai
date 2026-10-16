@@ -401,7 +401,7 @@ textarea {
   position: fixed;
   inset: 0;
   z-index: 39;
-  background: rgba(15, 17, 21, 0.42);
+  background: var(--scrim);
   animation: om-fade-in 0.18s var(--ease-fluid) both;
 }
 
@@ -1677,8 +1677,10 @@ button.quota-pill:hover {
   background: var(--brand);
   border-color: var(--brand);
 }
+/* The knob in the accent's own ink, so it shows on the ink track in either
+   theme: white on dark mode's light track was all but invisible. */
 .tg.on .tg-knob {
-  background: #fff;
+  background: var(--lu-preset-on-accent);
   transform: translateX(14px);
 }
 
