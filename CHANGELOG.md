@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.31.0 - 2026-10-16
+
 ### Added
 
 - Sessions can run on the Latere platform, on any model the platform serves.
