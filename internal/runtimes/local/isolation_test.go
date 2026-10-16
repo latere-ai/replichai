@@ -4,14 +4,21 @@
 package local_test
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	goruntime "runtime"
+
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
+	"github.com/latere-ai/replichai/internal/runtimes/local/host"
 	"github.com/latere-ai/replichai/internal/runtimes/local/localtest"
 )
 
@@ -79,5 +86,127 @@ func TestEveryStageKeepsItsTemporaryFilesInItsOwnSession(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Under the real srt, a Codex stage on the operator's login keeps its
+// temporary files in its own session, cannot write the directory srt shares
+// between stages, and cannot read the shell snapshots in the operator's Codex
+// directory, which hold every variable the operator's shell exports. The
+// harness binary is a stand-in that reports what it can reach, and the home
+// directory is a fake one holding a dummy snapshot, so no real login, model or
+// credential is involved.
+//
+// It runs where srt is installed and is skipped elsewhere.
+func TestACodexStageUnderSrtSharesNoTemporaryDirectoryAndReadsNoSnapshot(t *testing.T) {
+	// A unix socket path is limited to 104 bytes on macOS, and srt binds
+	// its sockets under the stage's temporary directory, which is inside
+	// the session. A root under the test's own temporary directory is too
+	// long, so the sessions live under a short one.
+	root, err := os.MkdirTemp("/tmp", "rh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	if root, err = filepath.EvalSymlinks(root); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(root, "home")
+	snapshots := filepath.Join(home, ".codex", "shell_snapshots")
+	if err := os.MkdirAll(snapshots, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const secret = "dummy-snapshot-value"
+	if err := os.WriteFile(filepath.Join(snapshots, "operator.sh"), []byte("export DUMMY_SECRET="+secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The stand-in for codex, first on the PATH the stage inherits.
+	probe := filepath.Join(local.SharedTempDir, filepath.Base(root))
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// The runtime asks the harness for its version outside the sandbox,
+	// so the stand-in answers that and does nothing else.
+	script := "#!/bin/sh\n" +
+		"[ \"$1\" = --version ] && echo 'codex-cli 0.0.0' && exit 0\n" +
+		"echo \"args: $*\"\n" +
+		"echo \"tmpdir: $TMPDIR\"\n" +
+		"cat \"$HOME/.codex/shell_snapshots/operator.sh\" 2>/dev/null || echo 'snapshot: denied'\n" +
+		"mkdir -p '" + probe + "' 2>/dev/null && echo 'shared: writable' || echo 'shared: denied'\n"
+	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	_, sharedExisted := os.Stat(local.SharedTempDir)
+	t.Cleanup(func() {
+		_ = os.Remove(probe)
+		if errors.Is(sharedExisted, os.ErrNotExist) {
+			_ = os.Remove(local.SharedTempDir)
+		}
+	})
+
+	driver := host.New(host.Config{Home: home, HarnessBinary: "codex", Lookup: os.LookupEnv})
+	if err := driver.Preflight(context.Background()); err != nil {
+		t.Skipf("the host sandbox is not installed here:\n%v", err)
+	}
+	registry, err := harness.NewRegistry(harness.NewCodex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := local.NewCatalog(codexLoginCatalog(), registry, noCredentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := local.New(local.Config{
+		Sandbox: driver, Harness: harness.NewCodex(), Catalog: catalog,
+		Root: filepath.Join(root, "sessions"), Lookup: os.LookupEnv,
+		Machine: harness.Machine{Platform: goruntime.GOOS, Home: home, TempDir: "/tmp", UID: os.Getuid()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := managed.SessionSpec{
+		Model:        managed.ModelSelector{Preference: "best"},
+		Instructions: "Follow the method.",
+		Task:         "Reproduce the result.",
+		Sandbox:      managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkNone}},
+	}
+	ref := start(t, runtime, session)
+	var status managed.Status
+	for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		if status, err = runtime.Poll(context.Background(), ref); err != nil {
+			t.Fatalf("Poll: %v", err)
+		}
+		if ref = status.Ref; status.State.Terminal() {
+			break
+		}
+	}
+	if !status.State.Terminal() {
+		t.Fatalf("the session never finished: %+v", status)
+	}
+	events, err := runtime.Events(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, event := range events {
+		lines = append(lines, event.Content)
+	}
+	output := strings.Join(lines, "\n")
+
+	dir := sessionDir(t, ref)
+	if !strings.Contains(output, "tmpdir: "+dir+string(filepath.Separator)) {
+		t.Errorf("the stage's temporary directory is not inside its session %s:\n%s", dir, output)
+	}
+	if strings.Contains(output, "shared: writable") || !strings.Contains(output, "shared: denied") {
+		t.Errorf("the stage could write the shared temporary directory:\n%s", output)
+	}
+	if strings.Contains(output, secret) || !strings.Contains(output, "snapshot: denied") {
+		t.Errorf("the stage read the operator's shell snapshot:\n%s", output)
+	}
+	if !strings.Contains(output, harness.CodexNoShellSnapshot) {
+		t.Errorf("codex was not told to take no shell snapshot:\n%s", output)
 	}
 }

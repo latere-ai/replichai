@@ -144,11 +144,14 @@ Your home directory is denied, with named exceptions:
 | the harness's own configuration (`~/.claude` and `~/.claude.json`, or `~/.codex`) | it holds your existing login. It is granted only to a session actually running on that login, never to one you handed an API key, and the grant is written into the run's environment record as `config_read_allowed` |
 | `~/Library/Keychains`, read-only, macOS only | Claude Code keeps its login there rather than in a file, and only a session actually using that login is granted it |
 | `/tmp/codex-<your user id>`, for codex only | codex keeps a scratch area there |
-| `~/.codex`, writable, for codex only | codex writes its own state back and will not start otherwise |
+| `~/.codex`, writable, for codex only, except `~/.codex/shell_snapshots` | codex writes its own state back and will not start otherwise |
 
 Explicitly denied, and tested: `~/.ssh`, `~/.aws`, `~/.config/gcloud`,
 `~/.kube`, `~/.netrc`, `~/.gnupg`, `~/.docker/config.json`,
-`~/.git-credentials`, `~/.config/replichai`, and any `.env`.
+`~/.git-credentials`, `~/.config/replichai`, and any `.env`. So is
+`~/.codex/shell_snapshots`: your own codex records there every variable your
+shell exports, credentials included, and codex in a run is told not to take a
+snapshot of its own.
 
 Runs share no temporary folder. The sandbox would otherwise hand every run the
 same one, `/tmp/claude`, and one run would find what another downloaded or

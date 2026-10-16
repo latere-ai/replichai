@@ -41,6 +41,10 @@ committed. The commit log already holds that.
   folder on the machine, `/tmp/claude`, so one run could find what another had
   downloaded or built. Each run now keeps them in its own session's `tmp/`, and
   the shared folder is denied.
+- A local codex run on your own codex login can no longer read the shell
+  snapshots in `~/.codex/shell_snapshots`. Your own codex writes every variable
+  your shell exports into them, credentials included. Codex in a run is also
+  told not to take a snapshot of its own.
 
 ## v0.34.0 - 2026-10-16
 
