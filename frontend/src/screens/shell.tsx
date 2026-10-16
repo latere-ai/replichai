@@ -328,12 +328,14 @@ export function Shell({
               <>
                 <WalletPill i18n={i18n} credits={me.credits} onTopUp={() => setTopUp(true)} />
                 <ThemeSwitcher i18n={i18n} theme={theme} compact />
-                <button className="btn btn-topbar" disabled={me.frozen} aria-label={t('newProject')} data-tip={me.frozen ? t('frozenControl') : undefined} onClick={() => setView({ name: 'submit' })}>
-                  {/* The label is a span so a phone can drop it and keep the plus.
-                      The button keeps its aria-label at every width, so what is lost
-                      is the reading, not the name. */}
-                  <Ico name="plus" size={13} w={2.2} /> <span className="btn-label">{t('newProject')}</span>
-                </button>
+                {view.name !== 'submit' && (
+                  <button className="btn btn-topbar" disabled={me.frozen} aria-label={t('newProject')} data-tip={me.frozen ? t('frozenControl') : undefined} onClick={() => setView({ name: 'submit' })}>
+                    {/* The label is a span so a phone can drop it and keep the plus.
+                        The button keeps its aria-label at every width, so what is lost
+                        is the reading, not the name. */}
+                    <Ico name="plus" size={13} w={2.2} /> <span className="btn-label">{t('newProject')}</span>
+                  </button>
+                )}
               </>
             ) : (
               /* Reading is free and starting a session is not, so the bar offers
