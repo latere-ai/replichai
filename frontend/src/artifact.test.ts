@@ -5,7 +5,7 @@ import { expect, test } from 'bun:test'
 import { isExternalHref, resolveRelative } from './artifact'
 
 test('resolveRelative resolves against the file the link is written in', () => {
-  // A root-level README linking a sibling, which was the reported bug.
+  // A root-level README linking a sibling.
   expect(resolveRelative('README.md', 'REPRODUCIBILITY.md')).toBe('REPRODUCIBILITY.md')
   // Explicit current-dir and nested paths.
   expect(resolveRelative('README.md', './src/run.py')).toBe('src/run.py')

@@ -8,7 +8,7 @@ import { blockerTab, publishBlockers, publishBlockerText, publishErrText } from 
 const t = ((key: string) => key) as never
 
 // A 409 on the public flip means several different things, and the status alone
-// cannot tell them apart: the signer's profile is not public (006r), or the
+// cannot tell them apart: the signer's profile is not public, or the
 // project's sessions are not publishable, and that last one is itself four
 // facts. Telling somebody the wrong one sends them to fix something that is not
 // broken, so the body's code decides.
@@ -20,10 +20,9 @@ test('a 409 is disambiguated by the error code, not the status', () => {
   expect(publishErrText(t, new ApiError(409, 'manifest_unreadable'))).toBe('publishUnreadable')
 })
 
-// A 409 that names no cause must not be reported as the redistribution check.
-// That fallback was the same wrong accusation the codes above exist to end: a
-// run that never finished, or a forge that did not answer, told the owner their
-// reproduction had committed content it may not redistribute.
+// A 409 that names no cause must not be reported as the redistribution check:
+// a run that never finished, or a forge that did not answer, must not tell the
+// owner their reproduction committed content it may not redistribute.
 test('a coded-less 409 says the project is blocked, not that it is contaminated', () => {
   expect(publishErrText(t, new ApiError(409, ''))).toBe('publishBlocked')
 })
@@ -45,9 +44,8 @@ test('a blocker names its own reason and where to read it', () => {
   expect(blockerTab(blocker({ reason: 'unreadable' }))).toBe('transcript')
 })
 
-// The blockers survive the trip through the API client. Before, a body with
-// more in it than `error` was discarded, so a refusal could name sessions the
-// screen never saw.
+// The blockers survive the trip through the API client, so the screen sees
+// every session a refusal names.
 test('a refusal keeps the sessions it named', () => {
   const named: PublishBlocker[] = [{ session_id: 'job-1', repo: 'open-hai/x', reason: 'not_clear', review: 'excluded' }]
   expect(publishBlockers(new ApiError(409, 'not_clear', named))).toEqual(named)

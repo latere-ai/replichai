@@ -7,25 +7,19 @@ import { MARK_GAP, MARK_GAP_AT, markArc } from './brand'
 import type { I18n } from './i18n'
 import { Ico } from './icons'
 
-// Figure 1 on the landing (047): the mark at figure scale, drawn as a scientific
-// figure rather than as a particle field. It carries 033's argument, that the
-// identity and the argument are one drawing, in a form a reader can measure.
+// HeroFigure is the landing's figure: the mark at figure scale. The inner loop
+// is a closed ring with the four things a run does on it, and a single marker
+// travels it at constant speed, one lap per run. The outer loop is the mark's
+// open arc with its gap labeled, and nothing travels it.
 //
-// The inner loop is a closed ring with the four things a run does on it. A
-// single marker travels it at constant speed, and each lap is one run. The
-// outer loop is the mark's open arc, with its gap labeled, and nothing ever
-// travels it. Nothing sways and nothing eases inside a lap: the only motion is
-// the one the figure is about.
-//
-// Everything is inline SVG drawn from tokens, so it holds in both themes and
-// needs no asset, no canvas and no chunk of its own. The box reserves its
-// aspect ratio, so mounting it moves nothing.
+// It is inline SVG drawn from tokens, so it holds in both themes and needs no
+// asset. The box reserves its aspect ratio, so mounting it moves nothing.
 
 const W = 680
 const H = 560
 const CX = 340
 const CY = 278
-// 017's ratio, 5 : 9.25, so the figure and the mark are one geometry.
+// The inner and outer radii, 5 : 9.25, close to the mark's own proportions.
 const RI = 108
 const RO = 200
 
@@ -60,8 +54,7 @@ const NARROW = '(max-width: 760px)'
 // At phone width the figure is framed tighter rather than set in larger type:
 // the full frame scaled to a phone sets its labels at seven pixels, and larger
 // labels in the full frame collide with the outer ring. The tight frame keeps
-// the rings and every label at the size they are drawn, and moves the gap's
-// label above the arc, where the frame has room for it.
+// every label at its drawn size and moves the gap's label above the arc.
 const FRAME = { wide: `0 0 ${W} ${H}`, narrow: '124 40 432 470' }
 
 function useNarrow() {
@@ -134,8 +127,7 @@ export function HeroFigure({ i18n }: { i18n: I18n }) {
   const born = useRef(0)
 
   // paint puts the marker, its trail and the lit stations at an angle. It
-  // writes the DOM directly: sixty React renders a second to move one circle
-  // would be the imprecision this figure exists to replace.
+  // writes the DOM directly rather than re-rendering sixty times a second.
   const paint = (deg: number) => {
     marker.current?.setAttribute('transform', `translate(${px(deg, RI).toFixed(2)} ${py(deg, RI).toFixed(2)})`)
     trail.current?.setAttribute('stroke-dashoffset', String(-mod(deg - 52, 360)))

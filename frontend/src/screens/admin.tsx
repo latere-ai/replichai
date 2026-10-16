@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The platform console (006k): who may sign in and at what tier, each account's
+// The platform console: who may sign in and at what tier, each account's
 // headroom, and the deployment's policy, namely the start reserve, the overdraft
 // floor, the rate card and the drafting model.
 
@@ -117,12 +117,9 @@ function environmentLabel(t: I18n['t'], name: string): string {
 }
 
 // PlatformPolicy edits what this deployment charges and what it will risk: two
-// numbers and a price list, all micro-USD, all typed in dollars because that is
-// the resolution an admin works at.
-//
-// The two numbers fail closed in opposite directions and the copy says so. A
-// reserve that vanished would start sessions on empty projects; a floor that
-// grew would stop bounding a runaway.
+// numbers and a price list, all micro-USD, typed in dollars. The two numbers
+// fail closed in opposite directions: a reserve that vanished would start
+// sessions on empty projects; a floor that grew would stop bounding a runaway.
 function PlatformPolicy({
   i18n,
   settings,
@@ -135,15 +132,14 @@ function PlatformPolicy({
   const { t } = i18n
   const [reserve, setReserve] = useState('')
   const [floor, setFloor] = useState('')
-  // The drafting model (039): a protocol, an endpoint and a model id. There is
-  // no key field; the key belongs to the deployment and this form has nowhere
-  // to put one.
+  // The drafting model: a protocol, an endpoint and a model id. There is no
+  // key field; the key belongs to the deployment.
   const [provider, setProvider] = useState('')
   const [baseURL, setBaseURL] = useState('')
   const [model, setModel] = useState('')
   // The price list, as the rows the admin is editing (rateDrafts below).
   const [rates, setRates] = useState<RateDraft[]>([])
-  // The environments a Latere session may name (051). base is always offered,
+  // The environments a Latere session may name. base is always offered,
   // because a session that names none runs on it.
   const [environments, setEnvironments] = useState<string[]>([])
   useEffect(() => {
@@ -218,11 +214,11 @@ function PlatformPolicy({
         </div>
         <NumberField i18n={i18n} id="overdraft-cap" value={floor} onChange={setFloor} min={0} ariaLabel={t('overdraftCap')} />
       </div>
-      {/* Which model writes a project's description (039). Three fields and no
-          key: the credential is the deployment's, read from its environment,
-          because a settings row is read by every admin and lands in every
-          backup. The model id must also appear in the rate card below, or the
-          deployment refuses to draft rather than guessing a price. */}
+      {/* Which model writes a project's description. No key field: the
+          credential comes from the deployment's environment, because a
+          settings row is read by every admin and lands in every backup. The
+          model id must also be in the rate card below, or drafting is refused
+          rather than guessing a price. */}
       <div className="policy-row">
         <div className="policy-copy">
           <label className="admin-label" htmlFor="draft-provider">
@@ -269,9 +265,8 @@ function PlatformPolicy({
                 <label className="admin-label" htmlFor="draft-base-url">
                   {t('draftBaseURL')}
                 </label>
-                {/* The key note belongs to the vendor's own address, not to the
-                    model id: it is the row that says this is somebody else's
-                    endpoint. */}
+                {/* The key note sits on the address row, the one that says
+                    this is another vendor's endpoint. */}
                 <p className="policy-hint">{t('draftNeedsOwnKey')}</p>
               </div>
               <input
@@ -286,10 +281,8 @@ function PlatformPolicy({
           )}
         </>
       )}
-      {/* Which of the Latere platform's images a session may name (051). An
-          admin turns one on once the platform holds it, and may hold back one
-          it has. base cannot be turned off: a session that names none runs
-          on it. */}
+      {/* Which of the Latere platform's images a session may name. base
+          cannot be turned off: a session that names none runs on it. */}
       {known.length > 0 && (
         <div className="policy-row">
           <div className="policy-copy">
@@ -306,11 +299,8 @@ function PlatformPolicy({
         </div>
       )}
       {settings && <RateCardEditor i18n={i18n} rows={rates} onChange={setRates} problem={card.problem} priceList={settings.price_list} />}
-      {/* One Save, at the foot of the card it saves. Beside the overdraft floor
-          it read as that field's control, and an admin who edited the start
-          reserve had no reason to believe the button below it applied. One
-          request writes both numbers, so the button sits where it reads as
-          saving the whole card. */}
+      {/* One Save at the foot of the card: one request writes the whole
+          policy, so the button sits where it reads as saving all of it. */}
       <div className="card-foot">
         {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
         <button className="btn" data-test="save-policy" disabled={!dirty} onClick={save}>
@@ -386,18 +376,14 @@ function cardOf(rows: RateDraft[], t: I18n['t']): { card: RateCard | null; probl
   return { card: { models }, problem: '' }
 }
 
-// RateCardEditor is the price list, as a table the admin edits in place: a row
-// per model, a model id and its five prices, a control to remove the row, and
-// one to add a row under the last. It is here because a reserve and a floor
-// mean nothing without the prices they bound, and because a vendor's new model
-// id is charged the card's dearest rates until somebody adds its row. The
-// card's Save writes it with the rest of the policy.
+// RateCardEditor is the price list as a table edited in place: a row per
+// model, its five prices, and controls to remove a row or add one. A model id
+// with no row is charged the card's dearest rates.
 //
-// When the server follows a price list, the rows for the models the list
-// prices are the list's: it writes its prices into them every hour, so an edit
-// would last until then. Those rows come first, as text under the list's name,
-// and the admin's own rows follow as fields. The grouping is only how the rows
-// are shown; Save sends them in the order the server holds them.
+// When the server follows a price list, it rewrites the rows the list prices
+// every hour, so those rows are shown first as read-only text and the admin's
+// own rows follow as fields. The grouping is display only; Save sends the rows
+// in the order the server holds them.
 function RateCardEditor({
   i18n,
   rows,
@@ -567,10 +553,9 @@ function PeopleCard({
   const { t } = i18n
   const [email, setEmail] = useState('')
   const [tier, setTier] = useState<'user' | 'admin'>('user')
-  // Show only the accounts that owe, which are the debts an operator acts on (022d).
+  // Show only the accounts that owe, which are the debts an operator acts on.
   const [owingOnly, setOwingOnly] = useState(false)
-  // Which row's top-up is being edited. window.prompt would have drawn a
-  // browser-owned box over the app; this is the app's own dialog.
+  // Which row's top-up is open in the app's own dialog.
   const [topping, setTopping] = useState<GrantView | null>(null)
 
   const invite = (e: React.FormEvent) => {
@@ -613,10 +598,8 @@ function PeopleCard({
             <Tip text={t('walletOf', { email: p.email })}>
               <span className="muted small tabular member-wallet">{formatUSD(i18n.lang, p.wallet)}</span>
             </Tip>
-            {/* The controls are grouped. Loose in the row they were sized one by
-                one, so a phone broke them across two lines and each row put them
-                somewhere else. As one group they stay on one line and end where
-                every other row's do. */}
+            {/* One group, so the controls stay on one line on a phone and end
+                where every other row's do. */}
             <span className="row-actions">
               {p.wallet < 0 &&
                 (p.frozen ? (

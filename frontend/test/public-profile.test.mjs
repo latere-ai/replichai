@@ -4,10 +4,9 @@
 // A browser regression test for a researcher's public page when the address
 // moves from one handle to another without a reload, by Back, Forward or a link.
 //
-// The bugs it guards: the screen's "not found" flag was set on a 404 and never
-// cleared, so after /u/a had answered 404, /u/b showed "No such profile" over a
-// profile that exists. And the fetch was never abandoned, so a slow 404 for the
-// handle the reader had already left could land on the page they had moved to.
+// It guards two things: a "not found" for one handle is cleared when the
+// address moves to another, and a slow 404 for a handle the reader has left
+// never lands on the page they moved to.
 // Run it with `bun run test:browser`.
 import { check, delay, fail, json, sleep, start } from './harness.mjs'
 

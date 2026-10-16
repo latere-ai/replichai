@@ -1,22 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for the merged projects list (018, restyled by 034).
+// A browser regression test for the projects list.
 //
-// What it guards: the screen used to split a reader's work in two by a fact they
-// did not choose, namely whether they created a project or were invited to it.
-// The merge is not one line: the segmented control has to be gone, both kinds of
-// project have to appear in one list, the Owner column has to say "You" for your
-// own and link somebody else's public page for theirs, the Last-modified column
-// has to render an age rather than a raw timestamp, the order has to follow that
-// column, and the headline numbers have to count the merged list and not the
-// owned half.
-//
-// 034 moved the owner and the date off the column grid and onto the title's meta
-// line, and put a Published column and a filter row in the space that freed. What
-// each of those facts says is unchanged and is still asserted here; where it
-// sits is not. The three counters became two cards, and the numbers they show are
-// asserted against the same fixture the rows are.
+// It guards that owned and shared projects appear in one list, never split by
+// ownership, which the reader did not choose. The owner on each row's meta line
+// says "You" for the reader's own and links somebody else's public page; the
+// modified time is an age with the exact moment behind it, and the order
+// follows it; the boundary cards count the whole list; the Published column
+// and the filter work; and every cell lines up under its heading.
 //
 // None of that is reachable from a unit test: the assertions are about rendered
 // rows and their painted order. It drives Chrome over a Vite dev server with the
@@ -27,8 +19,8 @@ const ME = 'me-sub'
 const ago = (ms) => new Date(Date.now() - ms).toISOString()
 
 // One project the reader owns and one they were invited to, in the order the
-// server sends them: newest-modified first. Both come from /projects now; the
-// point of the spec is that there is no second list to fetch.
+// server sends them: newest-modified first. Both come from /projects; there is
+// no second list to fetch.
 const projects = [
   {
     id: 'shared-1',
@@ -43,7 +35,7 @@ const projects = [
     published_sessions: 2,
     running: 0,
     latest_phase: 'done',
-    // Which paper the project is about (043), as the list carries it.
+    // Which paper the project is about, as the list carries it.
     papers: [{ title: 'The Placebo Effect of Artificial Intelligence', authors: ['Ada Lovelace', 'Grace Hopper'], venue: 'CHI', year: 2024 }],
   },
   {
@@ -99,10 +91,9 @@ try {
   const rows = await read()
   if (rows.length !== 2) fail(`the list shows ${rows.length} rows, want both the owned and the shared project in one list`)
 
-  // The split is gone, not hidden behind a default tab. 034 put a segmented
-  // control back on this screen, so the assertion is no longer "there is none"
-  // but that the one there filters by state, which the reader picks, and never
-  // by ownership, which they did not.
+  // No ownership split, not even behind a default tab. The one segmented
+  // control filters by state, which the reader picks, never by ownership,
+  // which they did not.
   const segs = await page.evaluate(() =>
     [...document.querySelectorAll('.screen .segmented')].map((g) => [...g.querySelectorAll('.seg-btn')].map((b) => b.textContent.trim())),
   )
@@ -115,8 +106,8 @@ try {
   // Order follows the column the reader can see.
   if (rows[0].title !== projects[0].title) fail(`the first row is "${rows[0].title}", want the most recently modified "${projects[0].title}"`)
 
-  // 043: the owner's own list cites the paper too. Two projects can carry the
-  // same typed title; the citation is what tells them apart at a glance.
+  // The owner's own list cites the paper too. Two projects can carry the same
+  // typed title; the citation is what tells them apart at a glance.
   for (const want of ['Ada Lovelace', 'CHI', '2024']) {
     if (!rows[0].cite?.includes(want)) fail(`the dashboard row does not cite ${want}: ${rows[0].cite ?? 'no citation at all'}`)
   }
@@ -149,7 +140,7 @@ try {
   })
   if (downloadRow !== projects[0].title) fail(`the download is on "${downloadRow}", want the project with published sessions`)
 
-  // The boundary cards count what the list now shows, not the owned half of it.
+  // The boundary cards count the whole list, not the owned half of it.
   // The fixture is two projects, five sessions, two of which published.
   const band = await page.evaluate(() => {
     const txt = (sel) => document.querySelector(sel)?.textContent.replace(/\s+/g, ' ').trim() || ''
@@ -173,7 +164,7 @@ try {
 
   // The download is a real link to the archive, so the browser saves it rather
   // than the tab buffering a body that size, and a project that has produced
-  // nothing offers no download at all (020).
+  // nothing offers no download at all.
   const downloads = await page.evaluate(() =>
     [...document.querySelectorAll('[data-test="download-project"]')].map((a) => ({ tag: a.tagName, href: a.getAttribute('href') })),
   )
@@ -183,17 +174,16 @@ try {
     if (!/^\/projects\/[^/]+\/archive$/.test(d.href)) fail(`the download points at ${d.href}, want the project's archive`)
   }
 
-  // The columns have to align. A flex row sizes every cell to its own content,
-  // so a "1 RUNNING" badge is wider than a "DONE" one and every cell to its
-  // left starts somewhere different, which is what a list of eight projects
-  // looked like. Only a geometry measurement detects it: the text is identical
-  // whether or not it lines up.
+  // The columns have to align. A badge is as wide as its word, so a row that
+  // sized cells to their content would start each cell somewhere different.
+  // Only a geometry measurement detects it: the text is identical whether or
+  // not it lines up.
   const cols = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('[data-test="project-rows"] .row')]
     const head = document.querySelector('[data-test="project-rows"] .project-head')
     const left = (el) => (el ? Math.round(el.getBoundingClientRect().left) : null)
-    // Owner and date are no longer cells; they sit on the title's meta line. The
-    // grid is title, published, status, visibility, and the first action.
+    // Owner and date sit on the title's meta line, not in cells. The grid is
+    // title, published, status, visibility, and the first action.
     const cells = (row) => [
       left(row.querySelector('.row-main')),
       left(row.querySelector('[data-test="published-cell"]')),
@@ -223,7 +213,7 @@ try {
       })
     }
   }
-  // Every row agrees with every other row, which is the reported defect.
+  // Every row agrees with every other row.
   for (let i = 1; i < cols.rows.length; i++) {
     cols.rows[i].forEach((x, c) => {
       const first = cols.rows[0][c]
@@ -270,9 +260,9 @@ try {
   if (restored !== 2) fail(`clearing the filter left ${restored} rows, want both back`)
 
   // When narrow enough the context column is hidden; the row's identity is
-  // not. Hiding a column is better than squeezing the title out. Owner is no
-  // longer a column at any width, since it is on the meta line, so this asserts
-  // that it is still readable and that Published is the column that is hidden.
+  // not. Hiding a column is better than squeezing the title out. The owner is
+  // on the meta line at every width, so this asserts it stays readable and
+  // that Published is the column hidden.
   await page.setViewport({ width: 640, height: 900 })
   await page.waitForFunction((w) => window.innerWidth === w, {}, 640)
   const narrow = await read()

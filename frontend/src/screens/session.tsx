@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// One replication session and what it produced (015): the screen with its
+// One replication session and what it produced: the screen with its
 // three panes, the verdict pane with the run's findings and the manifest's
 // record of the run, and the artifacts pane, a file browser over the repository
 // the session published. The transcript pane is screens/transcript.tsx.
@@ -65,12 +65,8 @@ function verdictIcon(v: string): IconName {
 }
 
 // SessionVerdict shows one session's manifest verdict and metadata, real data
-// only. Per-component scorecards are not something the backend produces, so they
-// are not shown.
-//
-// It takes a job id rather than picking a session out of a project (015): a
-// verdict is a property of the run that was graded, and "the project's verdict"
-// would have to guess which run was meant.
+// only. It takes a job id rather than a project, because a verdict is a
+// property of the run that was graded.
 function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const { t } = i18n
   const [repro, setRepro] = useState<Reproduction | null>(null)
@@ -107,18 +103,12 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
     )
   if (state === 'loading' || !repro) return <div className="center-load">…</div>
   const tone = manifestTone(repro.verdict)
-  // The run's record, which is not the paper's verdict.
-  //
-  // `repro.verdict` is the grader's judgment of the run against the method's
-  // rubric: passed, needs_revision, exhausted, failed. The findings' verdict is
-  // about the paper: reproducible, partial, not_reproducible. Both used to be
-  // headed "Verdict", which put two verdict words on one screen for one paper
-  // and invited the reader to take the grader's "Passed" as a statement that the
-  // paper reproduced. It is not: a well-executed audit of a paper that does not
-  // reproduce passes the rubric.
-  //
-  // So the paper's verdict is the only headline, and this card is the record of
-  // the run that produced it, with the rubric grade as one row.
+  // The run's record, which is not the paper's verdict. `repro.verdict` is the
+  // grader's judgment of the run against the method's rubric (passed,
+  // needs_revision, exhausted, failed); the findings' verdict is about the
+  // paper (reproducible, partial, not_reproducible). A well-executed audit of a
+  // paper that does not reproduce passes the rubric, so the paper's verdict is
+  // the only headline and this card holds the rubric grade as one row.
   const manifest = (
     <div className="card card-pad stack" style={{ maxWidth: 720 }} data-test="run-record">
       <span className="eyebrow eyebrow-ico">
@@ -146,11 +136,9 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
             <Pill tone={repro.review === 'clear' ? 'ok' : 'warn'}>{repro.review || '—'}</Pill>
           </span>
         </div>
-        {/* This row is the reason a project cannot go public, and the reader
-            following a refusal here arrives at a pill with one word in it. The
-            sentence says what the word means and that this is the thing in the
-            way. It is shown permanently rather than as a notice on arrival,
-            because it is still true the next time they come. */}
+        {/* This row is the reason a project cannot go public, and a publish
+            refusal links here. The sentence says what the pill's word means
+            and that it is in the way, and stays as long as it is true. */}
         {repro.review && repro.review !== 'clear' && (
           <div className="banner warn inline" data-test="blocks-publishing">
             <Ico name="alert" size={14} />
@@ -200,7 +188,7 @@ function SessionVerdict({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   )
 }
 
-// SessionFindings renders one run's verdict.json (021b): the summary first, then
+// SessionFindings renders one run's verdict.json: the summary first, then
 // the per-component table the rubric calls the result, then what did not
 // reproduce, then the decisions the paper left unwritten.
 //
@@ -215,10 +203,9 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
   const outcomeLabel = (o: ClaimOutcome) =>
     o === 'verified' ? t('outVerified') : o === 'partial' ? t('outPartial') : o === 'blocked' ? t('outBlocked') : t('outNotScored')
 
-  // Set as a results section: the outcome in words, then the tables, each with
-  // its caption above it as a journal sets a table's (047). The rate is the
-  // boundary table's footnote, under the rows it is derived from, never a
-  // headline over them.
+  // Set as a results section: the outcome in words, then the tables, each
+  // captioned above. The rate is the boundary table's footnote, under the rows
+  // it is derived from, never a headline over them.
   return (
     <div className="findings-doc">
       <header className="findings-head">
@@ -238,7 +225,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
         </p>
         {/* Four columns read across, so on a phone the box scrolls sideways
             rather than the table restacking into something that is no longer a
-            comparison (030). */}
+            comparison. */}
         <div className="grid-table-wrap">
           <table className="grid-table">
             <thead>
@@ -398,16 +385,15 @@ function fileIcon(path: string): IconName {
 // repository, a forge pass-through that works even when the repository stays
 // private. Markdown is formatted, code highlighted, images shown inline.
 //
-// The repository belongs to the session that published it. A project has as many
-// as it has published sessions, which is why the project-level version of this
-// browser was removed rather than made to choose between them (015).
+// The repository belongs to the session that published it. A project has one
+// per published session, so there is no project-level browser.
 function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
   const { t } = i18n
   const [files, setFiles] = useState<string[] | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   // What the authors released comes from the same findings file the verdict pane
-  // reads (021c). A run without it renders the browser alone rather than an
-  // empty "nothing released" table, which would be a claim the run never made.
+  // reads. A run without it renders the browser alone rather than an empty
+  // "nothing released" table, which would be a claim the run never made.
   const [findings, setFindings] = useState<Findings | null>(null)
 
   useEffect(() => {
@@ -479,7 +465,7 @@ function SessionArtifacts({ i18n, jobId }: { i18n: I18n; jobId: string }) {
 }
 
 // ReleasedByAuthors is what the run found when it went looking for the paper's
-// own artifacts, and the five-criterion scorecard beside it (021c).
+// own artifacts, and the five-criterion scorecard beside it.
 function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings }) {
   const { t } = i18n
   const released = findings.released ?? []
@@ -499,8 +485,8 @@ function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings 
     supplement: t('critSupplement'),
   }
 
-  // Two tables, captioned above as the verdict's are (047): where the run looked
-  // and what it found there, then the open-science scorecard. A result is a dot
+  // Two tables, captioned above as the verdict's are: where the run looked and
+  // what it found there, then the open-science scorecard. A result is a dot
   // and a word in its tone, never the tone alone.
   return (
     <div className="released-grid">
@@ -672,10 +658,8 @@ function SessionFailure({ i18n, cause }: { i18n: I18n; cause: string }) {
 
 // SessionScreen is one replication session, and everything it produced: the
 // transcript of the run, the verdict it was graded to, and the repository it
-// published. All three are the session's, which is why all three are addressed
-// under it (015). A project holds papers and a paper has runs, so there is no
-// level above this one at which "the verdict" or "the repository" names one
-// thing.
+// published. All three are addressed under the session, because no level above
+// it has one verdict or one repository.
 export function SessionScreen({
   i18n,
   jobId,
@@ -694,13 +678,13 @@ export function SessionScreen({
   onLoaded: (ref: string) => void
   onBack: () => void
   // Whether there is an account behind this reader, which decides whether the
-  // live stream is worth opening at all (028).
+  // live stream is worth opening at all.
   signedIn: boolean
 }) {
   const { t } = i18n
   const [job, setJob] = useState<Job | null>(null)
   // A session under a project this reader may not see reads as missing, the same
-  // answer its project gives (028).
+  // answer its project gives.
   const [notReadable, setNotReadable] = useState(false)
 
   useEffect(() => {
@@ -720,11 +704,10 @@ export function SessionScreen({
   // The run is watched here rather than in the transcript, because all three
   // panes are about it and only one of them is open at a time.
   //
-  // It watches only what there is to watch. The live stream is an operator route
-  // and stays gated (028), so for a reader with no account it would be a
-  // connection refused and reopened for as long as the page is up, and a session
-  // that has finished has nothing left to send. Whether to watch is a boolean,
-  // so the snapshot the stream delivers cannot reopen the stream.
+  // It watches only what there is to watch. The live stream needs an account,
+  // so a signed-out reader would be refused and reconnect for as long as the
+  // page is up, and a finished session has nothing left to send. Whether to
+  // watch is a boolean, so the snapshot the stream delivers cannot reopen it.
   useJobStream(jobId, signedIn && job != null && !terminal(job.phase), setJob)
   useEffect(() => {
     if (job?.ref) onLoaded(job.ref)

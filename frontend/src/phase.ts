@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A session's lifecycle phase as the screens show it: its tone, its glyph, its
-// badge class and its label, so a phase reads the same wherever it appears,
-// whether a row badge, a timeline dot or a scrubber band. The list of phases itself is
-// transcript.ts's PHASE_ORDER.
+// A session's lifecycle phase as the screens show it: its tone, glyph, badge
+// class and label, so a phase reads the same wherever it appears. The list of
+// phases itself is transcript.ts's PHASE_ORDER.
 
 import { type I18n } from './i18n'
 import { type Phase, PHASE_ORDER } from './transcript'

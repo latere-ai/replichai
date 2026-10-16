@@ -3,15 +3,12 @@
 
 // A browser regression test for the vertical rhythm between stacked cards.
 //
-// The bug it guards: a screen that renders two cards as siblings must put them
-// in a `.stack`, which is the only place the 16px gap between cards is written.
-// The public researcher page dropped the wrapper and placed both cards directly
-// under `.screen`, which is a plain block, so the identity card and the
-// signed-work card sat edge to edge with their 1px borders touching and read as
-// one mis-drawn box rather than two cards. Settings had the same defect until
-// 024a split it into one card per tab, so it no longer stacks two siblings.
+// It guards that a screen rendering two cards as siblings puts them in a
+// `.stack`, the only place the 16px gap between cards is written. Placed
+// directly under `.screen`, a plain block, two cards sit edge to edge with
+// their 1px borders touching and read as one mis-drawn box.
 //
-// "The cards exist" passes against the broken code, and so does "the second card
+// "The cards exist" passes without the wrapper, and so does "the second card
 // starts below the first". The discriminating measurement is the distance
 // between the first card's bottom edge and the second card's top edge: zero when
 // the wrapper is missing, a full gap when it is there. The screen is
@@ -21,9 +18,8 @@ import { fail, settled, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
-// The settings screen's second card is ProfileCard, and it renders nothing until
-// /me/profile answers. An empty body is what the API sends before a profile is
-// ever saved, and it is enough to draw the card.
+// An empty /me/profile body is what the API sends before a profile is ever
+// saved.
 const routes = [
   ['/me', { authenticated: true, principal: 'p', email: 'tester@example.com', tier: 'admin', credits: { wallet: 42.5, start_reserve: 5 } }],
   ['/me/profile', {}],
@@ -52,9 +48,9 @@ try {
 
   // A card is measured only against the block next to it: `.screen .card` also
   // matches cards nested inside another one, and those carry their own spacing.
-  // Since 047 a researcher's signed work is a captioned section rather than a
-  // second card, so a stacked block is either one; the gap between them is the
-  // same defect whichever the second is.
+  // A researcher's signed work is a captioned section rather than a second
+  // card, so a stacked block is either one; the gap between them is the same
+  // defect whichever the second is.
   const gaps = async (label, want) => {
     const m = await page.evaluate(() => {
       const screen = document.querySelector('.screen')
@@ -75,8 +71,7 @@ try {
     return m
   }
 
-  // The defect, on the page a signed-out reader sees: identity above, signed
-  // work below. Settings no longer stacks two cards since 024a split it into tabs.
+  // The page a signed-out reader sees: identity above, signed work below.
   await page.open('/u/tester')
   await page.waitForSelector('.screen .card')
   await settled(page)

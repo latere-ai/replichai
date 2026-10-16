@@ -1,26 +1,19 @@
-/* The design system (047).
+/* The design system.
 
-   The palette is latere-ui's ink ladder, the one the platform and its identity
-   pages read: a white page, neutral grays with no hue, and ink as the accent.
-   It is imported in main.tsx and switched on by `data-design="ink"` on <html>,
-   so this sheet names no ground, text, border or status color of its own. It
-   adds only what the ladder has no name for.
+   The palette is latere-ui's ink ladder: a white page, neutral grays with no
+   hue, and ink as the accent. It is imported in main.tsx and switched on by
+   `data-design="ink"` on <html>, so this sheet names no ground, text, border
+   or status color of its own and adds only what the ladder has no name for.
 
    Text is set in ink, and color carries meaning. The primary action, the
-   current page and the focus ring are ink, as everywhere in the family. The
-   product's azure is its drawing color: the inner ring of the mark and the
-   inner loop in every figure, the part a machine re-runs, and the published
-   state, which is what the product makes. It is never spent on a control.
+   current page and the focus ring are ink. The product's azure is its drawing
+   color: the inner ring of the mark, the inner loop in every figure, and the
+   published state. It is never spent on a control.
 
-   One face, Inter, as on the platform: the platform's files, byte for byte,
-   under the same paths, so a reader who has visited either site already has
-   them. Headings are its semibold, never a display face and never italic: the
-   condensed serif 047 tried first read too tall and too decorative for a
-   reader who came to check numbers. What makes a page read like research here
-   is its structure (numbered sections, captioned figures, tables with three
-   rules, references set as references), not a typeface. `block` rather than
-   `swap`, as on the platform: the faces are preloaded with the document, and a
-   swap reflows text a reader is already looking at, which is a layout shift. */
+   One face, Inter, from the platform's files under the same paths, so a reader
+   who has visited either site already has them. Headings use its semibold.
+   `block` rather than `swap`: the faces are preloaded with the document, and a
+   swap reflows text a reader is already looking at. */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -45,9 +38,7 @@
 :root {
   /* Row rhythm. Two distinct gaps: --gap-row separates the two sides of a list
      row, such as a label from its value; --gap-inline separates items that sit
-     together on one side, such as a number from the button beside it. One
-     shared value for both caused the bug on three screens where a truncated
-     title touched its date and a control touched the border. */
+     together on one side, such as a number from the button beside it. */
   --gap-row: 18px;
   --gap-inline: 10px;
 
@@ -65,8 +56,8 @@
 
   /* The status tones ink does not name, mapped onto the ones it does. Running
      is informational; failed is the ladder's danger. Published is the product's
-     own color: it is what the product makes, and the violet it used to be sat
-     within a few degrees of ink's admin tone, which the admin console shows. */
+     azure, because it is what the product makes, and it stays clear of ink's
+     admin tone, which the admin console shows. */
   --run: var(--info);
   --err: var(--danger);
   --pub: var(--azure);
@@ -74,7 +65,7 @@
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* The ladder's radii, under the names this sheet already uses. */
+  /* The ladder's radii, under the names this sheet uses. */
   --radius-sm: var(--radius-control);
   --radius-pill: 999px;
 
@@ -211,8 +202,7 @@ textarea {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
-/* A label over a section or a value: the page's sans, sentence case, quiet.
-   It was monospace and upper case until 047, which read as a developer tool. */
+/* A label over a section or a value: the page's sans, sentence case, quiet. */
 .eyebrow {
   font: 500 12px/1.4 var(--font-sans);
   color: var(--fg-2);
@@ -270,7 +260,7 @@ textarea {
   height: 100dvh;
   /* The background the rail sits on. The content panel is a raised surface on
      it, so the boundary between navigation and work is a change of depth rather
-     than a line (034). */
+     than a line. */
   background: var(--bg-deep);
 }
 .rail {
@@ -291,9 +281,9 @@ textarea {
   gap: 9px;
   padding: 0 18px;
 }
-/* The fold control. It stays at the head's right edge in both states, so the
-   click that folds the rail and the click that unfolds it land in nearly the
-   same place. */
+/* The fold control sits at the head's right edge. The folded rail is narrow
+   enough that, centered there, it stays close by, so the click that folds the
+   rail and the click that unfolds it land in nearly the same place. */
 .rail-fold-btn {
   margin-left: auto;
   display: flex;
@@ -315,7 +305,7 @@ textarea {
   color: var(--fg-1);
 }
 /* When folded, the fold control is the brand mark itself, so the brand stays
-   visible in the 56px rail. Hovering swaps in the expand chevron so the click
+   visible in the narrow rail. Hovering swaps in the expand chevron so the click
    still reads as "open the rail". */
 .rail-fold .rail-fold-btn {
   width: 34px;
@@ -336,7 +326,7 @@ textarea {
 .rail-fold-btn:hover .fold-chev {
   display: inline-flex;
 }
-/* The drawer's two controls (030). Both are in the markup at every width and
+/* The drawer's two controls. Both are in the markup at every width and
    the phone block below shows them, so which one is on screen is decided by
    the viewport alone and never by state that a resize could leave stale. */
 .rail-open-btn,
@@ -377,8 +367,8 @@ textarea {
 
 /* ── Folded rail ──
    Every destination stays clickable at its icon; only the labels are removed.
-   The labels use `display: none` rather than `visibility: hidden`, so the 56px
-   column reserves no space for text it does not draw and the icons are
+   The labels use `display: none` rather than `visibility: hidden`, so the
+   narrow column reserves no space for text it does not draw and the icons are
    centered. */
 .rail-fold {
   width: 64px;
@@ -424,7 +414,7 @@ textarea {
 /* The mark's two colors: the outer ring, the study with people that is never
    simulated, in ink like every Latere mark; the inner ring, the part a machine
    re-runs, in the product's azure. The color carries the meaning, so the two
-   never swap (047). */
+   never swap. */
 .mark-outer {
   stroke: var(--fg-1);
 }
@@ -539,7 +529,7 @@ textarea {
 }
 /* The current destination is the one raised surface in the rail, the same
    surface the content uses, so the current row and the content panel read as
-   one (034). Never a colored edge. The destination's hue stays on its icon. */
+   one. Never a colored edge. The destination's hue stays on its icon. */
 .nav-btn.active {
   background: var(--bg);
   color: var(--fg-1);
@@ -576,10 +566,6 @@ textarea {
 .user-btn:hover {
   background: var(--bg-raised);
 }
-/* The sign-in control, in the position the account occupies for a signed-in
-   reader (028). It fills the rail's width when unfolded and collapses to its
-   icon when the rail folds. The label is the same `.nav-label` every
-   destination uses, so one rule folds them all. */
 /* An avatar with no picture takes a hue derived from the address, so the same
    person is the same color in every list they appear in. */
 .user-avatar {
@@ -595,7 +581,7 @@ textarea {
   justify-content: center;
   font: 600 10px/1 var(--font-sans);
   /* The same box holds an <img> or two initials, so a non-square picture is
-     cropped rather than distorted (006m). */
+     cropped rather than distorted. */
   object-fit: cover;
 }
 :root[data-theme='dark'] .user-avatar {
@@ -670,10 +656,8 @@ textarea {
   font-size: 13px;
   color: var(--fg-2);
 }
-/* The topbar is one 52px row, so every crumb segment stays on one line and
-   truncates instead of wrapping. A paper title is long enough to wrap on its
-   own; that wrap pushed the trail onto a second line the bar had no height for,
-   and the unshrinkable text behind it scrolled the whole app sideways. */
+/* The topbar is one 56px row, so every crumb segment stays on one line and
+   truncates instead of wrapping onto a second line the bar has no height for. */
 .crumb > * {
   min-width: 0;
   overflow: hidden;
@@ -708,8 +692,8 @@ textarea {
 }
 .topbar-actions {
   margin-left: auto;
-  /* The trail shrinks; the controls do not. Shrinking these is what pushed
-     the "new project" button past the right edge. */
+  /* The trail shrinks; the controls do not, so none of them is pushed past
+     the right edge. */
   flex: none;
   display: flex;
   align-items: center;
@@ -722,7 +706,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Borderless and unfilled at rest (034): a list row can carry three of
+  /* Borderless and unfilled at rest: a list row can carry three of
      these, and three outlined boxes per row would dominate the row. The
      border and fill appear on hover. */
   border: 1px solid transparent;
@@ -731,7 +715,7 @@ textarea {
   color: var(--fg-3);
   cursor: pointer;
   /* The download is an anchor rather than a button, so the browser saves the
-     archive instead of the tab buffering it (020). It is styled to match the
+     archive instead of the tab buffering it. It is styled to match the
      controls beside it. */
   text-decoration: none;
   transition: color var(--dur-hover), border-color var(--dur-hover), background var(--dur-hover);
@@ -748,7 +732,7 @@ textarea {
 }
 
 /* ── Buttons ── */
-/* latere-ui's console button (047): a capsule, 32px or 28px in a row, set in
+/* latere-ui's console button: a capsule, 32px or 28px in a row, set in
    13px. The primary action is the ink fill and inverts between the themes; the
    rest are a hairline. Hover darkens or tints and never changes the hue. */
 .btn {
@@ -816,8 +800,8 @@ textarea {
   padding: 0 18px;
   font-size: 14px;
 }
-/* The small button sits in a row beside other controls, so it keeps the
-   narrow measure it had before 047 and takes only the platform's height. */
+/* The small button sits in a row beside other controls, so it keeps a narrow
+   padding and takes the platform's row height. */
 .btn.sm {
   height: 28px;
   padding: 0 10px;
@@ -864,14 +848,10 @@ h1.screen-title {
 }
 
 /* ── Page measure ── */
-/* A screen that holds one column of cards used to pin that column to the left
-   edge with a narrow cap, so most of a wide display was empty and the content
-   that did fit was cramped: a statement's project titles wrapped over three
-   lines beside 900px of empty space. The column is centered and given a usable
-   width here, once, so every single-column screen shares the same measure
-   instead of each carrying its own inline cap. Screens that hold a form keep a
-   narrower measure, because a text field stretched to 1000px is harder to use
-   than one at 700. */
+/* A screen that holds one column of cards centers it at a usable width, set
+   here once so every single-column screen shares the same measure. Screens
+   that hold a form keep a narrower measure, because a text field stretched to
+   1000px is harder to use than one at 700. */
 /* The measure is on the children, not on the scroll container. Capping .screen
    itself would move its scrollbar in to the column's edge and leave it in the
    middle of the panel on any platform that reserves space for one. */
@@ -885,8 +865,8 @@ h1.screen-title {
 }
 
 /* ── Stat cards ── */
-/* The boundary band (034). Two cards replace three counters: the reproduction
-   count with its decomposition, and the spend. */
+/* The boundary band: two cards, the reproduction count with its
+   decomposition, and the spend. */
 .boundary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -967,7 +947,7 @@ h1.screen-title {
   box-shadow: inset 0 0 0 1px var(--border);
 }
 /* The card's last line, separated by a rule: it is a different quantity from
-   the one above it, and its time window has to be stated with it (021e). */
+   the one above it, and its time window has to be stated with it. */
 .boundary-foot {
   margin-top: auto;
   display: flex;
@@ -1103,7 +1083,7 @@ h1.screen-title {
   white-space: nowrap;
   font-weight: 500;
 }
-/* A paper and the sessions that are runs of it (015). The group draws the top
+/* A paper and the sessions that are runs of it. The group draws the top
    border so its rows read as one block; the runs are indented and lower in
    contrast, so the paper remains the primary row. */
 .paper-group {
@@ -1163,7 +1143,7 @@ h1.screen-title {
   font-size: 11.5px;
   color: var(--fg-3);
 }
-/* The registry row's citation (043). One line: a row is scanned, not read, and
+/* The registry row's citation. One line: a row is scanned, not read, and
    the project it links to carries the full bibliography. */
 .row-cite {
   margin-top: 2px;
@@ -1174,7 +1154,7 @@ h1.screen-title {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The merged project list's columns (018). The title takes the remaining
+/* The project list's columns. The title takes the remaining
    space; Owner and Last modified have fixed widths so they align down the page,
    because a column that shifts has to be located again on every row. Both are
    low-contrast: they are for scanning, not the row's main content. */
@@ -1242,7 +1222,7 @@ h1.screen-title {
 }
 
 /* ── Badges ── */
-/* A state is a dot and a word, in the page's sans and sentence case (047). */
+/* A state is a dot and a word, in the page's sans and sentence case. */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1330,15 +1310,13 @@ h1.screen-title {
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.025em;
-  /* `break-word`, not `anywhere`: `anywhere` lets a word break to make the line
-     box narrower even where the word would have fitted, and it takes the
-     element's min-content width down with it. Beside a button that cannot
-     shrink, that let this title collapse to an 80px column and set a paper's
-     name one syllable to the line, 485px tall. A word only breaks here when it
-     cannot fit on a line of its own. */
+  /* `break-word`, not `anywhere`: `anywhere` also lowers the min-content
+     width, so beside a button that cannot shrink the title would collapse to a
+     narrow column. A word breaks here only when it cannot fit on a line of its
+     own. */
   overflow-wrap: break-word;
 }
-/* The project description, under its title (038). Capped to a measure rather
+/* The project description, under its title. Capped to a measure rather
    than full width: prose beyond about 70 characters a line is harder to read,
    and the head is the one place in this app that holds a paragraph. */
 .detail-describe-text {
@@ -1384,13 +1362,9 @@ h1.screen-title {
   margin-top: 8px;
 }
 
-/* Renaming a project swaps the heading for a field. It is the same text at the
-   same size in the same place, so the field carries the heading's typography and
-   the row's width rather than a 280px box in 15px type that clipped the name it
-   was editing. */
-/* The title's column takes the row's spare width, so the field that replaces
-   the heading is as wide as the heading was. Sized to content, it was a 450px
-   box scrolling a name that had been fully visible one click earlier. */
+/* Renaming a project swaps the heading for a field with the heading's
+   typography. The title's column takes the row's spare width, so the field is
+   as wide as the heading was. */
 .detail-title-main {
   flex: 1;
   min-width: 0;
@@ -1418,8 +1392,7 @@ input.text.title-input {
 }
 
 /* The rename control sits in the heading's text flow, so it follows the last
-   word. Aligned near the baseline rather than the middle, so it sits on the
-   line of type like punctuation rather than like a toolbar control. */
+   word, centered on the line of type. */
 .detail-title .icon-btn {
   vertical-align: middle;
   margin-left: 7px;
@@ -1466,11 +1439,9 @@ input.text.title-input {
 .member-row {
   display: flex;
   align-items: center;
-  /* A crowded row wraps rather than shrinking. A pending, frozen account
-     carries three pills and a third control, and with the columns below fixed
-     the only element left to shrink was the address, which is the one part
-     of the row that identifies the person. It went to zero width and the last
-     control still overflowed the card's edge. */
+  /* A crowded row wraps rather than shrinking: with the columns below fixed,
+     the only element left to shrink is the address, which is the part of the
+     row that identifies the person. */
   flex-wrap: wrap;
   gap: var(--gap-row);
   padding: 11px 14px;
@@ -1489,10 +1460,8 @@ input.text.title-input {
   white-space: nowrap;
 }
 /* A list of people is read down its columns: tier, amount, then the two
-   controls. Sized to content, a USER pill and an ADMIN pill differ by 22px and
-   every cell to the right shifted with them. The widths here define the
-   column, and `justify-content` centers a shorter label in it rather than
-   leaving the difference at one end. */
+   controls. Fixed widths keep each column aligned whatever its label, and
+   `justify-content` centers a shorter label in its column. */
 .member-row > .pill {
   min-width: 78px;
   justify-content: center;
@@ -1510,7 +1479,6 @@ input.text.title-input {
   gap: 8px;
   margin-left: auto;
 }
-/* What is left to spend, beside the button that spends it (006l). */
 /* A balance, as a pill: in a person's row, and on the bar. A button when it
    opens the top-up, so it clears the browser's own button fill. */
 .quota-pill {
@@ -1621,8 +1589,8 @@ button.quota-pill:hover {
   background: var(--brand);
   border-color: var(--brand);
 }
-/* The knob in the accent's own ink, so it shows on the ink track in either
-   theme: white on dark mode's light track was all but invisible. */
+/* The knob takes the color made for content on the accent, so it shows on
+   the ink track in either theme. */
 .tg.on .tg-knob {
   background: var(--lu-preset-on-accent);
   transform: translateX(14px);
@@ -1871,7 +1839,7 @@ button.quota-pill:hover {
   animation: om-fade-up 0.12s var(--ease-fluid) both;
 }
 
-/* The admin console's policy field: a label, a narrow number, a save (006k). */
+/* The admin console's policy field: a label, a narrow number, a save. */
 .admin-label {
   font-size: 12.5px;
   color: var(--fg-2);
@@ -1879,10 +1847,8 @@ button.quota-pill:hover {
   flex: 1;
 }
 
-/* A policy setting is a control plus the paragraph that explains it. Stacked,
-   every paragraph ran the card's full width and pushed the next control a
-   screen further down. Beside its control, the same text uses width the card
-   already had, and the whole policy fits in one view. */
+/* A policy setting is a control beside the paragraph that explains it, so the
+   text uses the card's width and the whole policy fits in one view. */
 .policy-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1898,8 +1864,8 @@ button.quota-pill:hover {
 }
 .policy-copy .admin-label {
   flex: none;
-  /* .admin-label centers itself for the flex row it was written for; in this
-     column that would center the name over its own explanation. */
+  /* .admin-label centers itself for a flex row; in this column that would
+     center the name over its own explanation. */
   align-self: start;
   font-size: 13px;
   font-weight: 500;
@@ -1942,10 +1908,8 @@ button.quota-pill:hover {
   flex-wrap: wrap;
   align-items: center;
 }
-/* One text control style, whatever the tag. `input.text` alone left every
-   textarea in the app with the browser's default box: a white fill in a dark
-   theme, a native resize grip, and none of the app's border, radius or focus
-   behavior. */
+/* One text control style, whatever the tag, so a textarea gets the app's
+   border, radius, fill and focus rather than the browser's default box. */
 input.text,
 textarea.text {
   padding: 0 11px;
@@ -2029,15 +1993,10 @@ textarea::placeholder {
   color: var(--fg-3);
 }
 
-/* ── A paper, as a block (037) ──
-   It was a table row: a title, a citation, a reference, a state and four
-   controls, all on one line inside a card that is itself one column of a
-   two-column screen. The title, the element the reader is looking for, was the
-   one that shrank, so a paper read as "There is more to context than l…" beside
-   a URL printed in full.
-   
-   As a block, the title and citation get the width and the controls get their
-   own line under them. It costs vertical space, which is acceptable because a
+/* ── A paper, as a block ──
+   The title and citation get the card's width and the controls get their own
+   line under them, so the title, the element the reader is looking for, never
+   shrinks to make room. It costs vertical space, which is acceptable because a
    project holds a handful of papers to read, not a hundred to scan. */
 .paper-head {
   display: flex;
@@ -2095,9 +2054,8 @@ textarea::placeholder {
   line-height: 1.65;
   color: var(--fg-2);
 }
-/* Both properties, not just the display: `line-clamp` is standard now and keeps
-   clamping a block box, so a rule that only swapped `-webkit-box` for `block`
-   left the abstract three lines tall with its control saying "less". */
+/* Both properties, not just the display: standard `line-clamp` also clamps a
+   block box, so the open state has to clear it as well. */
 .paper-abstract.open {
   display: block;
   overflow: visible;
@@ -2155,10 +2113,10 @@ textarea::placeholder {
 .paper-group .paper-head .tip {
   flex: none;
 }
-/* A form of short fields, two to a row where there is room. In 037's
-   correction dialog a volume and an issue are both four characters, and a
-   column each makes them read as a pair. The title and the author list take
-   the full width, because they are the two long fields. */
+/* A form of short fields, two to a row where there is room. In the paper's
+   edit dialog a volume and an issue are both four characters, and a column
+   each makes them read as a pair. The title and the author list take the full
+   width, because they are the two long fields. */
 .field-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -2210,7 +2168,7 @@ textarea::placeholder {
   animation: om-fade-up 0.3s var(--ease-fluid) both;
 }
 /* The session's header: the back link, the paper it is a run of, and its three
-   pane tabs (015). It sits in the .tx flex column, which grows its children by
+   pane tabs. It sits in the .tx flex column, which grows its children by
    default. */
 .session-head {
   flex: none;
@@ -2353,12 +2311,12 @@ textarea::placeholder {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── The scrubber (006s) ──
+/* ── The scrubber ──
    The run drawn against its own clock: phases at widths proportional to their
    duration, a histogram of where the run spent its tokens or events, and a
-   cursor that seeks. It replaces the lifecycle strip wherever the events carry
-   timestamps, because a strip of evenly spaced labels shows the order and hides
-   the proportions. */
+   cursor that seeks. It takes the place of the phase strip wherever the events
+   carry timestamps, because a strip of evenly spaced labels shows the order and
+   hides the proportions. */
 .scrub {
   flex: none;
   display: flex;
@@ -2541,10 +2499,9 @@ textarea::placeholder {
 }
 /* A scrolling flex column must not shrink its children. Once the content is
    taller than the box, flex-shrink compresses every child towards its minimum
-   size, and a child whose own overflow is not `visible` has a minimum of zero.
-   A 771-event transcript hit exactly that: every card collapsed to its padding
-   and clipped the text inside it. Overflow here is handled by scrolling, never
-   by shrinking. */
+   size, and a child whose own overflow is not `visible` has a minimum of zero,
+   so a long transcript would collapse every card to its padding. Overflow here
+   is handled by scrolling, never by shrinking. */
 .tx-stream > *,
 .tx-side > *,
 .rail-nav > *,
@@ -2695,12 +2652,12 @@ textarea::placeholder {
   overflow: auto;
 }
 
-/* The selected event, in full. Nothing here is folded or truncated, which is
-   what lets the cards stay compact. */
 .tx-search {
   width: 100%;
   height: 30px;
 }
+/* The selected event, in full. Nothing here is folded or truncated, which is
+   what lets the cards stay compact. */
 .ev-detail {
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
@@ -2739,7 +2696,7 @@ textarea::placeholder {
   border-radius: 6px;
 }
 
-/* The signed-in person, at the head of Settings (006m). */
+/* The signed-in person, at the head of Settings. */
 .profile-head {
   display: flex;
   align-items: center;
@@ -2787,7 +2744,7 @@ textarea::placeholder {
 /* A tooltip wrapper is a <span>, and an inline box around a block row collapses
    that row to its content, so the value sits against its label while the row
    above it is flush right. Call sites use `data-tip` directly, and this rule
-   keeps a wrapper from reintroducing the collapse. */
+   keeps a wrapper from collapsing the row. */
 .usage-rows > .tip {
   display: block;
 }
@@ -2795,8 +2752,7 @@ textarea::placeholder {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  /* A value and a control beside it need a visible gap: 6px read as a
-     collision once this slot held a button rather than a number. */
+  /* A value and a control beside it need a visible gap. */
   gap: var(--gap-inline);
   /* The value never shrinks and never wraps. A long label, such as a paper
      title on a statement row, must wrap onto another line rather than
@@ -2814,8 +2770,8 @@ textarea::placeholder {
   overflow-wrap: anywhere;
 }
 
-/* Top-up preset amounts (022e): pick a common amount as a card, or "Other" to
-   type one. A stepper alone made the purchase read as a form. */
+/* Top-up preset amounts: pick a common amount as a card, or "Other" to type
+   one, so the purchase does not read as a form. */
 .topup-presets {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
@@ -2847,10 +2803,8 @@ textarea::placeholder {
   flex: none;
 }
 
-/* A statement line is three facts: what moved, when, and how much. The wallet
-   is now wide enough to give each a column. Packed into one flex row against a
-   560px cap, the description wrapped over three lines while the date and the
-   amount were pushed together on the right. */
+/* A statement line is three facts, what moved, when, and how much, and each
+   gets a column. */
 .usage-line.ledger {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content max-content;
@@ -2980,7 +2934,7 @@ textarea::placeholder {
 }
 /* A screen-level state banner, at the top of the screen with the action on the
    same line. A project in the trash keeps its address, so the screen has to
-   explain its state to whoever followed the link (019). */
+   explain its state to whoever followed the link. */
 .banner {
   display: flex;
   align-items: center;
@@ -3005,7 +2959,7 @@ textarea::placeholder {
   line-height: 1.5;
 }
 /* One session blocking a project's public flip: what is wrong on the left, the
-   link to it on the right. This is 006f's gate as shown to the owner. */
+   link to it on the right. */
 .blocker-row {
   display: flex;
   align-items: center;
@@ -3212,7 +3166,7 @@ textarea::placeholder {
   font-weight: 600;
 }
 
-/* ── Publish wizard (006n) ── */
+/* ── Publish wizard ── */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -3221,9 +3175,6 @@ textarea::placeholder {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  /* --bg-base was never a token, so the whole declaration was invalid, the
-     backdrop rendered fully transparent and the page behind it looked active.
-     The token is --bg. */
   background: color-mix(in srgb, var(--bg) 68%, transparent);
   backdrop-filter: blur(3px);
   animation: om-fade-in 0.16s ease both;
@@ -3464,13 +3415,12 @@ textarea::placeholder {
   }
 }
 
-/* ─── The findings (021b, set as a results section by 047) ──────────────────
+/* ─── The findings ───────────────────────────────────────────────────────────
    The outcome in words leads; the per-component table is the result. Each
-   table is a booktabs table, three rules and nothing else, with its caption
-   above it. The rate never appears without the decomposition beside it, and it
-   sits under the boundary table as that table's footnote, at a footnote's size:
-   the rows are what can be checked, and one large number is what a reader
-   would have to trust. */
+   table has three rules and nothing else, with its caption above it. The rate
+   never appears without the decomposition beside it, and it sits under the
+   boundary table as that table's footnote: the rows are what can be checked,
+   and one large number is what a reader would have to trust. */
 .verdict-pane {
   display: grid;
   gap: 40px;
@@ -3741,8 +3691,8 @@ textarea::placeholder {
   color: var(--fg-1);
 }
 
-/* What the authors released (021c), and the open-science scorecard beside it:
-   two captioned lists between a table's outer rules (047). A dead link and
+/* What the authors released, and the open-science scorecard beside it: two
+   captioned lists between a table's outer rules. A dead link and
    nothing published never share a tone, and each result says so in a word. */
 .released-grid {
   display: grid;
@@ -3815,7 +3765,7 @@ textarea::placeholder {
   }
 }
 
-/* The sessions tab's rail (021e). One card per paper with a graded session,
+/* The sessions tab's rail. One card per paper with a graded session,
    stacked in the rail column. It stays a grid rather than a flex stack so the
    same component can flow into more than one column if it is ever placed
    somewhere wider than the rail. */
@@ -3826,17 +3776,16 @@ textarea::placeholder {
 }
 
 /* ─── The projects list, as columns ────────────────────────────────────────
-   A flex row sizes every cell to its own content, so the trailing badges, for
-   example "1 RUNNING" against "DONE" or "PUBLIC" against "PRIVATE", set where
-   the cells to their left begin, and no two rows lined up. One grid template,
-   shared by the header and every row, keeps the columns aligned.
+   One grid template, shared by the header and every row, keeps the columns
+   aligned whatever each cell holds; a flex row would size every cell to its
+   own content.
 
    The two action slots are reserved rather than conditional: a row with nothing
    to download would otherwise pull the next control into the download column. */
 /* Fluid tracks, not fixed ones: the title never collapses because the columns
    beside it are proportions of the remaining width rather than fixed
-   reservations. Owner and date are not here; they are on the title's meta line
-   (034), which frees the room for the Published column. */
+   reservations. Owner and date are not here; they are on the title's meta
+   line, which frees the room for the Published column. */
 .project-list {
   --project-cols: minmax(0, 2.4fr) minmax(0, 1.1fr) minmax(96px, 0.6fr) 34px 30px 30px 15px;
 }
@@ -3876,7 +3825,7 @@ textarea::placeholder {
   }
 }
 
-/* One line of the project's own description in a list row (038): trimmed to the
+/* One line of the project's own description in a list row: trimmed to the
    row rather than wrapped, because a list is scanned and a paragraph in it makes
    every row a different height. */
 .row-desc {
@@ -3960,9 +3909,8 @@ textarea::placeholder {
   color: var(--pub);
 }
 
-/* A card's own action, at its foot. A button placed beside one field reads as
-   that field's control, which is how Save ended up next to the overdraft floor
-   while it also wrote the start reserve. */
+/* A card's own action, at its foot: a button placed beside one field reads as
+   that field's control, even when it saves the whole card. */
 .card-foot {
   display: flex;
   align-items: center;
@@ -3974,13 +3922,11 @@ textarea::placeholder {
   margin-left: auto;
 }
 
-/* ─── The phone (030) ──────────────────────────────────────────────────────
+/* ─── The phone ────────────────────────────────────────────────────────────
    One breakpoint for the whole app. Below it the rail leaves the flow and
    becomes a drawer, the topbar drops what is duplicated on another screen, and
-   every pane laid out as columns for width becomes rows.
-
-   760px rather than a new number: the project list already folds here, and a
-   768px portrait iPad keeps the rail it has room for. */
+   every pane laid out as columns for width becomes rows. At 760px a 768px
+   portrait iPad keeps the rail it has room for. */
 @media (max-width: 760px) {
   /* ── The rail as a drawer ── */
   /* Out of the flow entirely, so `.main` measures the whole viewport rather
@@ -4001,14 +3947,14 @@ textarea::placeholder {
     border-right: none;
   }
   /* No inset on a phone: 390px has no width to spend on a margin, and the
-     drawer already separates navigation from work (034). */
+     drawer already separates navigation from work. */
   .main {
     margin: 0;
     border: none;
     border-radius: 0;
     box-shadow: none;
   }
-  /* The shadow belongs to the open drawer only: on a closed one it spilled
+  /* The shadow belongs to the open drawer only, so a closed one casts none
      onto the screen's left edge. */
   .rail-open {
     transform: none;
@@ -4067,12 +4013,10 @@ textarea::placeholder {
     gap: 8px;
     padding: 0 12px;
   }
-  /* The controls stay `flex: none`. A shrunk box around children that cannot
-     shrink only moves the overflow inside it, which is what a first attempt
-     here did: the box measured 64px and its two controls still ran to 443px.
-     Instead the bar carries less: the appearance switcher is removed, since it
-     is also on /settings, the button drops its label, and the crumb, which
-     already truncates, absorbs the rest. */
+  /* The controls stay `flex: none`: shrinking a box whose children cannot
+     shrink only moves the overflow inside it. Instead the bar carries less: the
+     appearance switcher is removed, since it is also on /settings, the button
+     drops its label, and the crumb, which already truncates, absorbs the rest. */
   .topbar-actions .segmented {
     display: none;
   }
@@ -4087,7 +4031,7 @@ textarea::placeholder {
     max-width: none;
   }
 
-  /* ── Panes that were columns ── */
+  /* ── Column panes stack ── */
   .screen {
     padding: 18px 14px 40px;
   }
@@ -4095,9 +4039,9 @@ textarea::placeholder {
   .tx-body {
     grid-template-columns: minmax(0, 1fr);
   }
-  /* The transcript's three panes become three stacked sections. Each scrolled
-     itself as a column of a full-height grid; stacked, the screen scrolls, so
-     the panes no longer scroll internally. */
+  /* The transcript's three panes become three stacked sections. On a wide
+     screen each scrolls itself as a column of a full-height grid; stacked, the
+     screen scrolls instead. */
   .tx-body {
     overflow-y: auto;
   }
@@ -4117,12 +4061,11 @@ textarea::placeholder {
     gap: 14px;
   }
   /* ── The list of projects ──
-     The grid does not work at 390px: five tracks minus their fixed 171px
-     leaves about 120px for a paper title, and the column headings collide
-     above it. So the grid is dropped. The row becomes two lines, the project's
-     identity and then its phase and actions, and the heading goes with the
-     columns it named. Owner, date and visibility are shown on the project's
-     own screen instead. */
+     At 390px the grid's fixed tracks leave too little width for a paper title,
+     and the column headings collide above it. So the grid is dropped: the row
+     becomes two lines, the project's identity and then its phase and actions,
+     and the heading goes with the columns it named. Visibility is shown on the
+     project's own screen instead. */
   .project-list > .project-head {
     display: none;
   }
@@ -4158,12 +4101,9 @@ textarea::placeholder {
   }
 
   /* ── The project's own head ──
-     The title shared a flex row with the publish button, which does not shrink,
-     so the title took what was left: an 80px column on a 390px phone, and a
-     header 582px tall on an 844px screen, with the tabs, which are the only way
-     to the rest of the project, below the fold. The button takes its own line
-     here, which gives the title the width, and the title is capped so a long
-     paper name cannot push the tabs off the screen again. */
+     The publish button, which does not shrink, takes its own line, so the
+     title gets the width. The title is capped so a long paper name cannot push
+     the tabs, the only way to the rest of the project, off the screen. */
   .detail-head {
     padding: 14px 14px 0;
   }
@@ -4186,7 +4126,7 @@ textarea::placeholder {
     overflow: hidden;
   }
 
-  /* ── Rows that were one line ──
+  /* ── One-line rows wrap ──
      A flex row of a title plus badges plus a control fits at desktop width
      because the title is the only part that shrinks. At 390px the title cannot
      shrink further and everything after it is pushed off the edge. These rows
@@ -4227,15 +4167,12 @@ textarea::placeholder {
     display: none;
   }
   /* A numeric value must never wrap, because a clipped amount is a wrong
-     amount, which is why `.v` is `flex: none`. But a value that is an address
-     is a long unbreakable string, and on a public profile it ran 412px wide in
-     a 362px card. Numbers keep the rule; text may break.
+     amount, which is why `.v` is `flex: none`. A value that is an address is a
+     long unbreakable string that can outrun a phone's card, so text may break.
 
-     `break-word`, not `anywhere`: `anywhere` lets the browser break a word to
-     make the line box narrower even when the word would have fitted, and the
-     statement's rows showed that: a date and an amount on one line came back
-     as "8/3 /20 25" and "−$ 5. 00". `break-word` breaks only a word that
-     cannot fit on its own, which is the email and nothing else. */
+     `break-word`, not `anywhere`: `anywhere` breaks a word to narrow the line
+     even when the word would have fitted, which splits dates and amounts.
+     `break-word` breaks only a word that cannot fit on its own. */
   .usage-line .v:not(.tabular) {
     flex: 0 1 auto;
     min-width: 0;
@@ -4250,8 +4187,8 @@ textarea::placeholder {
   }
 
   /* A file path is one long unbroken token and the header that names it is an
-     inline-flex row that does not wrap, so at 360 the path ran past the card.
-     The glyph keeps its place; the path breaks. */
+     inline-flex row, so at 360px the path would run past the card. The glyph
+     keeps its place; the path breaks. */
   .eyebrow-ico {
     flex-wrap: wrap;
     min-width: 0;
@@ -4330,8 +4267,8 @@ textarea::placeholder {
 }
 
 /* The offer of the app's source (source.tsx), quiet at the foot of the rail. It
-   folds with the rail's labels, and it renders nothing until the repository is
-   public. */
+   folds with the rail's labels, and it renders nothing while the repository is
+   private. */
 .rail-source {
   display: block;
   padding: 0 10px 8px;
@@ -4344,7 +4281,7 @@ textarea::placeholder {
   text-underline-offset: 3px;
 }
 
-/* The wallet's statement is a table (047): a date and an amount per line,
+/* The wallet's statement is a table: a date and an amount per line,
    between a table's two outer rules, with the amounts in tabular figures so a
    column of them lines up. */
 .usage-rows.statement {
@@ -4362,7 +4299,7 @@ textarea::placeholder {
   color: var(--fg-1);
 }
 
-/* Settings' profile form in the platform's sectioned layout (047): each
+/* Settings' profile form in the platform's sectioned layout: each
    field's name on the left and the field on the right, so the column of
    names is read down and the fields line up. The publish wizard sets the same
    fields in a dialog, which keeps them stacked. On a phone they stack too. */
@@ -4375,7 +4312,7 @@ textarea::placeholder {
   }
 }
 
-/* The environments a Latere session may name (051): one check per line, so a
+/* The environments a Latere session may name: one check per line, so a
    long description wraps under its own box. */
 .policy-checks {
   display: flex;

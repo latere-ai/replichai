@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The shape of verdict.json (021a) as the app reads it, and the three questions
-// the panes ask of it.
-//
-// The types mirror `internal/verdict` field for field. The server validates
-// before serving and refuses a verdict in which an outer-loop claim carries an
-// outcome or a decision omits its sensitivity, so nothing below re-checks those
-// rules. It answers the questions the schema deliberately does not encode:
-// which claims are still open, and how a rate should be read.
+// The shape of verdict.json as the app reads it, and the questions the panes ask
+// of it. The types mirror `internal/verdict` field for field. The server
+// validates before serving, so nothing here re-checks its rules; this answers
+// what the schema does not encode: which claims are still open, and how a rate
+// should be read.
 
 type Loop = 'inner' | 'outer'
 export type ClaimOutcome = 'verified' | 'partial' | 'blocked' | 'not_scored'
@@ -32,8 +29,8 @@ export type Mismatch = {
   note?: string
 }
 
-// mismatches is the only form the app receives. The server reads an older
-// file's single mismatch into this list, so no screen handles two shapes.
+// mismatches is the only form the app receives. The server reads a file's single
+// mismatch into this list, so no screen handles two shapes.
 export type Claim = {
   claim: string
   loop: Loop
@@ -62,19 +59,14 @@ export type Findings = {
 
 // inner is the half of the boundary an outcome means something for. There is no
 // matching outer(): the one place that shows outer rows renders the whole
-// boundary in one table and marks them per row, so a list of them has never
-// been needed.
+// boundary in one table and marks them per row.
 export const inner = (f: Findings): Claim[] => (f.boundary ?? []).filter((c) => c.loop === 'inner')
 
 // unresolved is what did not cleanly reproduce: an inner-loop claim that is
 // blocked, only partly verified, or verified while still disagreeing with the
-// paper. A table of outcomes hides that last case, because a run can verify a
-// claim and still have found a number the paper got wrong, so a mismatch counts
-// as unresolved whatever the outcome beside it says.
-//
-// Outer rows are never included. They were never scored, so there is nothing
-// about them to resolve, and listing them under a heading about what failed
-// would read as an accusation the product does not make.
+// paper. A mismatch counts as unresolved whatever the outcome says, because a
+// run can verify a claim and still find a number the paper got wrong. Outer
+// rows are not scored, so they are never included.
 export const unresolved = (f: Findings): Claim[] =>
   inner(f).filter((c) => c.outcome !== 'verified' || !!c.mismatches?.length)
 
@@ -105,12 +97,10 @@ export const outcomeTone = (o: ClaimOutcome): string =>
 export const verdictTone = (v: FindingsVerdict): string =>
   v === 'reproducible' ? 'var(--ok)' : v === 'partial' ? 'var(--warn)' : 'var(--err)'
 
-// A dead link and nothing published are different findings, and only the first
-// is one an author can still fix, so they never share a tone. A page the run
-// could not fetch is neither: it is a limit of the run and says nothing about
-// the authors, so it is neutral, and darker than nothing published so the two
-// are not read as one. A record rather than a chain of conditions, so a result
-// added to the type does not compile until it has a tone.
+// A dead link is one an author can still fix, so it never shares a tone with
+// nothing published. A page the run could not fetch is a limit of the run, not
+// a finding about the authors, so it is neutral but darker than nothing
+// published. A Record, so a new result does not compile until it has a tone.
 const RELEASE_TONE: Record<ReleaseResult, string> = {
   found: 'var(--ok)',
   partial: 'var(--warn)',

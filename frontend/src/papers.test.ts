@@ -40,7 +40,7 @@ test('a paper nobody has run keeps its row', () => {
   expect(g.papers[1].sessions).toEqual([])
 })
 
-// A paper with no runs can be removed (012) and a job's paper_key is a string,
+// A paper with no runs can be removed and a job's paper_key is a string,
 // not a reference, so a run can outlive the row it started from. Dropping it
 // would lose a session the project paid for.
 test('a session whose paper the project no longer holds is listed, not dropped', () => {
@@ -59,11 +59,9 @@ test('sessions keep the order they were given, newest first', () => {
   expect(g.papers[0].sessions.map((s) => s.id)).toEqual(['new', 'old'])
 })
 
-// The defect this module fixes. repo_name is set when the publishing phase
-// opens, and publishing to failed is a legal transition, so a run that failed
-// mid-publish carries a repository name. Testing the repository alone, as the
-// project's artifacts and verdict tabs did, presented that run as the project's
-// result, ahead of an older session that finished.
+// repo_name is set when the publishing phase opens, and publishing to failed is
+// a legal transition, so a run that failed mid-publish carries a repository
+// name. It must not be presented as a result.
 test('a session that failed while publishing is not a result', () => {
   expect(isGradeable(job('half', A.key, 'failed', 'open-hai/half'))).toBe(false)
 })
@@ -75,9 +73,8 @@ test('a session is gradeable only when it finished and has a repository', () => 
   expect(isGradeable(job('failed', A.key, 'failed'))).toBe(false)
 })
 
-// The bug as reported: two papers, each with a published session, and one view
-// that showed only the newest repository. Both must be reachable, each under
-// its own paper.
+// Two papers, each with a published session: both must be reachable, each
+// under its own paper, not only the newest repository.
 test('two papers each with a published session yield one row apiece', () => {
   const rows = gradeable(groupByPaper([A, B], [job('s2', B.key, 'done', 'open-hai/b'), job('s1', A.key, 'done', 'open-hai/a')]))
   expect(rows.map((r) => [r.paper.key, r.session.id])).toEqual([

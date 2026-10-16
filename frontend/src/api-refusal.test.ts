@@ -5,10 +5,9 @@ import { expect, test } from 'bun:test'
 import { ApiError, getMe, makeProjectPublic } from './api'
 import { refusal } from './errors'
 
-// The client used to read only the `error` field off a refusal and drop the
-// rest of the body. A publish refusal now carries the blocking sessions, and the
-// screen cannot show them if they are dropped here, so the parse is asserted at
-// the client boundary through a real call.
+// A publish refusal carries the blocking sessions in its body, and the screen
+// can show them only if the client keeps them, so the parse is asserted at the
+// client boundary through a real call.
 test('a refusal keeps the blockers the server sent', async () => {
   const real = globalThis.fetch
   globalThis.fetch = (async () =>
@@ -46,11 +45,9 @@ test('a refusal with nothing named is an empty list', async () => {
 })
 
 // A 2xx whose body is not JSON, such as the dev server's own HTML for a path it
-// does not proxy or a gateway page in front of the API, used to reach r.json()
-// and reject with a SyntaxError. Nothing downstream recognized that error, so
-// every screen reported it as "you appear to be offline", which is wrong: the
-// network answered. It is now reported as a server fault, with its status and a
-// code, so the mappers can name it as one.
+// does not proxy or a gateway page in front of the API, is a server fault, not
+// an offline network: the network answered. It is reported with its status and
+// a code, so the mappers can name it as one.
 test('a 2xx that is not JSON is a server fault, not a lost connection', async () => {
   const real = globalThis.fetch
   globalThis.fetch = (async () =>

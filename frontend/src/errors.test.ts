@@ -27,10 +27,8 @@ const t = ((key: string, vars?: Record<string, string>) =>
 const wallet = { wallet: 0, start_reserve: 5 * MICRO }
 const funded = { wallet: 40 * MICRO, start_reserve: 5 * MICRO }
 
-// A create records papers and starts nothing (012), so the only thing that can
-// go wrong per reference is the reference. Everything the old outcome had to
-// explain, a paper refused for credits, a partial batch, a project rolled back
-// because nothing started, was removed with the enqueue that caused it.
+// A create records papers and starts nothing, so the only thing that can go
+// wrong per reference is the reference.
 test('a create reports the references the server did not recognize', () => {
   const data: CreatedProject = {
     project_id: 'p1',
@@ -47,7 +45,7 @@ test('a create reports the references the server did not recognize', () => {
   expect(out.rows.has('https://doi.org/10/a')).toBe(false)
 })
 
-// A project may start empty (036), so a create with no papers at all is the
+// A project may start empty, so a create with no papers at all is the
 // ordinary case rather than an error; there is nothing to report per reference
 // because there were none.
 test('a create with no papers is a clean create', () => {
@@ -76,7 +74,7 @@ test('a clean create says nothing', () => {
   expect(out.rows.size).toBe(0)
 })
 
-// A create can no longer be refused for money, so a non-201 is a real fault and
+// A create cannot be refused for money, so a non-201 is a real fault and
 // is reported as one rather than blamed on the papers.
 test('a failed create names a fault, not the references', () => {
   expect(createOutcome(t, 403, {}).banner).toBe('errNotAllowed')
@@ -86,8 +84,7 @@ test('a failed create names a fault, not the references', () => {
   expect(createOutcome(t, 500, {}).ok).toBe(false)
 })
 
-// Starting a session is where every refusal a create used to report per paper
-// now lives, and the one place money is asked about.
+// Starting a session is the one place money is asked about.
 test('a refused start names the one thing that went wrong', () => {
   expect(startErrLabel(t, new ApiError(409, 'active_session'), funded)).toBe('activeSession')
   expect(startErrLabel(t, new ApiError(402, 'no_credits'), funded)).toBe('errNoCredits')
@@ -118,8 +115,8 @@ test('adding and removing a paper never mention credits', () => {
   expect(removePaperErrLabel(t, new ApiError(403, 'not_lead'))).toBe('errRemoveNotLead')
 })
 
-// 035: each refusal has a different next step, finish the run, withdraw the
-// publication or pick another project, so they must not collapse into one
+// Each refusal has a different next step (finish the run, withdraw the
+// publication, pick another project), so they must not collapse into one
 // "could not move". The two 409s in particular differ: one is about timing,
 // the other about the destination.
 test('moving a paper names the specific refusal', () => {
@@ -132,16 +129,16 @@ test('moving a paper names the specific refusal', () => {
   expect(movePaperErrLabel(t, new TypeError('offline'))).toBe('errOffline')
 })
 
-// A failed session used to print the worker's own error text on the row:
-// "put replication-manifest.json in latere/x: unexpected status 422". Each
-// class of failure now reads as a sentence, and points at who can move it.
+// The worker's raw error text, such as "put replication-manifest.json in
+// latere/x: unexpected status 422", never reaches the row. Each class of
+// failure reads as a sentence, and points at who can move it.
 test('a failed run reads as a sentence, not a Go error', () => {
   expect(sessionFailureText(t, 'resolve: "foo" is not a DOI, arXiv ID, or URL')).toBe('failUnresolvable')
   expect(sessionFailureText(t, 'lookup failed: arXiv 2401.00001: context deadline exceeded')).toBe('failSource')
   expect(sessionFailureText(t, 'secret in content: results/key.pem contains a private key')).toBe('failSecret')
   expect(sessionFailureText(t, 'put replication-manifest.json in latere/x: unexpected status 422')).toBe('failPublish')
   expect(sessionFailureText(t, 'project is over its overdraft floor')).toBe('failCredits')
-  // Anything unrecognised still says something true, and still says nothing
+  // Anything unrecognized still says something true, and still says nothing
   // about our internals.
   expect(sessionFailureText(t, 'nil pointer dereference in grade step')).toBe('failGeneric')
   // A stack under a panic names the packages it passed through, the GitHub

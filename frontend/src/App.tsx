@@ -17,13 +17,12 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null)
   const [meUnavailable, setMeUnavailable] = useState(false)
   const { view, navigate } = useRouter()
-  // The tab follows the screen from the second one onwards; the first one's head
-  // was written by the server (042a).
+  // The tab follows the screen from the second one onwards; the server writes
+  // the first one's head.
   useHead(view, i18n.t, me === null ? null : me.authenticated)
 
   // refreshMe re-reads the identity, and with it the wallet. It is called after
-  // anything that spends allowance, so the header never shows a stale surplus
-  // (006l).
+  // anything that spends allowance, so the header never shows a stale balance.
   const refreshMe = useCallback(() => {
     getMe().then(setMe).catch(() => {})
   }, [])
@@ -42,14 +41,11 @@ export default function App() {
 
   if (meUnavailable) return <AuthUnavailable i18n={i18n} onRetry={loadMe} />
   if (me === null) return <div className="center-load">…</div>
-  // The registry and everything under it are readable signed out (028), and they
-  // render in the app's own frame rather than a preview of it, because a reader
-  // who came from a paper is reading the work, not being shown a product sample.
+  // The registry and everything under it are readable signed out, in the app's
+  // own frame, because a reader who came from a paper is reading the work.
   //
-  // Every other screen needs an account, and each is an address somebody can
-  // arrive at directly, from an invitation mail pointing at a project or a
-  // shared link to a session. Sign-in returns to that address rather than to
-  // the dashboard.
+  // Every other screen needs an account. Each is an address somebody can arrive
+  // at directly, from an invitation or a shared link, so sign-in returns to it.
   if (!me.authenticated && !isPublicView(view)) return <Landing i18n={i18n} next={window.location.pathname} theme={theme} />
   if (!me.authenticated) return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
   if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />

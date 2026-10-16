@@ -4,9 +4,8 @@
 import { expect, test } from 'bun:test'
 import { isPublicView, pathOf, viewOf, type View } from './routes'
 
-// Every screen, with the address it lives at. This table is the spec's route
-// table; if a screen is added without a URL, the round-trip test below is where
-// it shows up.
+// Every screen, with the address it lives at. A screen added without a URL
+// shows up in the round-trip test below.
 const table: [string, View][] = [
   ['/', { name: 'projects' }],
   ['/registry', { name: 'public' }],
@@ -30,14 +29,14 @@ test('every address resolves to its screen', () => {
 })
 
 // A handle arrives percent-encoded, and an encoding can be cut short by a link
-// truncated in a chat or a typo in the bar. decodeURIComponent throws on one, and
-// it used to throw inside the router's initial state, which took the whole app
-// down to a white screen. A malformed address is an address this app does not
-// have, and says so at the address that was typed.
+// truncated in a chat or a typo in the bar. decodeURIComponent throws on one,
+// and a throw inside the router's initial state would take the whole app down
+// to a white screen. A malformed address is an address this app does not have,
+// and says so at the address that was typed.
 test('a malformed handle encoding is not found rather than fatal', () => {
   expect(viewOf('/u/%E0%A4%A')).toEqual({ name: 'notfound', path: '/u/%E0%A4%A' })
   expect(viewOf('/u/%')).toEqual({ name: 'notfound', path: '/u/%' })
-  // A well-formed encoding still decodes and lowercases, as before.
+  // A well-formed encoding still decodes and lowercases.
   expect(viewOf('/u/Ada%20Lovelace')).toEqual({ name: 'profile', handle: 'ada lovelace' })
 })
 
@@ -60,7 +59,7 @@ test('the transcript tab is the session path itself', () => {
 })
 
 // The account tab is settings' own bare path, and a segment that names no tab is
-// dropped to it, the same rule a project's unknown tab follows (024a).
+// dropped to it, the same rule a project's unknown tab follows.
 test('the account tab is the settings path itself, and an unknown tab drops to it', () => {
   expect(pathOf({ name: 'settings', tab: 'account' })).toBe('/settings')
   expect(viewOf('/settings')).toEqual({ name: 'settings' })
@@ -68,8 +67,8 @@ test('the account tab is the settings path itself, and an unknown tab drops to i
 })
 
 // A project has no repository of its own to browse, because there are as many
-// as it has published sessions, so the tab that had to pick one is gone (015). The
-// address falls back to the project, as any unrecognised segment does.
+// as it has published sessions, so there is no repository tab. The address
+// falls back to the project, as any unrecognized segment does.
 test('the retired project artifacts address is just the project', () => {
   expect(viewOf('/p/abc/artifacts')).toEqual({ name: 'project', id: 'abc' })
 })
@@ -105,18 +104,17 @@ test('a trailing slash is the same address', () => {
 })
 
 // A handle is stored and compared lowercased, and a browser hands it back
-// percent-encoded (006r).
+// percent-encoded.
 test('a handle is normalized the way the profile stores it', () => {
   expect(viewOf('/u/Ada')).toEqual({ name: 'profile', handle: 'ada' })
   expect(viewOf('/u/' + encodeURIComponent('ada-lovelace'))).toEqual({ name: 'profile', handle: 'ada-lovelace' })
 })
 
-// Anything else is an address this app does not have, and says so at the address
-// it was asked for (042c), not the dashboard under a corrected URL, which was a
-// page nobody asked for and, to a crawler, an unbounded set of URLs answering
-// 200 with identical content. Note the API paths in this list: reaching them in a
-// browser is answered by the server, never by this mapping, so the mapping must
-// not pretend to own them.
+// Anything else is an address this app does not have, and says so at the
+// address it was asked for rather than showing the dashboard, which to a
+// crawler would be an unbounded set of URLs answering 200 with identical
+// content. The API paths in this list are answered by the server in a browser,
+// never by this mapping, so the mapping must not pretend to own them.
 test('an address we do not own is not found, and keeps its address', () => {
   const strays = [
     '/nonsense',
@@ -130,7 +128,7 @@ test('an address we do not own is not found, and keeps its address', () => {
     '/me',
     '/p/abc/s/j/one/too/many',
     // A false positive here would render a stranger's page instead of the
-    // workspace, which is why the profile pattern claims one segment only (006r).
+    // workspace, which is why the profile pattern claims one segment only.
     '/u/ada/extra',
     '/users/ada',
   ]
@@ -158,10 +156,10 @@ test('no screen is shadowed by an API prefix', async () => {
   expect(shadowed).toEqual([])
 })
 
-// 028: which addresses a reader with no account is shown, rather than sent to
-// the landing from. The four public views, and since 042c the screen for an
-// address that does not exist: a signed-out reader who mistypes has asked for
-// nothing private, and answering them with the landing hides the mistake.
+// Which addresses a reader with no account is shown, rather than sent to the
+// landing from: the four public views, and the screen for an address that does
+// not exist. A signed-out reader who mistypes has asked for nothing private, and
+// answering them with the landing hides the mistake.
 test('the public views are the registry, a project, a session, a profile, and a miss', () => {
   const open: View[] = [
     { name: 'public' },

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The app's frame (013, 028, 030): the rail with its destinations, the top bar
+// The app's frame: the rail with its destinations, the top bar
 // with its breadcrumb and wallet, the screen the address names, and the three
 // full-page states outside it, namely auth unavailable, no access, and not found.
 
@@ -52,9 +52,9 @@ export function NoAccess({ i18n, email }: { i18n: I18n; email: string }) {
           <Seams i18n={i18n} k="noAccessTitle" />
         </h2>
         <p>{i18n.t('noAccessBody', { email })}</p>
-        {/* Signing out clears a session minted before sign-in was opened, and
-            re-runs the admission with a fresh identity, which is the remedy
-            for every cause of this screen except an actual revocation. */}
+        {/* Signing out clears the session and re-runs admission with a fresh
+            identity, which fixes every cause of this screen except an actual
+            revocation. */}
         <a className="btn ghost" href="/logout" style={{ justifyContent: 'center' }}>
           <Ico name="logOut" size={13} /> {i18n.t('signOut')}
         </a>
@@ -117,14 +117,13 @@ export function Shell({
 }) {
   const { t } = i18n
   const setView = navigate
-  // The same frame serves a reader with no account (028). What changes is what is
-  // in it: the destinations that need one are absent rather than disabled, and
-  // the rail's foot offers the way in where the account would be. Everything
-  // conditional below reads this one flag.
+  // The same frame serves a reader with no account: the destinations that need
+  // one are absent rather than disabled, and the top bar offers the sign-in.
+  // Everything conditional below reads this one flag.
   const signedIn = me.authenticated
   const signInHref = `/login?next=${encodeURIComponent(window.location.pathname)}`
   // The top-up modal's open-state lives here, so the wallet pill, the wallet
-  // screen, and later the frozen banner (022f) all open the one dialog.
+  // screen, and the frozen banner all open the one dialog.
   const [topUp, setTopUp] = useState(false)
   const openProject = (id: string, title?: string, tab?: ProjectTab) => setView({ name: 'project', id, title, tab })
   const openSession = (jobId: string, projectId: string, ref?: string, projectTitle?: string, tab?: SessionTab) =>
@@ -151,25 +150,23 @@ export function Shell({
 
   // The rail folds to its icons and stays that way across reloads. Folding is a
   // preference about the chrome rather than a destination, so it is not in the
-  // address (013), and a shared link opens at the width its reader last chose.
+  // address, and a shared link opens at the width its reader last chose.
   const { folded, toggle: toggleRail } = useSidebar()
   const foldLabel = folded ? t('unfoldSidebar') : t('foldSidebar')
 
-  // How many projects the rail's Projects row carries. It is read from the shared
-  // list rather than fetched here: the rail outlives every screen, so the number
-  // has to survive the list being unmounted, and it has to change when a project
-  // is thrown away from the screen beside it, which a private read of the list
-  // on every change of screen did not do.
+  // How many projects the rail's Projects row carries, read from the shared
+  // list: the rail outlives every screen, and the count has to change when a
+  // project is thrown away from the screen beside it.
   const projectCount = useProjects(signedIn)?.length
 
   // Below the phone breakpoint the rail is an overlay instead of a column, and
-  // this is what holds it open (030). It is not the fold and never persists;
+  // this is what holds it open. It is not the fold and never persists;
   // see `useDrawer`. Above the breakpoint `.rail-open` paints nothing, so the
   // same markup serves both widths.
   const drawer = useDrawer()
   // Opening a destination dismisses the drawer, because on a phone it is
   // covering the screen being navigated to. Every rail destination goes through
-  // `setView` (013), so wrapping it once covers all of them.
+  // `setView`, so wrapping it once covers all of them.
   const goto = useCallback(
     (v: View) => {
       drawer.hide()
@@ -210,11 +207,9 @@ export function Shell({
             )}
           </button>
           {/* The drawer's own way out, at the same corner. It is a second
-              control rather than a second meaning for the one above, because
-              which one is showing has to be decided by the width alone: a
-              button that read the drawer's state would go dead on a window
-              resized back to desktop while the drawer was open. CSS shows
-              exactly one of the two, so there is no state to go stale. */}
+              control rather than a second meaning for the one above, so CSS
+              shows exactly one of the two by width alone, and a window resized
+              to desktop with the drawer open never shows a dead button. */}
           <button className="rail-close-btn" aria-label={t('closeNav')} onClick={drawer.hide}>
             <Ico name="x" size={16} w={2.2} />
           </button>
@@ -281,7 +276,7 @@ export function Shell({
                 onClick={() => goto({ name: 'trash' })}
               />
               {/* Settings sits with Trash at the foot: personal chrome, not a
-                  workspace destination. Active on any of its sub-tabs (024a). */}
+                  workspace destination. Active on any of its sub-tabs. */}
               <NavItem
                 label={t('navSettings')}
                 icon="settings"
@@ -297,10 +292,9 @@ export function Shell({
           <SourceLink i18n={i18n} className="nav-label rail-source" />
           {signedIn && (
             <button className="user-btn" data-tip={folded ? me.name || me.email : undefined} data-tip-side="right" onClick={() => goto({ name: 'settings' })}>
-              {/* Sized to the meta stack of name, address and tier beside it, not
-                  to a default: a 26px square against three rows of text left the
-                  row bottom-heavy and the card's right half empty. Folded there is
-                  no stack, and 38px would not clear the rail's own padding. */}
+              {/* Sized to the name, address and tier stack beside it. Folded
+                  there is no stack, and 38px would not clear the rail's own
+                  padding. */}
               <Avatar me={me} size={folded ? 30 : 38} />
               <span className="user-meta">
                 {me.name && <span className="user-name">{me.name}</span>}
@@ -314,11 +308,10 @@ export function Shell({
 
       <div className="main">
         <header className="topbar">
-          {/* The way back to the rail once it has left the flow. It is in the
-              markup at every width and hidden by CSS above the breakpoint, so
-              the shell is one tree. It leads the bar rather than joining the
-              controls on the right, because it is navigation rather than an
-              action on this screen. */}
+          {/* Opens the rail on a phone. It is in the markup at every width and
+              hidden by CSS above the breakpoint, so the shell is one tree. It
+              leads the bar because it is navigation, not an action on this
+              screen. */}
           <button className="rail-open-btn" aria-label={t('openNav')} aria-expanded={drawer.open} onClick={drawer.show}>
             <Ico name="menu" size={17} w={2} />
           </button>
@@ -352,7 +345,7 @@ export function Shell({
         </header>
 
         {/* A clawed-back payment left the wallet negative: the account is
-            view-only until it is topped back up (022d/022f). */}
+            view-only until it is topped back up. */}
         {me.frozen && (
           <div className="banner warn" data-test="frozen-banner">
             <Ico name="alert" size={14} />
@@ -382,8 +375,8 @@ export function Shell({
         {view.name === 'project' && (
           <ProjectScreen
             // Remounted per project: every piece of state here belongs to one
-            // project, and reusing the instance across two of them showed the
-            // previous project's papers and money until the fetch landed.
+            // project, and a reused instance would show the previous project's
+            // papers and money until the fetch landed.
             key={view.id}
             i18n={i18n}
             me={me}
@@ -474,7 +467,7 @@ function Breadcrumb({ i18n, view, setView, signedIn }: { i18n: I18n; view: View;
   )
 }
 
-// NotFound is an address this app does not have (042c). The server answered 404
+// NotFound is an address this app does not have. The server answered 404
 // for it and served the app anyway, so this screen is what that status looks
 // like to a person: it keeps the address they typed rather than correcting it,
 // and offers the two places worth going next.

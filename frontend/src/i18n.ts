@@ -3,11 +3,10 @@
 
 import { useCallback, useMemo, useState } from 'react'
 
-// English only for now. To add a language, add its code to the Lang union and a
-// matching block to `strings`. The translation key type TKey is derived from
-// the English block below, so TypeScript requires the new block to translate
-// every string and a locale cannot ship half-done. A language switcher is then
-// a two-line change.
+// The app ships English only. To add a language, add its code to the Lang union
+// and a matching block to `strings`. The translation key type TKey is derived
+// from the English block below, so TypeScript requires the new block to
+// translate every string.
 export type Lang = 'en'
 
 // I18n is what a component needs to render text: the chosen language, a setter,
@@ -15,23 +14,18 @@ export type Lang = 'en'
 // error-copy module can type against it without importing the whole app.
 export type I18n = ReturnType<typeof useI18n>
 
-// en is the source of truth: every key the product uses, in English. A new
-// locale is typed against its keys, so it cannot omit one.
-// A `|` in a heading is a seam: a place where the writer allows the line to
-// break. Everything between two seams is rendered unbreakable, so a heading
-// breaks at a clause and never mid-phrase. CSS cannot make that decision: it
-// breaks at whatever space overflows, and `text-wrap: balance` only equalises
-// the resulting line lengths. A translator moving the sentence into another
-// language moves the clause with it, which no stylesheet can follow. Only
-// headings carry seams; body copy wraps wherever it needs to.
+// en is the source of truth: every key the product uses, in English.
+//
+// A `|` in a heading is a seam: a place where the line may break. Everything
+// between two seams renders unbreakable, so a heading breaks at a clause and
+// never mid-phrase, which CSS cannot decide on its own, and a translator moves
+// the seam along with the clause. Only headings carry seams.
 const en = {
-    // auth
-    // The landing (017). The claim is a question because that is the question
-    // the product answers, and the lead says what it does that nothing else in
-    // the field does: it runs the paper. The two titles label the inner/outer
-    // boundary in the hero legend, which is shown to readers before they have
-    // an account. The card promises only what 006q made true: signing in is
-    // open and a session is what spends.
+    // landing and sign-in
+    // The landing's hero. The claim is a question because that is the question
+    // the product answers, and the lead says what it does: it runs the paper.
+    // The loop titles label the inner/outer boundary in the hero legend, shown
+    // to readers before they have an account.
     landingClaim: 'Does the paper|reproduce?',
     landingLead:
       'Give ReplicHAI a paper. It finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper does not state, and returns a verdict with its evidence.',
@@ -44,10 +38,7 @@ const en = {
     landingVerdictTitle: 'The verdict',
     landingVerdictBody:
       'Written by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning rather than only the number.',
-    // The landing as a place (029): the section headings, the figure captions,
-    // and the close. The claim, the lead, and the three points above are 017's
-    // and are reused verbatim; the argument did not change, only the space it
-    // has.
+    // The landing's sections: their headings and captions, and the close.
     lpLoopsTitle: 'One loop re-runs.|The other needs people.',
     lpLoopsCaption:
       'The algorithm can be re-run, so it is drawn as a closed loop. The study with people is drawn open: its evidence comes from people, and the audit does not stand in for them.',
@@ -87,10 +78,9 @@ const en = {
     lpStripCaption: 'Signed, public, and readable without an account. Open one to see what a finished audit looks like.',
     lpCloseTitle: 'Read one|before you sign up.',
     lpCloseBody: 'Everything published here is public: the verdict, the repository, and the transcript that produced them.',
-    // The rebuild (033). 029's copy above is the argument and is reused
-    // untouched; everything here belongs to a band 029 did not have. The
-    // eyebrows name what a band is about. A reader scanning the page reads
-    // only those, so each one is a noun, not a verb.
+    // Eyebrows and step labels. A reader scanning the page reads only the
+    // eyebrows, so each one names what its band is about, as a noun rather than
+    // a verb.
     lpEyebrowAudited: 'Reproducibility audits',
     lpStepN: 'Step {n}',
     lpStripEyebrow: 'The registry',
@@ -128,11 +118,10 @@ const en = {
     lpPlateCommit3: 'add UNVERIFIED.md with 3 blockers',
     lpPlateManifest: 'Manifest',
     lpPlateSigned: 'Signed by a named researcher. Transcript committed next to the work.',
-    // The verdict panel. It is the strongest thing this product has to show and
-    // it is also a fabrication, so it says so: an Example marker, and a paper key
-    // under the unregistered 10.0000 prefix that resolves to nothing. A made-up
-    // verdict against a real DOI is the exact failure this product exists to
-    // catch, and it would be on our own front page.
+    // The example verdict panel. It is invented, so it says so: an Example
+    // marker, and a paper key under the unregistered 10.0000 prefix that
+    // resolves to nothing. A made-up verdict against a real DOI is the failure
+    // this product exists to catch.
     lpDemoTitle: 'Verdict',
     lpDemoExample: 'Example',
     lpDemoPublished: 'Published',
@@ -169,9 +158,8 @@ const en = {
     lpWhoSocialBody: 'A model and a survey instrument, published together and checked separately.',
     lpWhoElse: 'And anywhere else',
     lpWhoElseBody: 'a finding rests on what people did.',
-    // What it costs. What 006q and 011 made true and nothing more: no prices.
-    // The rate card is a database row behind an admin endpoint, and a number
-    // typed here would be a number that drifts.
+    // What it costs, without prices: the rate card is a database row behind an
+    // admin endpoint, and a number typed here would drift from it.
     lpCostEyebrow: 'What it costs',
     lpCostTitle: 'You pay|per session.',
     lpCostCaption:
@@ -182,9 +170,8 @@ const en = {
     lpCostFundBody: 'Credits you buy go into your wallet. You allocate them to a project, and sessions spend from the project.',
     lpCostRun: 'Run',
     lpCostRunBody: 'A reserve is held while a session runs. Whatever it does not spend is returned when it finishes.',
-    // Figure 1 and the two tables (047). A figure is numbered and captioned the
-    // way a journal sets one: the number, a title that states the claim, then
-    // what each panel shows. The panel letters are the caption's handles.
+    // The boundary figure and the captions of the two landing tables. The
+    // figure's title states the claim and its body says what is drawn.
     figAlt: 'An inner loop, a closed ring that a marker goes round once per run, inside an outer loop, an open ring that nothing travels.',
     figImplement: 'Implement',
     figRerun: 'Execute',
@@ -216,13 +203,11 @@ const en = {
     authUnavailableTitle: 'ReplicHAI|is unavailable',
     authUnavailableBody: 'We couldn’t check your session. You may be offline, or the service may be temporarily unavailable.',
     retry: 'Try again',
-    // Sign-in is open (006q), so this screen is no longer "wait for an admin".
-    // It is not only "you were banned" either: a session minted before the
-    // change, an address the identity provider did not return, and an address
-    // already bound to another account all land here too. Naming a ban would
-    // accuse somebody of something that did not happen, so the copy says only
-    // what is certain, that there is no access right now, and offers the two
-    // things that help.
+    // A signed-in account with no access. A revoked account lands here, but so
+    // do a stale session, an address the identity provider did not return, and
+    // an address already bound to another account. Naming a ban could accuse
+    // somebody of something that did not happen, so the copy says only that
+    // there is no access right now, and offers the two things that help.
     noAccessTitle: 'No access|to this account',
     noAccessBody:
       'You are signed in as {email}, but this account cannot use ReplicHAI right now. Sign out and back in. If that does not help, a platform admin has revoked access and can restore it.',
@@ -235,7 +220,7 @@ const en = {
     foldSidebar: 'Collapse sidebar',
     unfoldSidebar: 'Expand sidebar',
     // On a phone the rail is a drawer rather than a column, so the same head
-    // control closes it and a hamburger in the topbar brings it back (030).
+    // control closes it and a hamburger in the topbar brings it back.
     openNav: 'Open navigation',
     closeNav: 'Close navigation',
     settings: 'Settings',
@@ -244,7 +229,7 @@ const en = {
     settingsProfile: 'Profile',
     access: 'Access',
     loading: 'Loading…',
-    // platform admin (006k)
+    // platform admin
     platform: 'Platform',
     navAdmin: 'Admin',
     adminIntro:
@@ -293,7 +278,7 @@ const en = {
     walletOf: 'What {email} has left in their wallet to allocate to a project.',
     adminError: 'That change was not saved. Try again in a moment.',
     adminNotAdmin: 'Only a platform admin can change this.',
-    // credits (011)
+    // credits
     walletTitle: 'Your credits. A project needs {reserve} available before a session can start. Allocate credits from here to fund one.',
     // Nothing to spend and nothing ever spent: a new account, not one that has
     // run down. Showing \u201c$0.00\u201d to somebody who never had any reads as a
@@ -302,7 +287,7 @@ const en = {
     walletEmptyTitle: 'This account has no credits yet. Ask a platform admin to add some, or work in a project somebody else has funded.',
     errNoCredits: 'This project is out of credits. Allocate more to it to continue.',
     errNoCreditsAtAll: 'You have no credits yet. Ask a platform admin to add some, or work in a project somebody else has funded.',
-    // buying credits (022e)
+    // buying credits
     beta: 'Beta',
     navWallet: 'Wallet',
     walletHeading: 'Your wallet',
@@ -331,7 +316,7 @@ const en = {
     errPaymentsOff: 'Card payments are not set up on this deployment yet.',
     errBelowMin: 'That is below the minimum top-up.',
     checkoutFailed: 'Couldn\u2019t start the payment. Try again in a moment.',
-    // the frozen account (022d/022f)
+    // the frozen account
     frozenBanner: 'A refund or chargeback left your balance negative, so your account is view-only. Top up to lift the hold.',
     frozenControl: 'Your account is on hold. Top up to lift it.',
     errFrozen: 'Your account is on hold after a refund left the balance negative. Top up to lift it.',
@@ -380,22 +365,22 @@ const en = {
     ledgerAllocate: 'Allocated to a project',
     ledgerReclaim: 'Taken back from a project',
     ledgerOther: 'Adjustment',
-    // The named forms (024b): a prefix the project name follows, linked when the
-    // project still exists and plain text once it is purged.
+    // The named forms: a prefix the project name follows, linked when the project
+    // still exists and plain text once it is purged.
     ledgerAllocateTo: 'Allocated to',
     ledgerReclaimFrom: 'Taken back from',
-    // The merged list (018). Ownership is shown in the row rather than being a
-    // place to look, so the owner of your own project reads "You", the common
-    // case, which nobody should have to read a name to recognize.
+    // The project list. Ownership is shown in the row, and the owner of your own
+    // project reads "You", the common case, which nobody should have to read a
+    // name to recognize.
     colPaper: 'Paper',
     colStatus: 'Status',
     colVisibility: 'Visibility',
     ownerYou: 'You',
     ownerUnknown: '—',
     noProjects: 'No projects yet. Create one to start an audit.',
-    // The boundary band (034). It replaces three counters, two of which were the
-    // list below them counted. This is the product's primary number, and it is
-    // never a bare rate: a count, its denominator, and what the remainder is.
+    // The evidence band above the project list. This is the product's primary
+    // number, and it is never a bare rate: a count, its denominator, and what
+    // the remainder is.
     evidenceEyebrow: 'Published evidence',
     evidenceAcross: 'across {n} projects',
     evidenceAcrossOne: 'across 1 project',
@@ -406,9 +391,8 @@ const en = {
     creditsEyebrow: 'Your credits',
     creditsInWallet: 'in your wallet',
     creditsNote: 'Sessions spend from the project you allocate credits to, not from the wallet.',
-    // The filter (034). 018 removed the mine/shared tabs because which of the two
-    // a project was is not a fact the reader chose. This is the opposite: a
-    // narrowing the reader picks and can unpick, over rows already on screen.
+    // The list filter: a narrowing the reader picks and can unpick, over rows
+    // already on screen.
     filterProjects: 'Filter by paper or owner',
     filterAll: 'All',
     filterRunning: 'Running',
@@ -420,12 +404,11 @@ const en = {
     publishedNone: 'Nothing published yet',
     publishedOf: '{n} of {total}',
     publishedUnit: 'sessions',
-    // The trash (019). Two steps, because the dangerous one has to be
-    // deliberate: the row action is reversible and says so, and the permanent
-    // one states what it does not remove: the repositories close, they are not
-    // destroyed.
     download: 'Download everything',
 
+    // The trash. Two steps, because the dangerous one has to be deliberate: the
+    // row action is reversible and says so, and the permanent one states what it
+    // does not remove: the repositories close, they are not destroyed.
     navTrash: 'Trash',
     trashIntro:
       'Projects you moved to the trash. They are hidden from you and your collaborators, and everything in them is kept until you delete them permanently.',
@@ -455,7 +438,7 @@ const en = {
     purgeFailed: 'Couldn’t delete this project. Try again in a moment.',
     trashedBanner: 'This project is in the trash. Nothing can be changed or started here until you restore it.',
 
-    // Removing one session (032)
+    // Removing one session
     deleteSession: 'Delete session',
     deleteSessionTitle: 'Delete this session?',
     deleteSessionBody:
@@ -469,7 +452,7 @@ const en = {
     blockerDeleteHint: 'Delete it to publish the rest of this project.',
     sessionCount: '{n} sessions',
     sessionCountOne: '1 session',
-    // A row cites the first paper a project holds, and counts the others (043).
+    // A row cites the first paper a project holds, and counts the others.
     morePapers: '{n} more papers',
     morePapersOne: '1 more paper',
     private: 'Private',
@@ -479,17 +462,17 @@ const en = {
       'Reproductions that their owners have signed off and made public. Each one includes its sessions and the full transcript that produced them, so you can check the reasoning rather than only the number.',
     noPublic: 'No public projects yet.',
     signedBy: 'Signed by',
-    // What a reader with no account gets at an address that is not public (028).
-    // The server answers one 404 for private, withdrawn, and never-existed, so
-    // the copy claims none of them; it says what is certain and offers the two
-    // things that help.
+    // What a reader with no account gets at an address that is not public. The
+    // server answers one 404 for private, withdrawn, and never-existed, so the
+    // copy claims none of them; it says what is certain and offers the two things
+    // that help.
     notPublicTitle: 'Not public',
     notPublicBody: 'This address is not public. If you have been given access to it, sign in and you will return here.',
     notPublicBodyIn: 'This address is not public, or it is not shared with your account.',
     browseRegistry: 'Browse the registry',
-    // An address this app does not have (042c). It says what happened without
-    // guessing why, whether a typo, a truncated link, or a page that was never
-    // here, and offers the two places worth going next.
+    // An address this app does not have. It says what happened without guessing
+    // why, whether a typo, a truncated link, or a page that was never here, and
+    // offers the two places worth going next.
     notFoundTitle: 'No page|at this address',
     notFoundBody: 'There is no page at this address on ReplicHAI. The link may be incomplete, or the page may never have existed.',
     notFoundHome: 'Go to your projects',
@@ -501,9 +484,9 @@ const en = {
     projectNameLabel: 'Project name',
     projectNamePlaceholder: 'Optional. Left blank, the project is named after the first paper.',
     papersLabel: 'Papers',
-    // Optional since 036: a create records papers and starts nothing, so the
-    // container is useful before it has any. Said on the label, because a
-    // reader deciding what to type is looking at the label, not at an error.
+    // Optional: a create records papers and starts nothing, so the container is
+    // useful before it has any. Said on the label, because a reader deciding
+    // what to type is looking at the label, not at an error.
     papersOptional: 'Optional. You can add papers from inside the project.',
     paperPlaceholder: 'arXiv link · DOI · ACM DL',
     addPaper: 'Add another paper',
@@ -517,7 +500,7 @@ const en = {
     creatingProject: 'Creating…',
     resolveFailed: 'We could not reach the site this paper is on. It may be down or busy. Try again in a moment.',
     unresolvablePaper: 'We don’t recognize this link. Paste a DOI, an arXiv link, or the paper’s page on a publisher site.',
-    // One mistake with two fixes, so it names both (036).
+    // One mistake with two fixes, so it names both.
     nameOrPaper: 'Name the project, or add a paper to name it after.',
     // The short forms sit directly under the paper they belong to, so they only
     // have to say what about it; the row already says which one.
@@ -535,9 +518,9 @@ const en = {
     errPaperExists: 'This project already has that paper.',
     startSession: 'Start replication',
     startingSession: 'Starting…',
-    // The model tier a session runs on (031). The names say what the choice is
-    // for, capability against cost, rather than naming a vendor's model, which
-    // changes under the same tier on every release.
+    // Where a session runs and at what effort. The effort names say what the
+    // choice is for, capability against cost, rather than naming a vendor's
+    // model, which changes under the same tier on every release.
     modelTier: 'Runs on',
     modelTierHint: 'Where the next session you start runs, and how much effort it spends. Quick is cheapest; Sustained runs the strongest models.',
     runtimePickLabel: 'Runs on {choice}. Change where the next session runs',
@@ -564,7 +547,7 @@ const en = {
     removePaperFailed: 'Couldn’t remove that paper. Try again in a moment.',
     errPaperHasSessions: 'This paper has sessions, so it cannot be removed from the project.',
     errRemoveNotLead: 'Only a project lead can remove a paper.',
-    // Moving a paper to another project (035), with its replications.
+    // Moving a paper to another project, with its replications.
     movePaper: 'Move to another project',
     movePaperTitle: 'Move this paper',
     movePaperBody: 'The paper and all its replication sessions move to the project you choose. What each session spent stays with the project that paid for it.',
@@ -578,7 +561,7 @@ const en = {
     errMovePublic: 'A published project’s papers can’t be moved. Withdraw the publication first.',
     errMoveTrashed: 'A project in the trash can’t be changed. Restore it first.',
     errMovePaperNotLead: 'You need to lead both projects to move a paper between them.',
-    // What a project is about (038).
+    // What a project is about.
     describeAdd: 'Add a description',
     describeEdit: 'Edit the description',
     describePlaceholder: 'What is this project about? One paragraph is enough.',
@@ -586,8 +569,8 @@ const en = {
     draftIt: 'Write a draft',
     draftModelHint: 'Which model writes project descriptions when somebody asks for a draft. The model id must also appear in the price list below, or drafting is refused because it cannot be priced.',
     draftUsesAgentKey: 'Uses the Anthropic key this deployment already uses for sessions. Nothing else to set.',
-    // The environments a Latere session may name (051). Each is described by
-    // what it holds, since an admin turns one on for the work it serves.
+    // The environments a Latere session may name. Each is described by what it
+    // holds, since an admin turns one on for the work it serves.
     latereEnvironments: 'Environments on Latere',
     latereEnvironmentsHint:
       'Which machines a session on the Latere platform may run. Turn one on once the platform holds its image. Base is always on: a session that names none runs on it.',
@@ -605,7 +588,7 @@ const en = {
     drafting: 'Writing…',
     draftHint: 'Writes a first draft from this project’s papers, using a small amount of its credits. Nothing is saved until you save it.',
     draftFailed: 'Couldn’t write a draft just now. Try again, or write it yourself.',
-    // A paper's own bibliography (037): what it is, not just what it is called.
+    // A paper's own bibliography: what it is, not just what it is called.
     editPaper: 'Correct these details',
     editPaperTitle: 'Correct this paper',
     editPaperBody: 'These details come from the paper’s published record. Anything you change here is kept. A later lookup fills in only fields that are still blank.',
@@ -665,11 +648,9 @@ const en = {
     stopping: 'Stopping…',
     stopped: 'stopped',
     stopError: 'Couldn’t stop this session. It is still running. Try again.',
-    // A session that failed used to print the worker's own error string here,
-    // such as "put replication-manifest.json in latere/x: unexpected status
-    // 422". These
-    // say what class of thing went wrong and who can move it; the original text
-    // is in the session itself, its first line one hover away on the row.
+    // Why a session failed, as the class of thing that went wrong and who can
+    // move it. The worker's own error text is in the session itself, its first
+    // line one hover away on the row.
     failUnresolvable: 'Stopped: the paper could not be identified from its link.',
     failSource: 'Stopped: the paper’s source could not be reached.',
     failSecret: 'Stopped: a file in the results looked like it held a password or key.',
@@ -692,10 +673,10 @@ const en = {
     selectArtifact: 'Select a file to view it.',
     artifactError: 'Couldn’t open this file. Try again in a moment.',
     graded: 'Graded',
-    // Two different judgments, and conflating them was the defect: the run's
-    // grade says whether the audit met the method's bar, the paper's verdict
-    // says whether it reproduced. A careful audit of a paper that does not
-    // reproduce passes the first and fails the second.
+    // Two different judgments, kept apart: the run's grade says whether the
+    // audit met the method's bar, the paper's verdict says whether it
+    // reproduced. A careful audit of a paper that does not reproduce passes the
+    // first and fails the second.
     runRecord: 'The run',
     methodCheck: 'Method check',
     noVerdictRecorded: 'No verdict recorded',
@@ -705,9 +686,9 @@ const en = {
     openVerdict: 'Open the verdict',
     statSpend30d: 'Spend · last 30 days',
     runningForTitle: 'How long this session has been running. It is charged for the whole time.',
-    // The findings (021b). The rate never appears without the decomposition it
-    // summarizes, because the rubric is explicit that the per-component table is
-    // the result and the rate is a derived footnote to it.
+    // The findings. The rate never appears without the decomposition it
+    // summarizes: the per-component table is the result and the rate is a
+    // derived footnote to it.
     boundary: 'Inner / outer boundary',
     claim: 'Claim',
     loop: 'Loop',
@@ -768,7 +749,7 @@ const en = {
     pending: 'pending',
     inviteError: 'Couldn’t add that person. Check the email address and try again.',
     removeMemberFailed: 'Couldn’t remove that person. They are still a collaborator; try again in a moment.',
-    // researcher profile (006n)
+    // researcher profile
     profileTitle: 'Researcher profile',
     profileIntro:
       'The name your published sign-offs are made under. It is not verified: the platform records what you enter and ties it to your account. A published project reports these details as they were when you signed it.',
@@ -808,7 +789,7 @@ const en = {
     blocksPublishing: 'Blocks publishing',
     publishError: 'Couldn’t make the project public. Try again in a moment.',
     attestationNote: 'Attestation v2 · recorded against your account',
-    // publish wizard (006n)
+    // publish wizard
     publishStart: 'Make this project public…',
     publishStepOf: 'Step {n} of 3',
     publishStep1: 'What becomes public',
@@ -822,16 +803,15 @@ const en = {
     publishSaveToProfile: 'Also save these details to my profile',
     continueStep: 'Continue',
     backStep: 'Back',
-    // the signed-off card (006n)
+    // the signed-off card
     signedOffBy: 'Signed off by',
-    // "Signer" read as the person, which the line above already names, so next
-    // to a contact address it looked like the same field twice. It is neither:
-    // it is the account the sign-off was made from (006n).
+    // The account the sign-off was made from, labeled so it is not read as the
+    // signer the line above already names.
     signedOffSigner: 'Signed in as',
     signedOffContact: 'Contact',
     signedOffOrcid: 'ORCID',
     signedOffScholar: 'Scholar',
-    // the public profile (006r)
+    // the public profile
     profileHandle: 'Public handle',
     profileHandlePlaceholder: 'ada-lovelace',
     profilePublicLabel: 'Give me a public profile page',
@@ -850,7 +830,7 @@ const en = {
     errHandleTaken: 'That handle is already taken.',
     errHandleReserved: 'That handle is reserved.',
     errInvalidHandle: 'Use 3\u201339 characters: a\u2013z, 0\u20139 and hyphens.',
-    // withdrawing a publication (006o)
+    // withdrawing a publication
     withdrawStart: 'Withdraw this publication…',
     withdrawTitle: 'Withdraw this publication',
     withdrawBody:
@@ -877,11 +857,11 @@ const en = {
     searchTranscript: 'Search this transcript',
     searchNoMatch: 'Nothing in this transcript matches.',
     // The scrubber says which question its bars answer, because "where the
-    // money went" and "where the chatter was" are different shapes (006s).
+    // money went" and "where the chatter was" are different shapes.
     scrubLabel: 'Jump to a point in the run',
-    // "New tokens" rather than "tokens": on a real session the cache reads are
-    // 99% of the total and grow with the conversation, so ranking steps by the
-    // total would measure length, not work (006s).
+    // "New tokens" rather than "tokens": cache reads dominate the total and grow
+    // with the conversation, so ranking steps by the total would measure length,
+    // not work.
     scrubByTokens: 'Bars and event figures are new tokens: input + output, cache reads excluded. Open an event for its full breakdown.',
     scrubByEvents: 'Bar height is the number of events recorded. No tokens were charged in this run.',
     // The sentence is the card's body; the label is what fits a filter row.
@@ -925,9 +905,8 @@ export type TKey = keyof typeof en
 const strings: Record<Lang, Record<TKey, string>> = { en }
 
 // readLang accepts what localStorage held. Anything that names no locale,
-// whether an older build's value, a hand edit, or the absent value of a first
-// visit, reads as English rather than reaching the string table as a block
-// that is not there, where the first t() used to throw.
+// whether a stale value, a hand edit, or the absent value of a first visit,
+// reads as English rather than looking up a string table that is not there.
 export function readLang(raw: string | null): Lang {
   return raw !== null && raw in strings ? (raw as Lang) : 'en'
 }
@@ -953,12 +932,9 @@ export function translator(lang: Lang): { t: T; raw: T } {
     if (vars) for (const k of Object.keys(vars)) s = s.replaceAll(`{${k}}`, vars[k])
     return s
   }
-  // t is the sentence with seams removed. A seam is an instruction to whoever
-  // sets the line, and every other consumer, such as a tab title, an aria-label
-  // or a share card, wants the words. Stripping here rather than at each call
-  // site makes that the default; the tab once read "No page|at this address".
-  // The seam stands in place of the space it may break at, so removing it puts
-  // the space back. Deleting it outright once produced "No pageat this address".
+  // t is the sentence with seams removed, for every consumer that wants the
+  // words, such as a tab title, an aria-label or a share card. A seam stands in
+  // for the space it may break at, so it is replaced by a space, not deleted.
   const t: T = (key, vars) => raw(key, vars).replace(/\s*\|\s*/g, ' ')
   return { t, raw }
 }

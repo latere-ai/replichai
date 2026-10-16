@@ -4,13 +4,10 @@
 // A browser regression test for how often the list of projects is read, and by
 // whom.
 //
-// The bug it guards: three places read /projects for themselves: the rail for
-// its count, on every change of screen; the projects screen for its rows; the
-// move-paper dialog for its targets. Opening the dashboard cost two reads, every
-// screen change one more, and the rail's count went stale the moment a project
-// was thrown away from the list beside it, because nothing told the rail. The
-// list is now one shared store: read once, handed to every subscriber, re-read
-// when something changes it. Run it with `bun run test:browser`.
+// It guards that /projects is one shared store for the rail's count, the
+// projects screen and the move-paper dialog: read once, handed to every
+// subscriber, and re-read when something changes it, so the rail's count
+// follows a project thrown away from the list beside it. Run it with `bun run test:browser`.
 import { check, fail, noContent, settled, start, waitUntil } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
@@ -56,7 +53,7 @@ try {
   check(reads() === 1, `a change of screen re-read /projects (${reads()} reads)`)
 
   // Throwing a project away changes the list, so it is re-read once, and the
-  // rail, which nothing used to notify, follows.
+  // rail follows.
   await page.evaluate(() => {
     history.pushState(null, '', '/')
     dispatchEvent(new PopStateEvent('popstate'))

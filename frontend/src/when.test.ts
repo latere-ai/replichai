@@ -24,8 +24,7 @@ describe('relativeTime', () => {
     expect(relativeTime(t, 'en', ago(6 * 24 * 3_600_000), now)).toBe('6 days ago')
   })
 
-  // The date is written in the app's language, not the browser's: a reader who
-  // chose English in a German OS used to get "8.8.2026" under English copy.
+  // The date is written in the app's language, not the browser's.
   it('falls back to a date past a week, in the app’s language', () => {
     const old = ago(43 * 24 * 3_600_000)
     expect(relativeTime(t, 'en', old, now)).toBe(new Date(Date.parse(old)).toLocaleDateString('en'))

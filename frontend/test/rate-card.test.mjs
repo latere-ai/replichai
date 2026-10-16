@@ -3,11 +3,9 @@
 
 // A browser test for the price list in the Admin console's platform policy.
 //
-// The bug it guards: the card was read-only. Production's levels moved to new
-// model ids, the card had no row for them, and they were charged the card's
-// dearest rates with no way in the console to add the rows. An admin now adds,
-// edits and removes a model's prices, and the existing Save writes the whole
-// card through PUT /admin/settings.
+// It guards that an admin can add, edit and remove a model's prices, since a
+// model id with no row is charged the card's dearest rates, and that the
+// policy's Save writes the whole card through PUT /admin/settings.
 //
 // What needs a browser is the round trip: the fields the admin types become the
 // card the request carries, in micro-USD per million tokens, with a renamed
@@ -15,7 +13,7 @@
 // through untouched; a card that cannot be priced from is never sent; and the
 // table fits a phone.
 //
-// Since the server follows a price list, the rows for the models the list
+// When the server follows a price list, the rows for the models the list
 // prices are the list's: the server rewrites them every hour, so the console
 // shows them as text under the list's name, says when the list was last
 // applied, and keeps the admin's other rows editable. Run it with
@@ -191,7 +189,7 @@ try {
   // The server writes the list's prices into the rows for the models it lists
   // every hour, so a field there would take an edit the next sync undoes. Those
   // rows are text under the list's name and cannot be removed; the admin's own
-  // rows are fields as before, and Save still sends the card in the server's
+  // rows are fields, and Save still sends the card in the server's
   // order with the list's rows exactly as the server gave them.
   {
     const appliedAt = new Date(Date.now() - 12 * 60_000).toISOString()

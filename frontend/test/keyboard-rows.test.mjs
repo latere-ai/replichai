@@ -3,11 +3,10 @@
 
 // A browser regression test for opening a list row from the keyboard.
 //
-// The bug it guards: five list rows, namely a project, a registry entry, a file,
-// a paper and a session, were <div onClick> with no role, no tab stop and no key
-// handler, so a keyboard could not reach or open them, while the transcript's
-// event card had all three. Every clickable row now goes through one component,
-// and this test tabs the keyboard onto one and presses Enter.
+// It guards that a clickable list row (a project, a registry entry, a file, a
+// paper or a session) can be reached and opened from the keyboard. Every such
+// row goes through one component, and this test tabs the keyboard onto one and
+// presses Enter.
 //
 // It also holds the guard that component needs: a key pressed on a control
 // inside the row is that control's. Enter on Stop stops the session, and must

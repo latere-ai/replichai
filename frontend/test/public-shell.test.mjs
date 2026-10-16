@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for browsing signed out (028).
+// A browser regression test for browsing signed out.
 //
-// What it guards: until now every address sent a reader with no account to the
-// sign-in screen, so the one thing this product publishes, a reproduction
-// somebody signed, was unreadable to anybody who had not joined. The registry
-// and everything under it now render in the app's own frame, with the
-// destinations that need an account absent rather than disabled.
+// It guards that a reader with no account can read what this product
+// publishes: the registry and everything under it render in the app's own
+// frame, with the destinations that need an account absent rather than
+// disabled.
 //
 // None of it is reachable from a unit test: the assertions are about which
 // frame renders, what is in the rail, and where the sign-in leads. It drives
@@ -35,7 +34,7 @@ const published = {
   published_sessions: 1,
   running: 0,
   latest_phase: 'done',
-  // What it is a reproduction of (043), as the list carries it: the citation,
+  // What it is a reproduction of, as the list carries it: the citation,
   // and no abstract.
   papers: [{ title: 'The Placebo Effect of Artificial Intelligence', authors: ['Ada Lovelace', 'Grace Hopper'], venue: 'CHI', year: 2024 }],
 }
@@ -115,8 +114,8 @@ try {
       cite: document.querySelector('.screen .rows .row [data-test="row-citation"]')?.textContent.trim() || '',
     }))
     if (shell.landing) fail('the registry rendered the landing; signed-out browsing is the app, not a preview of it')
-    // 043: a row says which paper it reproduces, to the reader who has no
-    // account and is deciding whether to open it.
+    // A row says which paper it reproduces, to the reader who has no account
+    // and is deciding whether to open it.
     for (const want of ['Ada Lovelace', 'CHI', '2024']) {
       if (!shell.cite.includes(want)) fail(`the signed-out registry row does not cite ${want}: ${shell.cite || 'no citation at all'}`)
     }
@@ -157,9 +156,9 @@ try {
   {
     const page = await open(SIGNED_OUT, '/p/pub-1/s/job-1')
     await page.waitForSelector('.tx .detail-head')
-    // The live stream is an operator route and stays gated. Opened here it would
-    // be refused and reopened for as long as the page is up, so it must not be
-    // opened at all. It would be opened once the session is on screen, so the
+    // The live stream needs an account. Opened here it would be refused and
+    // reopened for as long as the page is up, so it must not be opened at
+    // all. It would be opened once the session is on screen, so the
     // measurement is a window after that in which nothing may be asked for.
     await sleep(300)
     const streamed = page.calls.some((c) => /\/events(\?|$)/.test(c))

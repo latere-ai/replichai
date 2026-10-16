@@ -17,10 +17,9 @@ export function repoSuffix(repo: string): string {
 }
 
 // runLabel says what one session ran on, for a row listed under the paper it
-// reproduced. The model id is the answer, because comparing `claude-opus-5`
-// against `gpt-6-astra` is what a repeat study is for, and a session whose
-// worker reported no model yet falls back to the reference, which is what the
-// row said before anything was known about the run.
+// reproduced. The model id is the answer, because comparing models is what a
+// repeat study is for. A session whose worker has not reported a model yet
+// falls back to the reference.
 export function runLabel(j: { ref: string; status?: { Model?: string } }): string {
   return j.status?.Model?.trim() || j.ref
 }

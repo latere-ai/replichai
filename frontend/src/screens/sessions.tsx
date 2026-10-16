@@ -3,7 +3,7 @@
 
 // A session as a row under its paper: its phase, how long it has been running,
 // what it cost, the repository it published, and the two removal actions, stop
-// while it runs and delete once it has settled (021d, 032).
+// while it runs and delete once it has settled.
 
 import { useCallback, useEffect, useState } from 'react'
 import { cancelSession, deleteSession, type Job } from '../api'
@@ -31,9 +31,8 @@ export function SessionRow({
   job: Job
   // Indented under the paper it is a run of, rather than standing on its own.
   nested?: boolean
-  // Whether this reader may remove a finished session (032). Only the owner
-  // may: the server refuses everybody else, and a button that always fails is
-  // worse than no button.
+  // Whether this reader may remove a finished session. Only the owner may; the
+  // server refuses everybody else.
   canDelete?: boolean
   onOpen: () => void
   onChanged: () => void
@@ -102,17 +101,13 @@ export function SessionRow({
           {phaseTxt}
         </Pill>
       </span>
-      {/* Under a paper, the paper's own reference is already on the card above
-          and repeating it on every row says nothing: five runs of one paper
-          render five copies of one string. What differs between them is what
-          they ran on, so that is what the row carries. A session listed on its
-          own, on the dashboard, still needs the reference to say which paper it
-          is about. */}
+      {/* Under a paper, the reference is already on the card above, so the
+          row carries what the run ran on, which is what differs between runs.
+          A session listed on its own shows the paper's reference. */}
       <span className="row-mono row-title">{nested ? runLabel(j) : j.ref}</span>
-      {/* How long it has been going, for a row that is still going (021d). A
-          run costs money for as long as it runs, so the minutes are what the
-          reader is watching. An age such as "an hour ago" answers a different
-          question and rounds the minutes away. */}
+      {/* How long a running session has been going. A run costs money for as
+          long as it runs, so this shows elapsed minutes rather than an age
+          such as "an hour ago", which rounds them away. */}
       {!terminal(j.phase) && (
         <Tip text={t('runningForTitle')}>
           <span className="muted small tabular">{elapsed(t, j.created_at, tick)}</span>
@@ -128,11 +123,9 @@ export function SessionRow({
           <Ico name="stop" size={11} /> {stopping ? t('stopping') : t('stop')}
         </button>
       )}
-      {/* The repository, named by the part that differs. Every reproduction of
-          one paper gets the same slug and a different suffix, so a row labeled
-          "GitHub" is indistinguishable from the nine beside it once a paper is
-          reproduced more than once, which a repeat study does by design. The
-          full name stays in the tooltip. */}
+      {/* The repository, named by its suffix: every reproduction of one paper
+          shares a slug, so the suffix is what tells runs apart. The full name
+          is in the tooltip. */}
       {j.repo_name && (
         <Tip text={j.repo_name}>
           <a className="link small mono" href={`https://github.com/${j.repo_name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
@@ -140,9 +133,9 @@ export function SessionRow({
           </a>
         </Tip>
       )}
-      {/* Removal, on a session that has finished (032). The condition is the
-          exact negation of Stop's, so a row offers one removal action, never
-          two, and never the one the server is about to refuse. */}
+      {/* Removal, on a session that has finished. The condition is the exact
+          negation of Stop's, so a row offers one removal action, never two,
+          and never the one the server is about to refuse. */}
       {canDelete && onDelete && terminal(j.phase) && (
         <Tip text={t('deleteSession')}>
           <button
@@ -158,14 +151,10 @@ export function SessionRow({
           </button>
         </Tip>
       )}
-      {/* One error slot. A stop that did not land is the more recent error and
-          the one the reader can act on, so it takes the slot while the session
-          is still up; it is gone the moment the session settles, whoever settled
-          it. Otherwise the slot shows what the worker recorded, which is a Go
-          error string. That says what broke to somebody who wrote the worker
-          and nothing to anybody else, so the row states the class of failure
-          and keeps the original's first line on hover; the whole of it, a
-          stack trace when the runner panicked, is in the session itself. */}
+      {/* One error slot. A stop that did not land takes it while the session
+          is still up, since the reader can act on it. Otherwise the slot shows
+          the class of the worker's failure, with the raw error's first line on
+          hover; the full report is in the session itself. */}
       {stopErr && !terminal(j.phase) ? (
         <span className="err small">
           <Ico name="alert" size={13} /> {t('stopError')}
@@ -180,10 +169,9 @@ export function SessionRow({
           </Tip>
         )
       )}
-      {/* The call to action names itself once, on a session standing on its
-          own. Under a paper it is the same word on every row of the column and
-          the chevron beside it already says the row opens, so the nested rows
-          carry the icon and keep the word in the tooltip. */}
+      {/* A session on its own shows the call to action's word. Nested rows
+          show only the icon, with the word in the tooltip, since the same word
+          would repeat on every row. */}
       {nested ? (
         <Tip text={i18n.t('viewTranscript')}>
           <span className="muted small row-cta">
@@ -200,13 +188,9 @@ export function SessionRow({
   )
 }
 
-// The confirmation before a session leaves the project (032). It is the app's
-// own dialog, not window.confirm, for the reasons TrashDialog gives.
-//
-// It differs from the trash dialog in what it says: the removal is not
-// reversible, because the way back is to run the paper again, since a session
-// is one run rather than a container of work. So it states the two things that
-// survive the removal: what it cost stays on the ledger, and the repository the
+// The confirmation before a session leaves the project. Unlike the trash, the
+// removal is not reversible; the way back is to run the paper again. So it
+// states what survives: the cost stays on the ledger, and the repository the
 // agent wrote stays on GitHub, closed rather than destroyed.
 export function DeleteSessionDialog({ i18n, job, onClose, onDone }: { i18n: I18n; job: Job; onClose: () => void; onDone: () => void }) {
   const { t } = i18n

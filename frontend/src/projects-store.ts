@@ -4,15 +4,10 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { listProjects, type ProjectView } from './api'
 
-// The one list of projects, shared by everything that shows it.
-//
-// Three places used to read /projects for themselves: the rail, for the count
-// on its Projects row, on every change of screen; the projects screen, for its
-// rows; and the move-paper dialog, for its targets. Three reads of one list
-// that could disagree with each other, and a rail count that went stale the
-// moment a project was thrown away from the list beside it, because nothing
-// told the rail. The list is read here once, handed to every subscriber, and
-// re-read when something changes it.
+// The one list of projects, shared by everything that shows it: the rail's
+// count, the projects screen and the move-paper dialog. It is read once, handed
+// to every subscriber, and re-read when something changes it, so the views never
+// disagree and the rail's count never goes stale.
 
 let projects: ProjectView[] | null = null
 let inflight: Promise<void> | null = null

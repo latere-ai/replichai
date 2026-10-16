@@ -17,10 +17,10 @@
 // `bun run test:browser`.
 import { fail, settled, start } from './harness.mjs'
 
-// The folded rail's width, and the expanded one, as the stylesheet sets them.
+// The open rail's width and the folded one, as the stylesheet sets them.
 const OPEN = 236
-// 64, not 56 (034): the rail lost its border and gained the desk's padding, and
-// the fold is sized to the nav row's own 12px radius rather than to the icon.
+// The fold is sized to the desk's padding and the nav row's own 12px radius,
+// not to the icon alone.
 const FOLDED = 64
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
@@ -112,8 +112,8 @@ try {
   if (!near(shut.width, FOLDED)) fail(`the folded rail is ${shut.width}px, want ${FOLDED}px`)
   if (shut.expanded !== 'false') fail(`the folded rail's toggle reports aria-expanded=${shut.expanded}, want "false"`)
   // The point of folding: the space has to go to the content, not be left blank.
-  // No +1: the rail's right border is gone (034), and the content is a sheet
-  // inset on the desk, so the main area starts at the rail's own edge.
+  // No +1: the rail has no right border, and the content is a sheet inset on
+  // the desk, so the main area starts at the rail's own edge.
   if (!near(shut.mainLeft, FOLDED, 2)) fail(`the main area starts at ${shut.mainLeft}px after folding, want the rail's ${FOLDED}px edge`)
   if (shut.rows.length !== open.rows.length) fail(`folding dropped ${open.rows.length - shut.rows.length} navigation rows; every destination must stay reachable`)
   for (const row of shut.rows) {

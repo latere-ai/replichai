@@ -7,9 +7,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { MARK_GAP, Mark, markArc, Wordmark } from './brand'
 
-// The mark's outer loop is open (017): one arc with one deliberate gap (047),
-// at every size it is drawn. An arc that met itself would claim the study with
-// people is re-runnable, which is the one thing the product never claims.
+// The mark's outer loop is one arc with one deliberate gap at every size it is
+// drawn. An arc that met itself would claim the study with people is
+// re-runnable, which the product never claims.
 for (const size of [16, 24, 48, 160]) {
   test(`the mark at ${size}px draws an open outer arc and a closed inner ring`, () => {
     const svg = renderToStaticMarkup(<Mark size={size} />)

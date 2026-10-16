@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser test for the runtime and model picker on the papers card (031,
-// 048).
+// A browser test for the runtime and model picker on the papers card.
 //
 // What needs testing is that the choice a person makes is the one the start
 // request carries, that the levels' models and prices are the server's, and
@@ -290,12 +289,10 @@ try {
 
   /* ── Scrolling the model list keeps the panel open ── */
 
-  // The panel used to close on any scroll the window saw, the list's own
-  // included, so the list of models could not be scrolled at all: the first
-  // wheel tick over it dismissed the panel. A scroll inside the panel is the
-  // reader using it; a scroll of the page behind it still closes it, because
-  // that moves the trigger out from under the panel. As many models as
-  // production lists (226), so the list overflows its box.
+  // A scroll inside the panel is the reader using it, so the panel stays open;
+  // a scroll of the page behind it closes it, because that moves the trigger
+  // out from under the panel. As many models as production lists (226), so the
+  // list overflows its box.
   {
     const many = runtimes.map((r) =>
       r.name === "latere"

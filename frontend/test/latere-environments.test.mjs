@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // A browser test for the Latere environments in the Admin console's platform
-// policy (051).
+// policy.
 //
-// Which environments a Latere session may name used to be an environment
-// variable of the deployment, so changing it was a redeploy. It is now a
-// setting an admin changes in the console. What needs a browser is the round
+// Which environments a Latere session may name is a setting an admin changes
+// in the console. What needs a browser is the round
 // trip: the console shows the environments the runtime knows with the ones in
 // force checked and base always on; a save that changes something else does
 // not send the list, so a console that predates an environment never narrows

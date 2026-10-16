@@ -4,7 +4,7 @@
 import { expect, test } from 'bun:test'
 import { isAdmin, isMine, showsPicture } from './account'
 
-// 006k AC7: the Platform group renders only for an admin. Hiding it is a
+// The Platform group renders only for an admin. Hiding it is a
 // convenience; the routes are refused server-side either way.
 test('isAdmin gates the Platform rail group on the admin tier alone', () => {
   expect(isAdmin({ authenticated: true, tier: 'admin' })).toBe(true)
@@ -16,7 +16,7 @@ test('isAdmin gates the Platform rail group on the admin tier alone', () => {
   expect(isAdmin({ authenticated: true, tier: 'platform-admin' })).toBe(false)
 })
 
-// 006m AC4: the avatar degrades to initials rather than to a broken image.
+// The avatar degrades to initials rather than to a broken image.
 test('showsPicture falls back to initials for anything but a loadable https URL', () => {
   expect(showsPicture('https://auth.latere.ai/a.png', false)).toBe(true)
   // Failed to load: the fallback is the whole point of tracking `broken`.
@@ -31,7 +31,7 @@ test('showsPicture falls back to initials for anything but a loadable https URL'
   }
 })
 
-// 028: signed out, `me.principal` is undefined and the server withholds `owner`
+// Signed out, `me.principal` is undefined and the server withholds `owner`
 // from a reader with no stake, so a bare `===` would report every registry row
 // as the reader's own, and paint a stranger's public project as editable.
 test('isMine never matches two absent principals', () => {

@@ -4,12 +4,10 @@
 // A browser regression test for what a transcript card remembers when the
 // filters move under it.
 //
-// The bug it guards: cards were keyed by their position in the filtered list.
-// A tool result's disclosure holds its own open/closed state, so when a search
-// removed the card above it, React handed the open state to whichever event now
-// stood at that position: the reader had opened one result and was shown
-// another one open, with the one they opened shut. A card is keyed by the event
-// it shows, so the state stays with the event. Run it with `bun run test:browser`.
+// It guards that a card is keyed by the event it shows, not by its position in
+// the filtered list. A tool result's disclosure holds its own open/closed
+// state, so with positional keys a search that removed the card above it would
+// hand the open state to whichever event moved into that position. Run it with `bun run test:browser`.
 import { check, fail, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()

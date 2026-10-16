@@ -3,13 +3,11 @@
 
 import type { Lang } from './i18n'
 
-// The four ways a number or a moment is written in a language, in one place.
-//
-// Every one of these used to be a bare toLocale*String() somewhere in a screen,
-// which formats in the browser's language rather than the app's: a reader who
-// chose English in an OS set to German saw "12,34 $" beside English copy. The
-// language is an argument here, and i18n-coverage.test.ts fails any call that
-// leaves it out.
+// How a number or a moment is written in the app's language. Each formatter
+// takes the language as an argument, because a bare toLocale*String() formats
+// in the browser's language, so a reader who chose English in an OS set to
+// German would see "12,34 $" beside English copy. i18n-coverage.test.ts fails
+// any call that leaves the language out.
 
 // dateOnly is a calendar date: "8/8/2026".
 export function dateOnly(lang: Lang, at: string | number | Date): string {

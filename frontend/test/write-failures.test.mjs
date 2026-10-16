@@ -1,16 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for three writes on a project that used to fail in
-// silence: renaming it, restoring it from the trash, and removing a collaborator.
-//
-// The bug it guards: each of the three awaited its request and did nothing with
-// a rejection. A refused rename left the input open with no word on why; a
-// refused restore left the trash banner exactly as it was; a refused removal was
-// swallowed, the list re-read, and the person still on it, which looks, to the
-// owner who clicked, like a removal that worked. Every other write on the screen
-// names its refusal through the error copy in errors.ts; these three now do the
-// same. Run it with `bun run test:browser`.
+// A browser regression test for three writes on a project whose refusals must
+// be shown: renaming it, restoring it from the trash, and removing a
+// collaborator. Like every other write on the screen, each names its refusal
+// through the error copy in errors.ts, so a refused removal, for one, never
+// looks like a removal that worked. Run it with `bun run test:browser`.
 import { check, fail, json, settled, start, waitUntil } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()

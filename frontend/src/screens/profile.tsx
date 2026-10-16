@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A researcher's public page (006r): who they say they are, how to reach them,
+// A researcher's public page: who they say they are, how to reach them,
 // and the public work signed under that name. It renders for a signed-out
 // reader, so it carries its own frame rather than the app shell's.
 
@@ -27,9 +27,8 @@ export function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: stri
   const [missing, setMissing] = useState(false)
 
   // Each handle starts from nothing: the previous one's "not found" is cleared
-  // and its answer, however late, is ignored. Without both, /u/a answering 404
-  // left "No such profile" standing over /u/b, and a slow 404 for a handle the
-  // reader had already left could land on the page they had moved to.
+  // and its answer, however late, is ignored, so a slow 404 for a handle the
+  // reader has left never lands on the page they moved to.
   useEffect(() => {
     let live = true
     setP(null)

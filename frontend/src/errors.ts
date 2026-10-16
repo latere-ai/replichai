@@ -1,19 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Every refusal the user can see, in one place.
+// Every refusal the user can see, in one place. A message names what happened
+// and what the person can do about it, never a wire code, an HTTP status or a Go
+// error string.
 //
-// The rule this module enforces: a message names what happened and what the
-// person can do about it. It never shows a wire code, an HTTP status, or a Go
-// error string, because those describe the implementation, which the reader is
-// not debugging.
-//
-// One mapper per flow rather than one table for everything, because the same
-// wire code means different things in different places. `no_credits` alone is
-// three separate problems with three separate remedies: a wallet that cannot
-// fund a new project, a project pot that cannot start another session, and a
-// balance that has too little uncommitted to hand back. One sentence for all
-// three would tell somebody to top up a project that does not exist yet.
+// There is one mapper per flow rather than one table, because the same wire
+// code means different things in different places: `no_credits` can be a wallet
+// that cannot fund a project, a pot that cannot start a session, or a balance
+// with too little uncommitted to hand back, each with its own remedy.
 
 import { ApiError, type Credits, type CreatedProject, type PaperResult, type PublishBlocker } from './api'
 import type { I18n, TKey } from './i18n'
@@ -52,12 +47,10 @@ export function emptyWallet(credits?: Credits): boolean {
 // row the server did not recognize, keyed by the reference the row holds.
 type CreateOutcome = { ok: boolean; banner: string; rows: Map<string, string> }
 
-// createOutcome decides what a create attempt tells the person.
-//
-// A create records papers and starts nothing (012), so there is no per-paper
-// session to fail, no partial success to explain, and no credits to run out of;
-// all of that was removed with the enqueue. Two outcomes remain: the papers
-// were recorded, or the server did not recognize some of the references.
+// createOutcome decides what a create attempt tells the person. A create
+// records papers and starts nothing, so there is no session to fail and no
+// credits to run out of: the papers were recorded, or the server did not
+// recognize some of the references, or the create was refused.
 export function createOutcome(t: T, status: number, data: CreatedProject): CreateOutcome {
   const rows = new Map<string, string>()
   const papers: PaperResult[] = data.papers ?? []
@@ -67,19 +60,18 @@ export function createOutcome(t: T, status: number, data: CreatedProject): Creat
     return { ok: true, banner: rows.size ? t('somePapersNotRecognised') : '', rows }
   }
   if (status === 403) return { ok: false, banner: t('errNotAllowed'), rows }
-  // A project may start empty but not unnamed (036): with no paper there is
-  // nothing to name it after. The screen guards this before asking, so reaching
-  // it means the two disagreed, and the message is the same either way.
+  // A project may start empty but not unnamed: with no paper there is nothing
+  // to name it after. The screen guards this before asking, so reaching it
+  // means the two disagreed, and the message is the same either way.
   if (status === 400 && data.error === 'missing_title') return { ok: false, banner: t('nameOrPaper'), rows }
   return { ok: false, banner: t('createFailed'), rows }
 }
 
 /* ─── working inside a project ─── */
 
-// startErrLabel names why starting a session was refused. Every refusal a
-// create used to report per paper now lives here, and this is the one place
-// money is asked about, so "this project is out of credits" is said on the
-// screen showing the pot, where the reader can act on it.
+// startErrLabel names why starting a session was refused. Starting a session is
+// where money is asked about, so "this project is out of credits" is said on
+// the screen showing the pot, where the reader can act on it.
 export function startErrLabel(t: T, e: unknown, credits?: Credits): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
@@ -87,9 +79,8 @@ export function startErrLabel(t: T, e: unknown, credits?: Credits): string {
   if (code === 'account_frozen') return t('errFrozen')
   if (status === 402 || code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
   if (status === 404) return t('errPaperGone')
-  // A tier the server does not offer (031). Reachable when the client's list is
-  // stale against a deployment that changed which tiers it serves, so it names
-  // the fix rather than reporting a generic failure.
+  // A tier the server does not offer, reachable when the client's list is stale
+  // against the deployment, so it names the fix rather than a generic failure.
   if (code === 'bad_tier') return t('errBadTier')
   return t('startFailed')
 }
@@ -114,10 +105,9 @@ export function removePaperErrLabel(t: T, e: unknown): string {
   return t('removePaperFailed')
 }
 
-// movePaperErrLabel names why a paper could not be refiled (035). Each refusal
-// has a different next step, finish the run, withdraw the publication or pick
-// another project, so they are told apart rather than collapsed into one
-// "could not move".
+// movePaperErrLabel names why a paper could not be refiled. Each refusal has a
+// different next step (finish the run, withdraw the publication, pick another
+// project), so they are told apart rather than collapsed into one.
 export function movePaperErrLabel(t: T, e: unknown): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
@@ -139,9 +129,9 @@ export function trashErrLabel(t: T, e: unknown): string {
   return t('trashFailed')
 }
 
-// deleteSessionErrLabel names why a session could not be removed (032). The one
-// refusal with a remedy is a session still in flight: it is not a dead run yet,
-// and the control that ends it is Stop, on the same row.
+// deleteSessionErrLabel names why a session could not be removed. The one
+// refusal with a remedy is a session still in flight: the control that ends it
+// is Stop, on the same row.
 export function deleteSessionErrLabel(t: T, e: unknown): string {
   const { code, offline } = refusal(e)
   if (offline) return t('errOffline')
@@ -160,21 +150,13 @@ export function purgeErrLabel(t: T, e: unknown): string {
 
 /* ─── a session that failed while running ─── */
 
-// sessionFailureText turns the cause a worker recorded into a sentence.
-//
-// `job.error` is a Go error string: "put replication-manifest.json in
-// latere/point-of-no-undo: unexpected status 422". It was rendered verbatim on
-// the session row, which tells the reader nothing they can act on and exposes
-// the internals. The raw text is kept and the caller shows it on demand; the
-// row states the class of failure and who can move it.
-// The order of the patterns matters. A GitHub call that returned 502 is a fault
-// on our side, not the paper's source being unreachable, so the publish
-// patterns are tested before the network ones, and the network ones match words
-// rather than bare status numbers.
-//
-// Only the first line is read. A runner that panicked records its stack under
-// it, and a stack names every package it passed through: one that passed
-// through the GitHub client would read as a failure to publish.
+// sessionFailureText turns the cause a worker recorded, a Go error string, into
+// a sentence that states the class of failure. The caller shows the raw text on
+// demand. Pattern order matters: a GitHub call that returned 502 is a fault on
+// our side, not an unreachable source, so the publish patterns run before the
+// network ones, and the network ones match words rather than status numbers.
+// Only the first line is read, because a panic's stack trace below it names
+// every package it passed through and would match the wrong class.
 export function sessionFailureText(t: T, cause: string): string {
   const c = failureParts(cause).summary.toLowerCase()
   if (/secret|credential|private key/.test(c)) return t('failSecret')
@@ -218,9 +200,8 @@ export function failureTip(t: T, cause: string): string {
 // creditMoveErrLabel names why a move between a wallet and a project pot was
 // refused. `back` distinguishes the two kinds of "not enough": an allocate is
 // short because the wallet has too little, and the remedy is to top up; a
-// reclaim is short because the pot's available is held by a running session,
-// and the remedy is to wait for it to settle. Conflating them told a person to
-// top up when they should wait.
+// reclaim is short because a running session holds the pot's balance, and the
+// remedy is to wait for it to settle.
 export function creditMoveErrLabel(t: T, e: unknown, back = false): string {
   const { code, offline } = refusal(e)
   if (offline) return t('errOffline')
@@ -255,13 +236,9 @@ function profileErrorText(t: T, code: string): string {
 }
 
 // publishErrText names why a publish was refused. The status is not enough on
-// its own: 409 covers every reason a project is not publishable yet, and telling
-// a signer the wrong one sends them to fix something that is not broken.
-//
-// The four project-state codes are four different facts about the sessions. Only
-// `not_clear` is about what a reproduction contains; reporting the others as
-// that one, as a single code for all of them did, accuses an owner of
-// committing third-party data when their run merely had not finished.
+// its own: 409 covers every reason a project is not publishable yet. The four
+// project-state codes are different facts about the sessions, and only
+// `not_clear` is about what a reproduction contains, so each gets its own text.
 export function publishErrText(t: T, e: unknown): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
@@ -271,8 +248,8 @@ export function publishErrText(t: T, e: unknown): string {
   if (code === 'sessions_unfinished') return t('publishUnfinished')
   if (code === 'manifest_unreadable') return t('publishUnreadable')
   if (code.startsWith('handle_') || code.startsWith('invalid_')) return profileErrorText(t, code)
-  // A 409 with no code names no cause. It used to fall back to the
-  // redistribution message, which is the same wrong accusation one layer up.
+  // A 409 with no code names no cause, so it gets a neutral message rather than
+  // the redistribution one.
   if (status === 409) return t('publishBlocked')
   if (status === 400) return profileErrorText(t, code)
   return t('publishError')

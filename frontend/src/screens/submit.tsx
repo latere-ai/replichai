@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The New-project form (012, 036): a title, the papers it is about, each
+// The New-project form: a title, the papers it is about, each
 // looked up before it is submitted, and the collaborators to invite. Creating
 // a project spends nothing, so the form knows nothing about credits.
 
@@ -17,8 +17,6 @@ import { Seams, Tip } from '../ui'
 // title or error, filled by the Look-up button.
 type PaperRow = { url: string; preview?: ResolvedPaper; error?: string; resolving?: boolean }
 
-// Creating a project spends nothing (012), so this screen needs to know
-// nothing about anybody's credits.
 export function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (projectId: string) => void }) {
   const { t } = i18n
   const [title, setTitle] = useState('')
@@ -48,7 +46,7 @@ export function SubmitScreen({ i18n, onSubmitted }: { i18n: I18n; onSubmitted: (
 
   const submit = async () => {
     const papers = rows.map((r) => r.url.trim()).filter(Boolean)
-    // A project may start empty (036), since it records papers and runs nothing,
+    // A project may start empty, since it records papers and runs nothing,
     // but it may not start nameless, because the title falls back to the first
     // paper's reference and with no paper there is no fallback.
     if (papers.length === 0 && !title.trim()) {

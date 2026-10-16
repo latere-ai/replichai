@@ -3,7 +3,7 @@
 
 // Money on screen: the wallet pill in the top bar, the top-up dialog, the
 // wallet screen with its statement, and the card that moves credits between a
-// person's wallet and a project's pot (006l, 022b, 024b).
+// person's wallet and a project's pot.
 
 import { useEffect, useState } from 'react'
 import {
@@ -67,16 +67,14 @@ function pctText(bps: number): string {
   return String(Math.round((bps / 100) * 10) / 10)
 }
 
-// TopUpModal buys credits. It shows where the money goes, namely what you pay,
-// the fee, and the credits you get, before sending you to the processor. The
-// webhook, not the return from that page, is what credits the wallet (022b);
-// this only opens the payment, and the wallet screen re-reads the balance when
-// the person comes back.
-// The preset top-up amounts, in whole dollars. A person picks one or types their
-// own; a bare stepper made buying feel like filling a form rather than a
-// purchase.
+// The preset top-up amounts, in whole dollars. A person picks one or types
+// their own.
 const TOPUP_PRESETS = [10, 25, 50, 100]
 
+// TopUpModal buys credits. It shows what you pay, the fee, and the credits you
+// get before sending you to the processor. The webhook, not the return from
+// that page, credits the wallet; this only opens the payment, and the wallet
+// screen re-reads the balance when the person comes back.
 export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void }) {
   const { t } = i18n
   const [wallet, setWallet] = useState<Wallet | null>(null)
@@ -187,7 +185,7 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
 // WalletScreen is the person's own money: the statement, a way to buy more, and
 // the landing the processor returns to. On a return marked ?checkout=success the
 // balance may lag the webhook, so it re-reads /me a few times over a few seconds
-// and the bought credits appear on their own (022e).
+// and the bought credits appear on their own.
 export function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me: Me; refreshMe: () => void; onTopUp: () => void }) {
   const { t } = i18n
   const returned = new URLSearchParams(window.location.search).get('checkout') === 'success'
@@ -243,8 +241,8 @@ export function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me:
 
 // WalletActivity is the wallet's history, shown rather than hidden behind a
 // toggle: the place a person reads their own balance is where they read where
-// it came from. It stays light however long the history grows, bounded to a
-// scroll region and to the server's most recent entries.
+// it came from. It stays light however long the history grows, because the
+// server returns only its most recent entries.
 function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
   const { t } = i18n
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null)
@@ -272,8 +270,7 @@ function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
       ) : (
         <>
           {/* No scroll region inside the page's own scroll: the server caps
-              what it returns, so the list has an end and the page can hold it.
-              A box that scrolled at 380px hid the history it exists to show. */}
+              what it returns, so the list has an end and the page can hold it. */}
           <div className="usage-rows statement">
             {entries.map((e) => {
               const label = ledgerLabel(t, e)
@@ -315,13 +312,10 @@ function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
 }
 
 // ProjectCreditsCard is a project's money and the two moves a member can make on
-// it. It sits above the submit form because it is the answer to the question a
-// refused submit raises.
-//
-// Both numbers are shown, not one. They differ by the sessions running right
-// now, each of which holds the start reserve, and that difference is the reason
-// a project with credits can still refuse a submit. Showing only the balance
-// would make that refusal look like a bug.
+// it. It sits beside the papers card, where a run is started, because it
+// answers why a start is refused. The balance and what is available differ by
+// the start reserve each running session holds, which is why a project with
+// credits can still refuse a start.
 export function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp }: { i18n: I18n; projectID: string; credits: ProjectCredits; onMoved: () => void; onTopUp: () => void }) {
   const { t } = i18n
   const [amount, setAmount] = useState('')
@@ -334,9 +328,8 @@ export function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp 
   const parsed = parseUSD(amount)
   const valid = parsed !== null && parsed > 0
   const short = credits.available < credits.start_reserve
-  // What a running session is holding: the gap between the pot's balance and what
-  // is free to commit. Shown only when it exists, so two identical numbers do not
-  // read as a duplicate when nothing is running.
+  // What running sessions are holding: the gap between the pot's balance and
+  // what is free to commit.
   const held = credits.balance - credits.available
 
   const move = async (back: boolean) => {
@@ -366,10 +359,10 @@ export function ProjectCreditsCard({ i18n, projectID, credits, onMoved, onTopUp 
           {t('creditsBalance')}
           <span className="v tabular">{formatUSD(i18n.lang, credits.balance)}</span>
         </div>
-        {/* The available row appears only when a running session is holding some
-            of the balance; otherwise it equals the balance and reads as a
-            confusing duplicate. data-tip rather than a <Tip> wrapper: an inline
-            wrapper around a block row collapses it to its content. */}
+        {/* The available row appears only when a running session holds some
+            of the balance; otherwise it would repeat the balance. data-tip
+            rather than a <Tip> wrapper, which would collapse the block row to
+            its content. */}
         {held > 0 && (
           <div className="usage-line" data-tip={t('creditsAvailableTitle')}>
             {t('creditsAvailable')}

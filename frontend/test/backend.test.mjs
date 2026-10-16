@@ -5,17 +5,13 @@
 //
 // A request no route names is passed on to the dev server, which proxies API
 // paths to a backend. The dev server's default backend is localhost:8080, a
-// port the suite does not own. On a developer's machine nothing listens there,
-// the proxy is refused at once, and the app gets an error it tolerates. On a
-// shared CI runner another job may hold that port, and a service there that
-// accepts the connection and answers slowly, or not at all, leaves a screen
-// waiting on a request this suite never meant to make. That showed up as a
-// timeout naming an element, in a different test each time, on commits that
-// touched no frontend code.
+// port the suite does not own; on a shared runner a service there could accept
+// the connection and answer slowly or not at all, leaving a screen waiting on a
+// request this suite never meant to make.
 //
 // So the suite runs its own backend and points the proxy at it. The check is
 // that an unmocked call is answered by that backend, which marks its answers,
-// and promptly, with the error a refused proxy used to give. Run it with
+// and promptly, with the error a refused proxy gives. Run it with
 // `bun run test:browser`.
 import { check, fail, start, STAND_IN_HEADER } from './harness.mjs'
 

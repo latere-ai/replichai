@@ -4,13 +4,12 @@
 // A browser regression test for the live stream a running session is watched
 // through.
 //
-// The bug it guards: the server sends a snapshot of the job the moment a stream
-// connects (internal/httpapi/events.go). The session screen stored that snapshot
-// in the state its stream effect depended on, so every connect produced a
-// frame, every frame a new job object, and every new job object a reconnect,
-// which was a tight loop of GET /jobs/{id}/events for as long as a running
-// session's page was open. A session row in a project had the same shape and
-// reopened its stream on every refresh of the list around it.
+// It guards against a reconnect loop. The server sends a snapshot of the job
+// the moment a stream connects (internal/httpapi/events.go). If that snapshot
+// fed the state the stream effect depends on, every connect would produce a
+// frame, every frame a new job object, and every new job object a reconnect. A
+// session row in a project must likewise keep its stream through a refresh of
+// the list around it.
 //
 // The measurement is the number of connections the browser opens. The mock
 // answers a stream exactly as the server does, snapshot first, and holds the

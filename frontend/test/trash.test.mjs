@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for the trash (019).
+// A browser regression test for the trash.
 //
 // What it guards: removing a project is two steps on purpose, and neither of
 // them is a native browser dialog. The row action has to open the app's own
@@ -107,7 +107,7 @@ try {
   if (!page.calls.includes(`DELETE /projects/${project.id}`)) fail(`the confirmation did not call DELETE; calls: ${page.calls.join(', ')}`)
 
   // Trash and Settings are the rail's foot group, which holds where work goes
-  // and personal chrome, apart from the destinations where work is done (024a).
+  // and personal chrome, apart from the destinations where work is done.
   // The group is pinned to the bottom, Settings sits under Trash, and the pair
   // is set apart from the destinations above. A count of clickable rows would
   // pass on rows sitting directly under "Public registry", so this measures
@@ -153,7 +153,7 @@ try {
   await page.keyboard.press('Escape')
   await page.waitForFunction(() => !document.querySelector('.modal-backdrop'))
 
-  // A trashed project keeps its address (013), and the screen behind it has to
+  // A trashed project keeps its address, and the screen behind it has to
   // explain itself and offer nothing that can only fail: every owner control is
   // gone, and the way back is on the banner.
   await page.open(`/p/${project.id}`)
@@ -161,7 +161,7 @@ try {
   const detail = await page.evaluate(() => ({
     banner: document.querySelector('[data-test="trashed-banner"]').textContent,
     // The rename pencil would 409 and reject unhandled; the People tab, the
-    // publish panel and the credits card all route through the same refusal.
+    // publish button and the credits card all route through the same refusal.
     rename: document.querySelectorAll('.detail-title-row button[aria-label], .detail-title-row .icon-btn').length,
     tabs: [...document.querySelectorAll('.detail-tabs button')].map((b) => b.textContent.trim()),
     credits: document.querySelectorAll('.stack .card .eyebrow').length,

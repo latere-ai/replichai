@@ -15,12 +15,9 @@ export function isAdmin(me: Me): boolean {
 }
 
 // isMine reports whether a project's owning principal is this reader's.
-//
-// Both sides are optional, and both are absent on the registry screen: signed
-// out, `me.principal` is undefined and the server withholds `owner` from a
-// reader with no stake in the project (028). A bare `===` would then report
-// every registry row as the reader's own and make every public project look
-// editable, so two undefined values do not match.
+// Both sides can be absent: signed out, `me.principal` is undefined, and the
+// server withholds `owner` from a reader with no stake in the project. Two
+// undefined values do not match, or every public project would look editable.
 export function isMine(me: Me, owner?: string): boolean {
   return !!me.principal && !!owner && owner === me.principal
 }
@@ -40,11 +37,10 @@ export function hueOf(email?: string): number {
   return h
 }
 
-// showsPicture decides between the IdP's picture and the initials fallback. It
-// implements 006m AC4 as a pure function so it is testable. No picture, a
-// picture that is not an absolute https URL, or one that failed to load all
-// fall back. The server already filters non-https pictures; the client checks
-// again rather than trusting that it did.
+// showsPicture decides between the IdP's picture and the initials fallback. No
+// picture, a picture that is not an absolute https URL, or one that failed to
+// load all fall back. The server already filters non-https pictures; the client
+// checks again rather than trusting that it did.
 export function showsPicture(picture: string | undefined, broken: boolean): boolean {
   return !broken && !!picture && picture.startsWith('https://')
 }

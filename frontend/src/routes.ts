@@ -5,33 +5,29 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Where the operator is, and the address that says so. The two are one mapping
 // in both directions, written by `pathOf` and read by `viewOf`, so a screen
-// cannot exist without a URL, and a reload, a Back, and a shared link all resolve
-// through the same code (013).
+// cannot exist without a URL, and a reload, a Back and a shared link all resolve
+// through the same code.
 //
-// The optional fields are display hints, never identity: a project's title and a
-// session's paper reference are records that can change, so they are filled in by
-// the screen that fetched them and are absent from the path. Only ids travel in
-// the URL.
+// The optional fields are display hints, never identity: a project's title and
+// a session's paper reference can change, so they are filled in by the screen
+// that fetched them and are absent from the path. Only ids travel in the URL.
 export type ProjectTab = 'sessions' | 'verdict' | 'people'
 
 // A verdict and a repository belong to the session that produced them, so both
-// are addressed under the session rather than the project (015). A project holds
-// papers and a paper has sessions; there is no such thing as "the project's
-// repository" to browse.
+// are addressed under the session rather than the project. A project holds
+// papers and a paper has sessions; there is no "project repository" to browse.
 export type SessionTab = 'transcript' | 'verdict' | 'artifacts'
 
 // The settings screen is one view with two sub-tabs, each a real path,
 // /settings and /settings/profile. 'account' is the default and omitted from the
-// address, exactly as 'sessions' is for a project (024a). Credits moved to the
-// dedicated /wallet screen (022e), so there is no /settings/credits.
+// address, exactly as 'sessions' is for a project. Credits live on /wallet.
 export type SettingsTab = 'account' | 'profile'
 
 export type View =
   | { name: 'projects' }
-  // An address this app does not have (042c). It carries the path it was asked
-  // for so `pathOf` stays total and the address bar keeps what was typed.
-  // Silently rewriting a typo to `/` showed a person the dashboard for a page
-  // they did not ask for.
+  // An address this app does not have. It carries the path it was asked for, so
+  // `pathOf` stays total and the address bar keeps what was typed rather than
+  // being rewritten to `/`.
   | { name: 'notfound'; path: string }
   | { name: 'trash' }
   | { name: 'public' }
@@ -45,8 +41,7 @@ export type View =
 
 // The registry and the console are not at /public and /admin because the API
 // owns both roots: Go's mux matches them before the SPA fallback, so a browser
-// sent there is answered with JSON. The release smoke asserts exactly that for
-// /projects. routes.test.ts holds the whole no-collision rule.
+// sent there is answered with JSON. routes.test.ts holds the no-collision rule.
 const SCREENS: Record<string, View> = {
   '/': { name: 'projects' },
   '/registry': { name: 'public' },
@@ -71,14 +66,11 @@ const SETTINGS_TABS: SettingsTab[] = ['profile']
 
 const isSettingsTab = (s: string): s is SettingsTab => (SETTINGS_TABS as string[]).includes(s)
 
-// isPublicView reports whether a signed-out reader can be shown this view (028).
-//
-// Four of them: the registry, a project in it, a session under that project, and
-// a researcher's page. Each renders whatever the reader may read; a private
-// project reads as not-public, from the same screen its owner reaches by
-// signing in. Everything else is somebody's own workspace, and there is nothing
-// to render at /new or /wallet for a reader with no account, so the landing
-// stands in for those.
+// isPublicView reports whether a signed-out reader can be shown this view: the
+// registry, a project in it, a session under that project, a researcher's page,
+// and the not-found page. Each renders whatever the reader may read; a private
+// project reads as not public. Everything else is somebody's own workspace, so
+// the landing stands in for it.
 export function isPublicView(v: View): boolean {
   return v.name === 'public' || v.name === 'project' || v.name === 'session' || v.name === 'profile' || v.name === 'notfound'
 }
@@ -112,10 +104,10 @@ export function pathOf(view: View): string {
   }
 }
 
-// decodeHandle reads a handle out of its address segment, or nothing when the
+// decodeHandle reads a handle out of its address segment, or null when the
 // encoding is malformed. decodeURIComponent throws on an escape cut short, such
-// as '%E0%A4%A', and it used to throw inside the router's initial state, so a
-// truncated link took the whole app down to a white screen.
+// as '%E0%A4%A', and a throw inside the router's initial state would take the
+// whole app down to a white screen.
 function decodeHandle(raw: string): string | null {
   try {
     return decodeURIComponent(raw).toLowerCase()
@@ -124,19 +116,16 @@ function decodeHandle(raw: string): string | null {
   }
 }
 
-// viewOf is what an address means. Anything unrecognised is not the dashboard
-// (042c). A path that resolved to the app and then had its address corrected to
-// `/` was an unbounded set of URLs answering 200 with identical content: a soft
-// 404 to a crawler, and for a person a page they did not ask for, silently
-// substituted. It resolves to a screen that says so, at the address they typed.
+// viewOf is what an address means. Anything unrecognized resolves to the
+// not-found screen at the address that was typed, not to the dashboard, which
+// would be a soft 404 to a crawler and a substituted page to a person.
 export function viewOf(pathname: string): View {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
   const fixed = SCREENS[path || '/']
   if (fixed) return fixed
 
   // A handle is compared and stored lowercased, and it arrives percent-encoded
-  // from a browser that encoded it. Both are the profile page's rules (006r),
-  // kept here now that the address bar is read in one place.
+  // from a browser that encoded it.
   const profile = /^\/u\/([^/?#]+)$/.exec(path)
   if (profile) {
     const handle = decodeHandle(profile[1])
@@ -144,8 +133,8 @@ export function viewOf(pathname: string): View {
   }
 
   // Settings, and a tab if the segment after it names one. A segment that names
-  // no tab, whether 'account', which is the bare path's own tab, or a typo, resolves to the
-  // bare settings view, and useRouter corrects the address, the same rule a
+  // no tab, whether 'account' (the bare path's own tab) or a typo, resolves to
+  // the bare settings view and useRouter corrects the address, the same rule a
   // project's unknown tab follows.
   const settings = /^\/settings\/([a-z]+)$/.exec(path)
   if (settings) {
@@ -154,9 +143,7 @@ export function viewOf(pathname: string): View {
   }
 
   // A session, and a tab if the segment after it names one. A segment that names
-  // none is discarded the same way a project's is: the reader addressed a real
-  // session, and the unreadable part of the address is the only part worth
-  // dropping.
+  // none is dropped the same way a project's is, keeping the session.
   const session = /^\/p\/([A-Za-z0-9_-]+)\/s\/([A-Za-z0-9_-]+)(?:\/([a-z]+))?$/.exec(path)
   if (session) {
     const tab = session[3]
@@ -165,9 +152,9 @@ export function viewOf(pathname: string): View {
   }
 
   // A project, and a tab if the segment after it names one. A segment that names
-  // no tab, such as a typo or a session link cut short at /p/{id}/s, still identifies
-  // the project, so the reader lands on it rather than back at the dashboard, and
-  // the address is corrected to the project's own.
+  // no tab, such as a typo or a session link cut short at /p/{id}/s, still
+  // identifies the project, so the reader lands on it and the address is
+  // corrected to the project's own.
   const project = /^\/p\/([A-Za-z0-9_-]+)(?:\/([a-z]+))?$/.exec(path)
   if (project) {
     const tab = project[2]
@@ -208,8 +195,8 @@ export function useRouter() {
     setView(to)
   }, [])
 
-  // An address we do not recognize is corrected in place on arrival, so a reload
-  // of a typo does not keep resolving to the dashboard at the wrong URL.
+  // On arrival the address is corrected in place to the path its view maps back
+  // to, dropping a trailing slash or a segment that names no tab.
   useEffect(() => {
     const want = pathOf(current.current)
     if (window.location.pathname !== want) window.history.replaceState(null, '', want)

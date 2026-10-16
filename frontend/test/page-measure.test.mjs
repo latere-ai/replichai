@@ -1,15 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression for the page measure on the single-column screens.
-//
-// The wallet capped its column at 560px and the admin console at 720px, both
-// pinned to the left edge of the panel. On a wide display that left most of the
-// row empty while the content inside the cap was cramped: a statement line whose
-// project is a full paper title wrapped over three lines, and the statement
-// itself scrolled inside a 380px box that was already inside the page's scroll.
-// The admin console stacked every explanation full-width above the control it
-// explains, so the policy ran several screens deep.
+// A browser regression for the page measure on the single-column screens, the
+// wallet and the admin console.
 //
 // What this test holds:
 //   - the column is centered, so the space that is left is even on both sides
@@ -20,7 +13,7 @@
 //   - nothing overflows sideways at either width
 import { check, fail, settled, start } from './harness.mjs'
 
-// The title that broke the old cap: a real paper name on a statement line.
+// A long title: a real paper name on a statement line.
 const LONG = 'Short-Form Videos Degrade Our Capacity to Retain Intentions: Effect of Context Switching On Prospective Memory'
 const at = (i) => new Date(1755_215_200_000 - i * 86_400_000).toISOString()
 const entry = (i, o) => ({ id: `e${i}`, holder: 'p', actor: 'admin', created_at: at(i), ...o })

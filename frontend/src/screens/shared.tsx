@@ -16,18 +16,15 @@ import { Pill, Seams, Segmented, Tip } from '../ui'
 import { THEME_MODES, type ThemeMode, useTheme } from '../theme'
 import { hueOf, initials, showsPicture } from '../account'
 
-// signerOf names the person who published a project. The signer's recorded name
-// is used whenever the sign-off carries one (006n); a v1 sign-off has none and
-// falls back to the owner's profile name (018). `owner` itself is never shown:
-// it is an opaque OIDC subject and names nobody.
+// signerOf names the person who published a project: the name recorded at
+// sign-off, or the owner's profile name for a v1 sign-off, which records none.
+// `owner` is never shown: it is an opaque OIDC subject and names nobody.
 export const signerOf = (p: Project & { owner_name?: string }) => p.signed_off_name || p.owner_name || '—'
 
-// SignerRows lists how to reach the person behind a name: contact, ORCID and
-// Scholar, each present only when set, in the one markup a researcher's page
-// and a sign-off card both use, so the two cannot drift. A sign-off card leads
-// with the signer's address as well; a researcher's page has no such row. The
-// Scholar link text is the host, not the label again, because a row reading
-// "Scholar · Scholar" tells a reader nothing.
+// SignerRows lists how to reach the person behind a name (contact, ORCID,
+// Scholar), each only when set. A researcher's page and a sign-off card share
+// this markup so they cannot drift; only the card passes a signer row. The
+// Scholar link text is the host, because "Scholar · Scholar" says nothing.
 export function SignerRows({ i18n, signer, contact, orcid, scholar }: { i18n: I18n; signer?: string; contact?: string; orcid?: string; scholar?: string }) {
   const { t } = i18n
   const rows: { label: string; node: React.ReactNode }[] = []
@@ -78,8 +75,7 @@ export function SignerRows({ i18n, signer, contact, orcid, scholar }: { i18n: I1
 
 // How each appearance is drawn. THEME_MODES fixes which ones exist and in what
 // order; this fixes what they look like, so adding a fourth is a type error here
-// until it is drawn. The list is kept in one place because it used to be
-// written out again here, and the two could drift.
+// until it is drawn.
 const THEME_FACE: Record<ThemeMode, { icon: IconName; label: TKey; hint: TKey }> = {
   auto: { icon: 'monitor', label: 'themeAuto', hint: 'themeAutoHint' },
   light: { icon: 'sun', label: 'themeLight', hint: 'themeLight' },
@@ -180,9 +176,8 @@ export function ProfileFields({
   set: (k: TextField) => (e: React.ChangeEvent<HTMLInputElement>) => void
 }) {
   const { t } = i18n
-  // Only the text fields are rendered here. `public` is a decision, not a
-  // field, and it lives with the handle in the settings card where the
-  // consequence can be spelled out (006r).
+  // Only the text fields. `public` lives with the handle in the settings card,
+  // where its consequence can be spelled out.
   const fields: { k: TextField; label: string; placeholder?: string; type?: string }[] = [
     { k: 'display_name', label: t('profileName'), placeholder: t('profileNamePlaceholder') },
     { k: 'institution', label: t('profileInstitution'), placeholder: t('profileInstitutionPlaceholder') },
@@ -220,10 +215,9 @@ export function Tab({ on, onClick, icon, label }: { on: boolean; onClick: () => 
 }
 
 // NotReadable is the screen for a project this reader may not read. The server
-// answers one 404 for private, withdrawn, trashed, and never-existed alike (028),
-// so this screen claims none of them: it says the address is not public, and to
-// a reader with no account it offers the sign-in that would settle it, carrying
-// this address so they land back on it.
+// answers one 404 for private, withdrawn, trashed, and never-existed alike, so
+// this screen claims none of them: it says the address is not public, and a
+// signed-out reader gets a sign-in that returns them to this address.
 export function NotReadable({ i18n, me }: { i18n: I18n; me: Me }) {
   const { t } = i18n
   return (
@@ -264,8 +258,8 @@ export function Initials({ email, size = 22 }: { email: string; size?: number })
 }
 
 // Avatar renders the IdP's picture when there is one, and falls back to
-// initials for an absent URL and for one that fails to load (006m AC4). A
-// broken-image glyph would be worse than the two letters shown before.
+// initials for an absent URL and for one that fails to load, so a broken-image
+// glyph is never shown.
 export function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
   const [broken, setBroken] = useState(false)
   if (showsPicture(me.picture, broken)) {
@@ -282,10 +276,8 @@ export function Avatar({ me, size = 22 }: { me: Me; size?: number }) {
   }
   return <Initials email={me.email ?? ''} size={size} />
 }
-// The account roles the server sends, each named by a key TypeScript can check.
-// Built by concatenation this read `t('tier' + …)`, which compiled whatever it
-// produced, including `tierNone`, a key that never existed and rendered its own
-// name in the pill.
+// The account roles the server sends, each mapped to a key TypeScript can
+// check. Any other role, or none, is labeled with `tierNone`.
 const TIER_KEY = { user: 'tierUser', admin: 'tierAdmin' } as const satisfies Record<string, TKey>
 function tierLabel(t: I18n['t'], tier?: string) {
   return t(TIER_KEY[tier as keyof typeof TIER_KEY] ?? 'tierNone')
