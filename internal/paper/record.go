@@ -87,9 +87,9 @@ func parseCrossref(body []byte) (string, Record) {
 	}
 	m := w.Message
 	rec := Record{
-		Volume:    strings.TrimSpace(m.Volume),
-		Issue:     strings.TrimSpace(m.Issue),
-		Pages:     strings.TrimSpace(m.Page),
+		Volume:    plainText(m.Volume),
+		Issue:     plainText(m.Issue),
+		Pages:     plainText(m.Page),
 		Publisher: plainText(m.Publisher),
 		Abstract:  plainAbstract(m.Abstract),
 	}
