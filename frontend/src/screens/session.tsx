@@ -28,8 +28,9 @@ import { type I18n } from '../i18n'
 import { dateOnly } from '../locale'
 import { Ico, type IconName } from '../icons'
 import { type SessionTab } from '../routes'
-import { Pill, RowButton, Tip } from '../ui'
-import { terminal } from '../session-stop'
+import { Disclosure, Pill, RowButton, Tip } from '../ui'
+import { stoppedByHand, terminal } from '../session-stop'
+import { failureParts, sessionFailureText } from '../errors'
 import { useJobStream } from '../job-stream'
 import { CardHead, Empty, NotReadable, Tab } from './shared'
 import { SessionTranscript } from './transcript'
@@ -643,6 +644,32 @@ function FileView({ i18n, jobId, path, onNavigate }: { i18n: I18n; jobId: string
   )
 }
 
+// SessionFailure says why a failed session stopped, above every pane of it.
+// The row names the class of failure; here the reader also gets what the run
+// itself recorded, as text to select and copy: its first line on its own, and
+// the rest of the report, a stack trace when the runner panicked, folded into
+// a box of bounded height so a long one cannot push the session out of view.
+function SessionFailure({ i18n, cause }: { i18n: I18n; cause: string }) {
+  const { t } = i18n
+  const { summary, detail } = failureParts(cause)
+  const lines = detail ? detail.split('\n').length : 0
+  return (
+    <section className="fail-note" data-test="session-failure">
+      <p className="fail-head">
+        <Ico name="alert" size={14} /> {sessionFailureText(t, cause)}
+      </p>
+      <p className="fail-cause">
+        <span className="fail-label">{t('failReported')}</span> <span data-test="failure-cause">{summary}</span>
+      </p>
+      {detail && (
+        <Disclosure summary={lines === 1 ? t('failMoreOne') : t('failMore', { n: String(lines) })}>
+          <pre data-test="failure-detail">{detail}</pre>
+        </Disclosure>
+      )}
+    </section>
+  )
+}
+
 // SessionScreen is one replication session, and everything it produced: the
 // transcript of the run, the verdict it was graded to, and the repository it
 // published. All three are the session's, which is why all three are addressed
@@ -722,6 +749,7 @@ export function SessionScreen({
           <Tab on={tab === 'artifacts'} onClick={() => onTab('artifacts')} icon="package" label={t('artifacts')} />
         </div>
       </div>
+      {job?.phase === 'failed' && job.error && !stoppedByHand(job.phase, job.error) && <SessionFailure i18n={i18n} cause={job.error} />}
       {tab === 'transcript' ? (
         <SessionTranscript i18n={i18n} jobId={jobId} job={job} />
       ) : (

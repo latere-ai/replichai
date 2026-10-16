@@ -654,7 +654,7 @@ const en = {
     // such as "put replication-manifest.json in latere/x: unexpected status
     // 422". These
     // say what class of thing went wrong and who can move it; the original text
-    // is still one hover away, for whoever is actually debugging it.
+    // is in the session itself, its first line one hover away on the row.
     failUnresolvable: 'Stopped: the paper could not be identified from its link.',
     failSource: 'Stopped: the paper’s source could not be reached.',
     failSecret: 'Stopped: a file in the results looked like it held a password or key.',
@@ -662,6 +662,10 @@ const en = {
     failCredits: 'Stopped: this project ran out of credits.',
     failGeneric: 'This session didn’t finish.',
     failDetail: 'What the run reported: {cause}',
+    failOpenSession: 'Open the session for the full report.',
+    failReported: 'What the run reported:',
+    failMore: 'The rest of the report, {n} lines',
+    failMoreOne: 'The rest of the report, 1 line',
     verdict: 'Verdict',
     artifacts: 'Artifacts',
     noVerdict: 'No finished session yet. The verdict appears once a session finishes.',

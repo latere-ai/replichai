@@ -8,19 +8,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { cancelSession, deleteSession, type Job } from '../api'
 import { type I18n } from '../i18n'
-import { deleteSessionErrLabel, sessionFailureText } from '../errors'
+import { deleteSessionErrLabel, failureTip, sessionFailureText } from '../errors'
 import { formatUSD } from '../money'
 import { Ico } from '../icons'
 import { Modal, Pill, RowButton, Tip } from '../ui'
 import { elapsed } from '../when'
-import { freshest, stopPending, terminal } from '../session-stop'
+import { freshest, stopPending, stoppedByHand, terminal } from '../session-stop'
 import { useJobStream } from '../job-stream'
 import { repoSuffix, runLabel } from '../repo'
 import { phaseIcon, phaseLabel, phaseTone } from '../phase'
-
-// stopLabel reads a stopped run, whether cancelled or reap-closed by a restart,
-// as "stopped" rather than a bare "failed".
-const isStopped = (j: Job) => j.phase === 'failed' && !!j.error && /cancel|stopped|restart/i.test(j.error)
 
 export function SessionRow({
   i18n,
@@ -92,7 +88,7 @@ export function SessionRow({
 
   // A stopped run is neither a success nor a fault of the paper: it reads in the
   // neutral tone rather than borrowing the failure red.
-  const stopped = isStopped(j)
+  const stopped = stoppedByHand(j.phase, j.error)
   const phaseTxt = stopped ? t('stopped') : phaseLabel(t, j.phase)
   return (
     <RowButton className={nested ? 'row row-nested' : 'row'} onOpen={onOpen}>
@@ -168,7 +164,8 @@ export function SessionRow({
           it. Otherwise the slot shows what the worker recorded, which is a Go
           error string. That says what broke to somebody who wrote the worker
           and nothing to anybody else, so the row states the class of failure
-          and keeps the original on hover for the person who does want it. */}
+          and keeps the original's first line on hover; the whole of it, a
+          stack trace when the runner panicked, is in the session itself. */}
       {stopErr && !terminal(j.phase) ? (
         <span className="err small">
           <Ico name="alert" size={13} /> {t('stopError')}
@@ -176,7 +173,7 @@ export function SessionRow({
       ) : (
         j.error &&
         !stopped && (
-          <Tip text={t('failDetail', { cause: j.error })}>
+          <Tip text={failureTip(t, j.error)}>
             <span className="err small">
               <Ico name="alert" size={13} /> {sessionFailureText(t, j.error)}
             </span>

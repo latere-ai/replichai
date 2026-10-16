@@ -22,3 +22,8 @@ export const stopPending = (phase: string, requested: boolean) => requested && !
 // settled one is kept.
 export const freshest = <T extends { id: string; phase: string }>(shown: T, incoming: T): T =>
   shown.id === incoming.id && terminal(shown.phase) && !terminal(incoming.phase) ? shown : incoming
+
+// stoppedByHand reports a failed session that was stopped rather than broken:
+// a person cancelled it, or the server restarted under it. It reads in the
+// neutral tone, and what it recorded is not a fault to report.
+export const stoppedByHand = (phase: string, error?: string) => phase === 'failed' && !!error && /cancel|stopped|restart/i.test(error)
