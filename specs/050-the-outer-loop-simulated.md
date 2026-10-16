@@ -110,9 +110,9 @@ A task in the benchmark is a paper with known answers at each stage: which claim
 
 Each of the three carries a note at its top pointing here.
 
-### 8. The copy states the whole pipeline now, and the outer loop as coming soon
+### 8. The copy describes what ships, and states the plan once
 
-The README, the landing page and the docs describe all four stages. Stages 1 and 2 are described as what ReplicHAI does; stages 3 and 4 as coming soon. The audit's own description keeps saying that the audit never simulates participants, because that stays true. Figure 1 keeps its geometry for now (the inner loop closed, the outer loop drawn open, because it does not run yet) and changes its label and caption; it is redrawn when stage 4 ships. The headline question, *Does the paper reproduce?*, stays for now: it is the first stage and it is what ships. It changes, with the share image that carries it, when stage 4 ships.
+The landing page and the search and share descriptions describe the audit, which is what ships. The plan for the outer loop is stated in one place on the landing page, the outer loop's own point, as work in development whose result is a simulation and never evidence about people; captions, the lead and the descriptions do not repeat it. The README gives the four stages one section of their own and says in one sentence which are built. The audit's own description keeps saying that the audit does not run the study with people, because that stays true. Figure 1 keeps its geometry (the inner loop closed, the outer loop drawn open) and labels the opening as needing people, which stays true when stage 4 ships, since a simulated study is not evidence about people. The headline question, *Does the paper reproduce?*, stays for now: it is the first stage and it is what ships. It changes, with the share image that carries it, when stage 4 ships.
 
 ## First corpus
 
