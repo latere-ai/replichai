@@ -145,7 +145,7 @@ func run() error {
 	credentials := runtimes.ResolveCredentials(os.LookupEnv)
 	catalog, err := builtin.Catalog(builtin.Config{Local: serverLocalConfig(), Anthropic: builtin.AnthropicConfig{
 		APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase,
-	}, Latere: builtin.LatereConfig{BaseURL: credentials.LatereAPIURL, TokenCommand: devLatereCommand(*dev, credentials.LatereTokenCommand)}})
+	}, Latere: builtin.LatereConfig{BaseURL: credentials.LatereAPIURL, TokenCommand: devLatereCommand(*dev, credentials.LatereTokenCommand), Environments: credentials.LatereEnvironments}})
 	if err != nil {
 		return err
 	}

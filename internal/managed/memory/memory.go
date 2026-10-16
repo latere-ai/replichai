@@ -74,6 +74,10 @@ type Config struct {
 	// none, so a specification carrying an input is refused, as it is on a
 	// runtime that cannot mount one read-only.
 	InputDir string
+	// Environments are the environments the runtime offers by name, so a
+	// caller that names one can be tested both ways. Every session runs the
+	// same way whichever it names.
+	Environments []string
 }
 
 // Store holds the sessions. It is deliberately separate from Runtime, which
@@ -170,7 +174,20 @@ func (r *Runtime) capabilities() managed.Capabilities {
 		FindingsRounds:     r.config.FindingsRounds,
 		LiveArtifacts:      r.config.LiveArtifacts,
 		InputDir:           r.config.InputDir,
+		Environments:       environments(r.config.Environments),
 	}
+}
+
+// environments is the set of the configured names, nil for none.
+func environments(names []string) map[string]bool {
+	if len(names) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(names))
+	for _, name := range names {
+		set[name] = true
+	}
+	return set
 }
 
 // Models reports the single configured model under all three preferences, so

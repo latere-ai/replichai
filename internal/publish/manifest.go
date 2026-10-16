@@ -80,7 +80,10 @@ type Run struct {
 	// the same reach without the list being repeated here. NetworkProfile
 	// names the profile a study fixed the policy to; a run with none had
 	// whatever its runtime could enforce.
-	Sandbox        string `json:"sandbox,omitempty"`
+	Sandbox string `json:"sandbox,omitempty"`
+	// Environment is what the machine ran, such as science; empty is the
+	// runtime's default.
+	Environment    string `json:"environment,omitempty"`
 	Network        string `json:"network,omitempty"`
 	NetworkProfile string `json:"network_profile,omitempty"`
 	NetworkAllowed int    `json:"network_allowed,omitempty"`

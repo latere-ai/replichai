@@ -45,6 +45,23 @@ model. On Latere each level is the platform's own level of that name, whose
 models the platform chooses, and `provider/id` can be any model it serves you.
 `replichai models --runtime <name>` lists both.
 
+### Environments
+
+The environment is what the session's machine runs: an image with the tools a
+kind of work needs already installed. `--environment`, or `environment:` in a
+project file for the whole file or for one paper, names it, and the run record
+in `replication.json` says which one a run had. A runtime that does not offer
+the named environment refuses the run before it starts, rather than running it
+on another.
+
+On `latere`, the environments are the platform's: `base` (Python with its data
+and document libraries), `science` (adds SciPy, statsmodels, scikit-learn,
+pingouin and the spatial libraries, and R with lme4, lmerTest, ordinal, car,
+emmeans, afex, psych, spdep and the tidyverse) and `gui` (adds a display and a
+browser). A deployment offers the ones it lists in `LATERE_ENVIRONMENTS`, comma
+separated, because one is usable only once the platform holds it; unset offers
+`base` alone. The other runtimes offer no named environment yet.
+
 The runtime is chosen by `--runtime`, then by `REPLICHAI_RUNTIME`, then by the
 command's own default: `anthropic-managed` for `audit`, `finish` and `rates`,
 and `local` for `run`. `replichai providers` lists the installed runtimes and
@@ -86,6 +103,7 @@ the files advance as each of the agent's turns ends.
 | `--out` | `runs` | directory for the artifacts |
 | `--runtime` | `$REPLICHAI_RUNTIME`, then `anthropic-managed` | the runtime |
 | `--model` | `best` | an Effort level (`quick`, `thorough`, `sustained`, or `fast`, `balanced`, `best`) or one exact model as `provider/id` |
+| `--environment` | the runtime's base | the environment the session's machine runs, such as `science`, where the runtime offers it (see [Environments](#environments)) |
 | `--max-revisions` | `3` | how many times a graded run may be revised; `0` grades it once and never revises it |
 | `--timeout` | `1h0m0s` | the longest the run may take |
 | `--interval` | `20s` | time between status checks |
@@ -131,6 +149,7 @@ overrides, repeat runs and released-artifact snapshots, is described in
 | `--parallel` | half the cores, at most 4 | how many papers run at once |
 | `--resume` | off | skip papers that already finished and retry the ones that failed |
 | `--network` | `artifacts` | network profile for runs whose project file names none: `artifacts` or `open` |
+| `--environment` | the runtime's base | environment for runs whose project file names none (see [Environments](#environments)) |
 | `--max-revisions` | `3` | per run; `0` grades each run once and never revises it |
 | `--timeout` | `1h0m0s` | the longest one paper may take |
 | `--interval` | `20s` | time between status checks |

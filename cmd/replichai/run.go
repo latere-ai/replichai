@@ -41,6 +41,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		inviteFlag   = fs.String("invite", "", "GitHub login to invite as a collaborator (default the project file's publish.invite)")
 		resume       = fs.Bool("resume", false, "skip papers that have already finished")
 		network      = fs.String("network", "", "network profile for runs whose project file names none: artifacts (the default) or open")
+		environment  = fs.String("environment", "", "environment for runs whose project file names none, such as science (default: the runtime's base)")
 		local        localOptions
 	)
 	local.bind(fs)
@@ -90,7 +91,7 @@ func runRun(ctx context.Context, args []string, stdout, stderr *os.File) error {
 		interval: *interval, timeout: *timeout, maxRevisions: *maxRevisions,
 		stdout: stdout, stderr: stderr,
 		publishers: make(map[int]*publisher), project: file.Project,
-		profiles: profiles, inputs: inputs,
+		profiles: profiles, inputs: inputs, environment: *environment,
 	}
 	statePath := filepath.Join(batch.Root(positional[0]), "batch.json")
 	reportPath := filepath.Join(batch.Root(positional[0]), "report.md")
@@ -201,6 +202,9 @@ type projectRunner struct {
 	// before any run starts.
 	profiles map[int]audit.NetworkProfile
 	inputs   map[string]batch.StudyInputs
+	// environment is what a run's machine runs when its project file names
+	// none.
+	environment string
 
 	mu         sync.Mutex
 	publishers map[int]*publisher
@@ -307,6 +311,7 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		audit.WithSessionModel(model),
 		audit.WithSessionMaxRevisions(r.maxRevisions),
 		audit.WithSessionTimeout(r.timeout),
+		audit.WithEnvironment(firstNonEmpty(entry.Environment, r.environment)),
 	}
 	profile, given, handed := r.given(entry)
 	if profile != "" {
@@ -360,6 +365,7 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 				}
 				record := r.placed(runRecord(runtime, evidence.Status, model, audit.PromptDigest(ctx), r.stderr), entry)
 				record.NetworkProfile = string(profile)
+				record.Environment = firstNonEmpty(entry.Environment, r.environment)
 				if handed {
 					record.PaperDigest = given.Paper.Digest()
 					for _, snapshot := range given.Artifacts {

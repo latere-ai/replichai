@@ -83,6 +83,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		projectID    = fs.String("project", "", "with --publish: the project the platform creates the repository under")
 		detach       = fs.Bool("detach", false, "with --publish: start the run and exit; complete it later with finish")
 		model        = fs.String("model", audit.DefaultModelPreference, "model to run on: an Effort level (quick, thorough, sustained, or fast, balanced, best) or one model as provider/id")
+		environment  = fs.String("environment", "", "environment the session's machine runs, such as science, where the runtime offers it (default: the runtime's base)")
 		local        localOptions
 	)
 	local.bind(fs)
@@ -117,6 +118,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		audit.WithSessionMaxRevisions(*maxRevisions),
 		audit.WithSessionTimeout(*timeout),
 		audit.WithSessionHooks(hooks),
+		audit.WithEnvironment(*environment),
 	}
 
 	// When publishing, the repository is created up front in both cases.
@@ -184,6 +186,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 				grade = provider.Grade(evidence.Status.Verdict.Grade)
 			}
 			record := runRecord(runtime, evidence.Status, *model, audit.PromptDigest(ctx), stderr).WithModels(evidence.Events)
+			record.Environment = *environment
 			if err := finalizePublication(ctx, pub.gh, pub.owner, pub.name, pub.id, m.Digest(), grade, record,
 				providerEventsFromManaged(evidence.Events), *invite, stdout); err != nil {
 				return err
