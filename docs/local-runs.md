@@ -143,12 +143,17 @@ Your home directory is denied, with named exceptions:
 |---|---|
 | the harness's own configuration (`~/.claude` and `~/.claude.json`, or `~/.codex`) | it holds your existing login. It is granted only to a session actually running on that login, never to one you handed an API key, and the grant is written into the run's environment record as `config_read_allowed` |
 | `~/Library/Keychains`, read-only, macOS only | Claude Code keeps its login there rather than in a file, and only a session actually using that login is granted it |
-| the harness's scratch directory under `/tmp` | without it Claude Code's shell tool fails before running anything |
+| `/tmp/codex-<your user id>`, for codex only | codex keeps a scratch area there |
 | `~/.codex`, writable, for codex only | codex writes its own state back and will not start otherwise |
 
 Explicitly denied, and tested: `~/.ssh`, `~/.aws`, `~/.config/gcloud`,
 `~/.kube`, `~/.netrc`, `~/.gnupg`, `~/.docker/config.json`,
 `~/.git-credentials`, `~/.config/replichai`, and any `.env`.
+
+Runs share no temporary folder. The sandbox would otherwise hand every run the
+same one, `/tmp/claude`, and one run would find what another downloaded or
+built there. Each run keeps its temporary files in its own `tmp/` instead, and
+`/tmp/claude` is denied to it.
 
 Also denied, for a different reason: **your own standing instructions and
 plugins.** `~/.claude/CLAUDE.md`, `~/.claude/settings.json`,

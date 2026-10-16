@@ -563,15 +563,16 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		denied = needs.Denies
 	}
 	stage := hostsandbox.StageSpec{
-		Name:    name,
-		Argv:    argv,
-		Env:     r.stageEnv(session, env),
-		EnvFile: secrets,
-		Workdir: session.Workspace(),
-		Paths:   paths,
-		Denied:  denied,
-		Network: stageNetwork,
-		LogPath: session.RawLog(name),
+		Name:         name,
+		Argv:         argv,
+		Env:          r.stageEnv(session, env),
+		EnvFile:      secrets,
+		Workdir:      session.Workspace(),
+		Paths:        paths,
+		Denied:       denied,
+		DeniedWrites: sharedTemp(r.config.Machine.Platform),
+		Network:      stageNetwork,
+		LogPath:      session.RawLog(name),
 	}
 	if stage.Network.Mode == "" {
 		stage.Network.Mode = hostsandbox.NetworkNone
@@ -680,14 +681,35 @@ func (r *Runtime) stagePaths(session *Session, role harness.Stage) []hostsandbox
 	}
 }
 
+// SharedTempDir is the temporary directory srt hands a stage that names no
+// other. It is one directory for every stage on the machine, and srt keeps it
+// writable whatever else is denied, so what one run downloads or builds there
+// another run finds. Every stage is pointed at its own session's directory
+// instead (stageEnv) and denied this one (sharedTemp).
+const SharedTempDir = "/tmp/claude"
+
+// sharedTemp lists the spellings of SharedTempDir a stage is denied. srt does
+// not resolve a denied path that does not exist yet, so on macOS, where /tmp
+// is a link to /private/tmp, both spellings are named.
+func sharedTemp(platform string) []string {
+	if platform == string(hostsandbox.Darwin) {
+		return []string{SharedTempDir, "/private" + SharedTempDir}
+	}
+	return []string{SharedTempDir}
+}
+
 // stageEnv adds what every stage needs whichever harness it runs: a temporary
 // directory inside the session, and the session's virtual environment, so an
 // install lands outside the repository.
 func (r *Runtime) stageEnv(session *Session, env map[string]string) map[string]string {
 	merged := map[string]string{
-		"TMPDIR":       session.Tmp(),
-		"VIRTUAL_ENV":  session.Venv(),
-		"REPLICHAI_WS": session.Workspace(),
+		"TMPDIR": session.Tmp(),
+		// srt replaces TMPDIR with the value of CLAUDE_CODE_TMPDIR, or
+		// with SharedTempDir when that is unset, so TMPDIR alone does not
+		// reach the stage. A harness may point it lower inside the session.
+		"CLAUDE_CODE_TMPDIR": session.Tmp(),
+		"VIRTUAL_ENV":        session.Venv(),
+		"REPLICHAI_WS":       session.Workspace(),
 		// git reads the operator's global configuration unless told not
 		// to, and the sandbox denies that file, so without this every git
 		// command a stage runs would fail on a file it must not read. The
