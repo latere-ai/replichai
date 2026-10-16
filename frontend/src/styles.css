@@ -3157,9 +3157,11 @@ input.submit-input {
   font-size: 12px;
   line-height: 1.6;
 }
+/* A quotation is set in from both sides, in the quieter text tone, without a
+   bar down its left edge (047). */
 .markdown-body blockquote {
-  padding-left: 14px;
-  border-left: 3px solid var(--border-strong);
+  margin: 1em 0;
+  padding: 0 24px;
   color: var(--fg-2);
 }
 .markdown-body img {
@@ -3633,39 +3635,79 @@ input.submit-input {
   color: var(--fg-1);
 }
 
-/* What the authors released (021c). A dead link and nothing published never
-   share a tone, so the dot is the whole distinction at a glance. */
+/* What the authors released (021c), and the open-science scorecard beside it:
+   two captioned lists between a table's outer rules (047). A dead link and
+   nothing published never share a tone, and each result says so in a word. */
+.released-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 32px;
+  align-items: start;
+  margin-bottom: 28px;
+}
 .release-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
+  align-items: baseline;
+  gap: 16px;
+  padding: 11px 0;
   border-top: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.ruled-list > .release-row:first-child,
+.ruled-list > .score-item:first-child {
+  border-top: none;
 }
 .release-where {
-  font: 500 13px/1.35 var(--font-sans);
-  width: 168px;
+  font: 500 13.5px/1.4 var(--font-sans);
+  width: 160px;
   flex: none;
-  color: var(--fg-2);
+  color: var(--fg-1);
 }
-.release-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: none;
+.release-what {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+.release-result {
+  margin-left: auto;
+}
+.score-item {
+  display: grid;
+  gap: 2px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
 }
 .score-row {
   display: flex;
   align-items: baseline;
   gap: 9px;
-  font-size: 12.5px;
+  font-size: 13.5px;
+  color: var(--fg-1);
 }
 .score-mark {
-  font-family: var(--font-mono);
   width: 12px;
   flex: none;
 }
-
+.score-detail {
+  padding-left: 21px;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 900px) {
+  .released-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .release-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .release-where {
+    width: auto;
+  }
+}
 
 /* The sessions tab's rail (021e). One card per paper with a graded session,
    stacked in the rail column. It stays a grid rather than a flex stack so the
@@ -4273,4 +4315,35 @@ input.submit-input {
   color: var(--fg-1);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* The wallet's statement is a table (047): a date and an amount per line,
+   between a table's two outer rules, with the amounts in tabular figures so a
+   column of them lines up. */
+.usage-rows.statement {
+  border: none;
+  border-radius: 0;
+  border-top: 1.5px solid var(--fg-1);
+  border-bottom: 1.5px solid var(--fg-1);
+}
+.statement .usage-line {
+  padding: 10px 0;
+  font-size: 13px;
+}
+.statement .v {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+
+/* Settings' profile form in the platform's sectioned layout (047): each
+   field's name on the left and the field on the right, so the column of
+   names is read down and the fields line up. The publish wizard sets the same
+   fields in a dialog, which keeps them stacked. On a phone they stack too. */
+@media (min-width: 761px) {
+  .screen.form .profile-fields .field {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 20px;
+  }
 }

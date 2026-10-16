@@ -274,7 +274,7 @@ function WalletActivity({ i18n, balance }: { i18n: I18n; balance: number }) {
           {/* No scroll region inside the page's own scroll: the server caps
               what it returns, so the list has an end and the page can hold it.
               A box that scrolled at 380px hid the history it exists to show. */}
-          <div className="usage-rows">
+          <div className="usage-rows statement">
             {entries.map((e) => {
               const label = ledgerLabel(t, e)
               return (

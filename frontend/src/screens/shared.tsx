@@ -192,7 +192,7 @@ export function ProfileFields({
     { k: 'handle', label: t('profileHandle'), placeholder: t('profileHandlePlaceholder') },
   ]
   return (
-    <div className="stack" style={{ gap: 10 }}>
+    <div className="stack profile-fields" style={{ gap: 10 }}>
       {fields.map((f) => (
         <label key={f.k} className="field">
           {f.label}

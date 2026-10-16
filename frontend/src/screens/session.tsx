@@ -498,61 +498,68 @@ function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings 
     supplement: t('critSupplement'),
   }
 
+  // Two tables, captioned above as the verdict's are (047): where the run looked
+  // and what it found there, then the open-science scorecard. A result is a dot
+  // and a word in its tone, never the tone alone.
   return (
-    <div className="detail-grid" style={{ gridTemplateColumns: '1fr 300px', alignItems: 'start' }}>
+    <div className="released-grid">
       {!!released.length && (
-        <div className="card">
-          <div className="card-head">
-            <span className="eyebrow">{t('releasedTitle')}</span>
-            <span className="small muted" style={{ marginLeft: 'auto' }}>{t('releasedHint')}</span>
+        <section className="findings-sec">
+          <p className="table-caption">
+            <b>{t('releasedTitle')}.</b> {t('releasedHint')}
+          </p>
+          <div className="ruled-list">
+            {released.map((r, i) => (
+              <div key={i} className="release-row">
+                <span className="release-where">{r.where}</span>
+                <span className="release-what">
+                  {r.url ? (
+                    <a className="link" href={r.url} target="_blank" rel="noreferrer">
+                      {r.what || r.url}
+                    </a>
+                  ) : (
+                    r.what
+                  )}
+                </span>
+                <span className="outcome-tag release-result" style={{ color: releaseTone(r.result) }}>
+                  {label(r.result)}
+                </span>
+              </div>
+            ))}
           </div>
-          {released.map((r, i) => (
-            <div key={i} className="release-row">
-              <span className="release-dot" style={{ background: releaseTone(r.result) }} />
-              <span className="release-where">{r.where}</span>
-              <span className="small" style={{ flex: 1, minWidth: 0 }}>
-                {r.url ? (
-                  <a className="link" href={r.url} target="_blank" rel="noreferrer">
-                    {r.what || r.url}
-                  </a>
-                ) : (
-                  r.what
-                )}
-              </span>
-              <span className="mono small" style={{ color: releaseTone(r.result), fontWeight: 600, letterSpacing: '0.08em' }}>
-                {label(r.result)}
-              </span>
-            </div>
-          ))}
-        </div>
+        </section>
       )}
       {!!scores.length && (
-        <div className="card card-pad stack" style={{ gap: 10 }}>
-          <span className="eyebrow">{t('scorecard')}</span>
-          {CRITERIA.map((c) => {
-            const sc = scoreOf(findings, c)
-            if (!sc) return null
-            return (
-              <div key={c} className="stack" style={{ gap: 2 }}>
-                <div className="score-row">
-                  <span className="score-mark" style={{ color: sc.found ? 'var(--ok)' : 'var(--err)' }}>{sc.found ? '✓' : '✕'}</span>
-                  <span style={{ color: 'var(--fg-2)' }}>{critLabel[c]}</span>
+        <section className="findings-sec">
+          <p className="table-caption">
+            <b>{t('scorecard')}.</b>
+          </p>
+          <div className="ruled-list">
+            {CRITERIA.map((c) => {
+              const sc = scoreOf(findings, c)
+              if (!sc) return null
+              return (
+                <div key={c} className="score-item">
+                  <div className="score-row">
+                    <span className="score-mark" style={{ color: sc.found ? 'var(--ok)' : 'var(--err)' }}>{sc.found ? '✓' : '✕'}</span>
+                    <span>{critLabel[c]}</span>
+                  </div>
+                  {sc.found && sc.url && (
+                    <a className="link score-detail" href={sc.url} target="_blank" rel="noreferrer">
+                      {sc.url}
+                    </a>
+                  )}
+                  {/* Not found is only a finding when it says where it looked. */}
+                  {!sc.found && !!sc.searched?.length && (
+                    <span className="score-detail muted">
+                      {t('searchedIn')}: {sc.searched.join(', ')}
+                    </span>
+                  )}
                 </div>
-                {sc.found && sc.url && (
-                  <a className="link mono small" style={{ paddingLeft: 21 }} href={sc.url} target="_blank" rel="noreferrer">
-                    {sc.url}
-                  </a>
-                )}
-                {/* Not found is only a finding when it says where it looked. */}
-                {!sc.found && !!sc.searched?.length && (
-                  <span className="small muted" style={{ paddingLeft: 21 }}>
-                    {t('searchedIn')}: {sc.searched.join(', ')}
-                  </span>
-                )}
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        </section>
       )}
     </div>
   )
