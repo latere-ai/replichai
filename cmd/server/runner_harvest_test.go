@@ -115,6 +115,30 @@ func TestRetainHarvestsARunThatNeverPushed(t *testing.T) {
 	}
 }
 
+// TestRetainResolvesAnIdentityTheRepositoryLacks checks that a session whose
+// repository holds no recorded paper identity still finalizes. Resolving
+// records the identity before the session starts, but GitHub refuses that
+// commit on a repository with no commit yet, so the identity is resolved again
+// at the end and recorded then, rather than failing a session that did its
+// work.
+func TestRetainResolvesAnIdentityTheRepositoryLacks(t *testing.T) {
+	engine, j, _ := harvestSetup(t, map[string][]byte{"verdict.json": validVerdict(t)})
+	forge := forgeOf(engine)
+	delete(forge.files, publish.IdentityFile)
+	j.Ref = "doi:10.1234/a-paper" // a DOI resolves offline
+
+	if err := engine.Execute(context.Background(), &j, func(provider.RunStatus) {}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if _, ok := forge.files[publish.ManifestFile]; !ok {
+		t.Error("the session was not finalized: no manifest")
+	}
+	id, ok, err := publish.RecordedIdentity(context.Background(), forge, "open-hai", "a-paper-xyz")
+	if err != nil || !ok || id.Key == "" {
+		t.Errorf("recorded identity = (%+v, %v, %v), want the resolved identity recorded", id, ok, err)
+	}
+}
+
 // TestRetainHarvestRefusesThirdPartyData checks that the redistribution
 // boundary holds on the harvest path too: a paper PDF in the output directory
 // never reaches the repository.

@@ -10,6 +10,15 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- A session started in the app no longer fails at its end with `retain
+  evidence: managed retention requires the recorded paper identity`. The
+  paper's identity is written into the new repository before the session
+  starts, which GitHub refuses while the repository has no commit yet. When it
+  is missing at the end, the paper is now resolved again and the identity
+  written then.
+
 ## v0.33.0 - 2026-10-16
 
 ### Added
