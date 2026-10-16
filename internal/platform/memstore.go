@@ -59,6 +59,22 @@ func (s *MemStore) Settings(context.Context) (Settings, error) {
 	return s.settings, nil
 }
 
+// SyncRates prices the card's listed models at the listed rates, as
+// PGStore.SyncRates does.
+func (s *MemStore) SyncRates(_ context.Context, listed []credit.Rates) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next, changed := s.settings.Rates.WithListed(listed)
+	if !changed {
+		return false, nil
+	}
+	if err := next.Validate(); err != nil {
+		return false, err
+	}
+	s.settings.Rates = next
+	return true, nil
+}
+
 // SetSettings writes the platform row, recording the admin who did it.
 func (s *MemStore) SetSettings(ctx context.Context, byAdmin access.Principal, next Settings) error {
 	if err := next.validate(); err != nil {
