@@ -363,14 +363,19 @@ try {
 
   /* ── The drawer works for a stranger too ── */
 
-  // 028 replaced the rail's foot with a sign-in when there is nobody to name.
-  // That foot was sized against a 236px column and a 56px folded rail; the
-  // drawer is a third width, and the sign-in must still fit it.
+  // Signed out, the way in is the top bar's sign-in, on screen without opening
+  // the drawer, and the drawer still fits a phone.
   {
     const page = await open('/registry', { me: SIGNED_OUT })
     await page.waitForSelector('.screen')
     const bar = await page.waitForSelector('.rail-open-btn', { visible: true, timeout: 15000 }).then(() => true).catch(() => false)
     await settled(page)
+    const signIn = await page.evaluate((w) => {
+      const a = document.querySelector('[data-test="topbar-signin"]')
+      const r = a?.getBoundingClientRect()
+      return !!r && r.width > 0 && r.left >= 0 && r.right <= w
+    }, PHONE.width)
+    check(signIn, 'signed out, a phone shows no sign-in in the top bar')
     if (!bar) fail('signed out, a phone has no control that opens the drawer')
     else {
       await page.click('.rail-open-btn')
@@ -389,11 +394,8 @@ try {
       }, PHONE.height)
       check(read.open, 'signed out, the hamburger did not open the drawer')
       check(read.left === 0, `signed out, the open drawer sits at x=${read.left}`)
-      if (read.footBottom !== null && read.footBottom > read.h) fail(`the drawer's foot ends at ${read.footBottom}px, below the ${read.h}px screen — that is where the sign-in lives`)
+      if (read.footBottom !== null && read.footBottom > read.h) fail(`the drawer's foot ends at ${read.footBottom}px, below the ${read.h}px screen`)
       for (const c of read.wide) fail(`signed out, ${c} runs past the drawer's own right edge`)
-      // And the sign-in is reachable from it.
-      const href = await page.evaluate(() => document.querySelector('.rail-foot a[href^="/login"]')?.getAttribute('href') ?? null)
-      check(href !== null, 'the signed-out drawer offers no way in')
     }
     await page.close()
   }
