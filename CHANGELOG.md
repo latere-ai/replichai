@@ -37,6 +37,12 @@ committed. The commit log already holds that.
   a missing file now reads as absent.
 - Scrolling the list of models in the runtime picker no longer closes it. Only
   a scroll of the page behind the picker does.
+- A failed session shows what the run reported in its own view: the first line
+  as text to select and copy, and the rest of the report, such as a stack
+  trace, behind a disclosure in a scrolling box. The tooltip on a failed row
+  quotes only that first line instead of running off the screen, and the
+  failure's class is read from the first line alone, so a stack that passed
+  through the GitHub client no longer reads as a failure to publish.
 
 ## v0.31.0 - 2026-10-16
 
