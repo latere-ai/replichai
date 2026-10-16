@@ -351,7 +351,7 @@ function PeopleCard({
               </Pill>
             )}
             <Tip text={t('walletOf', { email: p.email })}>
-              <span className="muted small mono tabular member-wallet">{formatUSD(i18n.lang, p.wallet)}</span>
+              <span className="muted small tabular member-wallet">{formatUSD(i18n.lang, p.wallet)}</span>
             </Tip>
             {/* The controls are grouped. Loose in the row they were sized one by
                 one, so a phone broke them across two lines and each row put them

@@ -31,7 +31,7 @@ export const signerOf = (p: Project & { owner_name?: string }) => p.signed_off_n
 export function SignerRows({ i18n, signer, contact, orcid, scholar }: { i18n: I18n; signer?: string; contact?: string; orcid?: string; scholar?: string }) {
   const { t } = i18n
   const rows: { label: string; node: React.ReactNode }[] = []
-  if (signer) rows.push({ label: t('signedOffSigner'), node: <span className="mono">{signer}</span> })
+  if (signer) rows.push({ label: t('signedOffSigner'), node: <span>{signer}</span> })
   if (contact)
     rows.push({ label: t('signedOffContact'), node: (
         <a className="link" href={`mailto:${contact}`}>
