@@ -230,6 +230,43 @@ func sessionController(t *testing.T, runtime managed.Runtime) *managed.Controlle
 	}))
 }
 
+// A session's work reaches the output directory while it runs, with the
+// transcript so far beside it, so a run that dies before its end still leaves
+// what it had done.
+func TestTheWorkReachesTheOutputDirectoryAsItRuns(t *testing.T) {
+	runtime := managedmemory.NewWithStore(nil, managedmemory.Config{
+		LiveArtifacts: true, PollsBeforeDone: 3,
+		Files:  map[string][]byte{"outputs/notes.md": []byte("so far")},
+		Events: []managed.Event{{ID: "e1", Kind: managed.KindMessage, Role: managed.RoleAgent, Content: "reading the paper"}},
+	})
+	router, err := runtimes.NewRouter(runtime.Name(), runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := managed.NewController(router, managed.WithWaitPolicy(managed.WaitPolicy{
+		InitialDelay: 0, MaxDelay: 0, MaxTemporaryErrors: 2, MaxSilence: time.Second, CleanupTimeout: time.Second,
+		SnapshotEvery: time.Nanosecond,
+	}))
+	destination := filepath.Join(t.TempDir(), "paper")
+	seen := false
+	hooks := managed.Hooks{Snapshot: func(context.Context, managed.EvidenceReader) error {
+		body, err := os.ReadFile(filepath.Join(destination, "outputs", "notes.md"))
+		_, statErr := os.Stat(TranscriptPath(destination))
+		seen = seen || (err == nil && string(body) == "so far" && statErr == nil)
+		return nil
+	}}
+	if _, err := NewSessionAuditor(controller, testMethod, WithSessionHooks(hooks)).Run(context.Background(), "10.1145/x", destination); err != nil {
+		t.Fatal(err)
+	}
+	if !seen {
+		t.Fatal("no snapshot reached the output directory while the session ran")
+	}
+	transcript, err := os.ReadFile(TranscriptPath(destination))
+	if err != nil || !strings.Contains(string(transcript), "reading the paper") || strings.Count(string(transcript), "\n") != 1 {
+		t.Fatalf("the transcript beside the output directory is %q, %v", transcript, err)
+	}
+}
+
 // TestTheWorkspaceProtocolSaysThereIsNoRemote checks that a session with no
 // mount is told it has no remote and is not told to push. Rubric criterion 9
 // depends on a remote being configured, and the grader reads the instructions

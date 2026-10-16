@@ -84,6 +84,7 @@ Each is either refused before anything remote is created, as 041a requires, or i
 | Packages | No package or bootstrap field; the base image carries Python with the document and data libraries | Accepts `pip` packages the configured image already provides and refuses any other |
 | Bootstrap commands | Not built (manifest hooks are validated and never run) | Refuses |
 | A read-only input outside the workspace (`InputResource`) | Attachments are written into the working directory, where the agent can change them | Declares no `InputDir`, so a study's fixed inputs are refused. Read-only inputs are Topos's spec 075 |
+| The session's files while it runs (`LiveArtifacts`, [049](049-the-work-is-kept-as-it-runs.md)) | The working directory is saved to the session's folder at the end of each turn; nothing is saved during a turn, and the live files route reads one known path and cannot list | Declares live artifacts and lists the folder, so a snapshot holds the files as of the last turn's end. Saving during a turn is Topos's spec 076 |
 | A repository the agent pushes to with a ReplicHAI credential | No client-supplied secret (named secrets are not built); GitHub only through the person's own GitHub connection, on `agents/*` branches | Declares no repository modes. The host publishes the outputs to GitHub afterwards, as it does for the local runtime ([045g](045g-the-host-pushes.md)) |
 
 ## Outputs and the host's publish

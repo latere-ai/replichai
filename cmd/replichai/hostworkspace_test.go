@@ -10,9 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
+	"github.com/latere-ai/replichai/internal/publish"
 	"github.com/latere-ai/replichai/internal/runtimes"
 )
 
@@ -51,6 +53,77 @@ func TestTheHostBuildsTheWorkspaceOfAHostedSession(t *testing.T) {
 	log, err := exec.Command("git", "-C", dir, "log", "--format=%s").CombinedOutput()
 	if err != nil || !strings.Contains(string(log), "the work of memory session") {
 		t.Fatalf("log = %q, %v", log, err)
+	}
+}
+
+// A hosted session's work is pushed as it runs: each snapshot that changed
+// something lands on the remote as a commit, and the final handover commits
+// on top of the same history, so every push is a fast-forward.
+func TestAHostedSessionsWorkIsPushedAsItRuns(t *testing.T) {
+	ctx := context.Background()
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	if out, err := exec.Command("git", "init", "--bare", "--initial-branch=main", remote).CombinedOutput(); err != nil {
+		t.Fatalf("init the remote: %v: %s", err, out)
+	}
+	files := map[string][]byte{"notes.md": []byte("reading\n")}
+	runtime := managedmemory.NewWithStore(managedmemory.NewStore(), managedmemory.Config{LiveArtifacts: true, PollsBeforeDone: 4, Files: files})
+	router, err := runtimes.NewRouter(runtime.Name(), runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := managed.NewController(router, managed.WithWaitPolicy(managed.WaitPolicy{
+		MaxTemporaryErrors: 2, MaxSilence: time.Second, CleanupTimeout: time.Second, SnapshotEvery: time.Nanosecond,
+	}))
+	dir := filepath.Join(t.TempDir(), "workspace")
+	push := publish.LocalPush{RemoteURL: remote}
+	remoteLog := func() string {
+		out, _ := exec.Command("git", "-C", remote, "log", "--format=%s", "main").CombinedOutput()
+		return strings.TrimSpace(string(out))
+	}
+	pushes := 0
+	hooks := managed.Hooks{
+		Snapshot: func(ctx context.Context, evidence managed.EvidenceReader) error {
+			pushed, err := snapshotWorkspace(ctx, runtime, evidence, dir, push)
+			if pushed {
+				pushes++
+				files["src/run.py"] = []byte("print(5)\n") // the session goes on working
+			}
+			return err
+		},
+		Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+			files["results.md"] = []byte("5\n")
+			// Retain reads the listing it was handed; read it again so the
+			// last change counts, as a real runtime's final listing would.
+			artifacts, err := runtime.ListArtifacts(ctx, evidence.Status.Ref)
+			if err != nil {
+				return err
+			}
+			evidence.Artifacts = artifacts
+			if _, err := hostWorkspace(ctx, runtime, evidence, dir); err != nil {
+				return err
+			}
+			push.Workspace = dir
+			_, err = push.Run(ctx)
+			return err
+		},
+	}
+	spec := managed.SessionSpec{
+		Model: managed.ModelSelector{Preference: "best"}, Instructions: "i", Task: "t",
+		Sandbox: managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkNone}},
+	}
+	if _, err := controller.Execute(ctx, spec, hooks); err != nil {
+		t.Fatal(err)
+	}
+	if pushes != 2 {
+		t.Fatalf("%d snapshots pushed, want 2: one per change", pushes)
+	}
+	log := strings.Split(remoteLog(), "\n")
+	if len(log) != 3 || !strings.Contains(log[0], "as it left its working directory") || !strings.Contains(log[2], "so far") {
+		t.Fatalf("the remote's history is %q", log)
+	}
+	tree, _ := exec.Command("git", "-C", remote, "ls-tree", "-r", "--name-only", "main").CombinedOutput()
+	if strings.Fields(string(tree))[0] != "notes.md" || !strings.Contains(string(tree), "results.md") || !strings.Contains(string(tree), "src/run.py") {
+		t.Fatalf("the remote's tree is %q", tree)
 	}
 }
 
