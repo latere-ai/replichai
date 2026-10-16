@@ -6,10 +6,10 @@ package latere
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
@@ -19,7 +19,12 @@ import (
 // opt-in (REPLICHAI_LATERE_E2E=1), because it reaches the network and spends
 // money; it prints the transcript when the session does not pass, before the
 // session is released, so a failure says why. REPLICHAI_LATERE_ENVIRONMENT
-// names the environment the session runs on.
+// names the environment the session runs on, and REPLICHAI_LATERE_MODEL the
+// model, read as --model reads it.
+//
+// LATERE_TOKEN_COMMAND must print a bearer addressed to api.latere.ai.
+// `latere print-token` is not one: it prints the Latere CLI's login token,
+// which only Latere Auth accepts, and the platform answers 401.
 func TestRealLatereEndToEnd(t *testing.T) {
 	if os.Getenv("REPLICHAI_LATERE_E2E") != "1" {
 		t.Skip("set REPLICHAI_LATERE_E2E=1 and a Latere credential to run a real session")
@@ -46,11 +51,7 @@ func TestRealLatereEndToEnd(t *testing.T) {
 	if _, err := r.Capabilities(ctx); err != nil {
 		t.Fatal(err)
 	}
-	selector := managed.ModelSelector{Preference: model}
-	if strings.Contains(model, "/") {
-		ref := modelRef(model)
-		selector = managed.ModelSelector{Exact: &ref}
-	}
+	selector := audit.ModelSelector(model)
 	task, rubric := "Create outputs/result.txt containing only the number that is the sum of 2 and 3. Then end your turn.",
 		"1. outputs/result.txt exists.\n2. It contains the number 5 and nothing else."
 	// REPLICHAI_LATERE_ENVIRONMENT=science checks the statistics image on the
