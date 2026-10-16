@@ -20,7 +20,7 @@ import { terminal } from './session-stop'
 
 // watchJob opens the stream, hands each frame to onJob, and closes once the job
 // settles; the server closes its end then too. It returns the close.
-export function watchJob(id: string, onJob: (j: Job) => void): () => void {
+function watchJob(id: string, onJob: (j: Job) => void): () => void {
   const es = new EventSource(`/jobs/${id}/events`)
   es.addEventListener('status', (e) => {
     try {

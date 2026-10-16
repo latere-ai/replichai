@@ -10,7 +10,7 @@ export type ThemeMode = 'auto' | 'light' | 'dark'
 
 // The value actually stamped on <html>. Every dark rule hangs off
 // [data-theme='dark'], so "auto" must be resolved here rather than written out.
-export type Theme = 'light' | 'dark'
+type Theme = 'light' | 'dark'
 
 export const THEME_MODES: ThemeMode[] = ['auto', 'light', 'dark']
 

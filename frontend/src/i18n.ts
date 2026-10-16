@@ -398,7 +398,9 @@ const en = {
     // never a bare rate: a count, its denominator, and what the remainder is.
     evidenceEyebrow: 'Published evidence',
     evidenceAcross: 'across {n} projects',
+    evidenceAcrossOne: 'across 1 project',
     evidenceOf: 'of {n} sessions committed a repository',
+    evidenceOfOne: 'of 1 session committed a repository',
     evidencePublished: '{n} published',
     evidenceNothing: '{n} without a repository',
     creditsEyebrow: 'Your credits',
@@ -492,7 +494,6 @@ const en = {
     notFoundBody: 'There is no page at this address on ReplicHAI. The link may be incomplete, or the page may never have existed.',
     notFoundHome: 'Go to your projects',
     // submit / new project
-    submit: 'Submit',
     submitting: 'Submitting…',
     activeSession: 'This paper is already being replicated in this project.',
     submitNoSpend: 'Nothing runs or is charged until you start a session.',
@@ -548,7 +549,8 @@ const en = {
     effortSustained: 'Sustained',
     effortUnavailable: 'Not available to you right now',
     specificModel: 'A specific model',
-    searchModels: 'Search {count} models',
+    searchModels: 'Search {n} models',
+    searchModelsOne: 'Search 1 model',
     noModelMatch: 'No model matches',
     paidByPerson: 'Charged to your own Latere wallet, not to this project’s credits.',
     paidByProject: 'Charged to this project’s credits.',
@@ -626,7 +628,8 @@ const en = {
     etAl: 'et al.',
     fillIn: 'Fill in details',
     fillingIn: 'Looking up…',
-    fillInDone: 'Filled in {n} paper(s).',
+    fillInDone: 'Filled in {n} papers.',
+    fillInDoneOne: 'Filled in 1 paper.',
     fillInNothing: 'Nothing more to fill in.',
     fillInFailed: 'Couldn’t look those up. Try again in a moment.',
     paperNeverRun: 'not started',
@@ -698,6 +701,7 @@ const en = {
     noVerdictRecorded: 'No verdict recorded',
     latestSessionInner: 'Latest session · inner loop',
     ofComponents: 'of {n} components',
+    ofComponentsOne: 'of 1 component',
     openVerdict: 'Open the verdict',
     statSpend30d: 'Spend · last 30 days',
     runningForTitle: 'How long this session has been running. It is charged for the whole time.',
@@ -738,7 +742,7 @@ const en = {
     releasedTitle: 'What the authors released',
     releasedHint: 'Every place the run looked for the paper’s artifacts, and what it found.',
     scorecard: 'Open-science scorecard',
-    searchedIn: 'Searched',
+    searchedIn: 'Searched {where}.',
     resFound: 'Found',
     resPartial: 'Partial',
     resNone: 'None',
@@ -864,6 +868,7 @@ const en = {
     transcriptError: 'Couldn’t load the transcript. Try again in a moment.',
     events: 'Events',
     eventsCounted: '{n} events',
+    eventsCountedOne: '1 event',
     showEvents: 'Show events',
     toolsUsed: 'Tools the agent used',
     hideLifecycle: 'Hide lifecycle events',
@@ -895,7 +900,6 @@ const en = {
     usageTotal: 'Total',
     usageNotRecorded: 'Token usage was not recorded for this session.',
     // timeline + live stream
-    timeline: 'Timeline',
     inProgress: 'in progress',
     liveStreaming: 'live',
     transcriptWaitingLive: 'Waiting for the agent’s first events…',
@@ -946,7 +950,7 @@ export function translator(lang: Lang): { t: T; raw: T } {
     // for a key that exists nowhere.
     const table = strings[lang] as Record<string, string>
     let s = table[key] ?? (strings.en as Record<string, string>)[key] ?? key
-    if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k])
+    if (vars) for (const k of Object.keys(vars)) s = s.replaceAll(`{${k}}`, vars[k])
     return s
   }
   // t is the sentence with seams removed. A seam is an instruction to whoever
@@ -959,10 +963,14 @@ export function translator(lang: Lang): { t: T; raw: T } {
   return { t, raw }
 }
 
+// Countable is every key with a `One` form beside it, so countOf cannot be
+// handed a key whose singular is missing.
+type Countable = { [K in TKey]: `${K}One` extends TKey ? K : never }[TKey]
+
 // countOf says a count in words: the key's `One` form for exactly one, and the
 // key itself, with {n}, for any other number.
-export function countOf(t: T, key: TKey, n: number): string {
-  return n === 1 ? t(`${key}One` as TKey) : t(key, { n: String(n) })
+export function countOf(t: T, key: Countable, n: number): string {
+  return n === 1 ? t(`${key}One`) : t(key, { n: String(n) })
 }
 
 // useI18n stores the chosen language in localStorage and returns a translate

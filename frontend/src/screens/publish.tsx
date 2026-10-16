@@ -25,55 +25,6 @@ import { Ico, type IconName } from '../icons'
 import { Check, Modal } from '../ui'
 import { ProfileFields, SignerRows, type TextField } from './shared'
 
-// PublishPanel is the entry to the public flip: a short summary and the button
-// that opens the wizard. The decision itself is never one click from a sidebar,
-// because it opens the transcript and artifacts to everyone and puts the
-// signer's name behind the result (006n). Withdrawable since 006o, but not
-// undoable: copies taken while it was public stay taken.
-export function PublishPanel({
-  i18n,
-  projectID,
-  onPublished,
-  onChanged,
-  onOpenBlocker,
-}: {
-  i18n: I18n
-  projectID: string
-  onPublished: () => void
-  onChanged?: () => void
-  onOpenBlocker?: (b: PublishBlocker) => void
-}) {
-  const { t } = i18n
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="card publish-panel">
-      <span className="eyebrow eyebrow-ico" style={{ color: 'var(--pub)' }}>
-        <Ico name="globe" size={12} /> {t('publishTitle')}
-      </span>
-      <p className="muted small" style={{ lineHeight: 1.6, margin: 0 }}>
-        {t('publishBody')}
-      </p>
-      <button className="btn" onClick={() => setOpen(true)}>
-        <Ico name="globe" size={13} /> {t('publishStart')}
-      </button>
-      <span className="attestation">{t('attestationNote')}</span>
-      {open && (
-        <PublishWizard
-          i18n={i18n}
-          projectID={projectID}
-          onClose={() => setOpen(false)}
-          onPublished={() => {
-            setOpen(false)
-            onPublished()
-          }}
-          onChanged={onChanged}
-          onOpenBlocker={onOpenBlocker}
-        />
-      )}
-    </div>
-  )
-}
-
 // PublishWizard walks the three commitments of going public: what becomes
 // public, who stands behind it, and the responsibility for it. Step 2 is
 // prefilled from the owner's profile but recorded from what they confirm here.

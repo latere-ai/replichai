@@ -87,10 +87,9 @@ export function Wordmark({ className }: { className?: string }) {
 // anywhere else, and it needs no second asset for dark mode.
 const LATERE_RATIO = 736 / 425
 
-export function LatereMark({ height = 11, className }: { height?: number; className?: string }) {
+export function LatereMark({ height = 11 }: { height?: number }) {
   return (
     <svg
-      className={className}
       width={Math.round(height * LATERE_RATIO)}
       height={height}
       viewBox="147 279 736 425"

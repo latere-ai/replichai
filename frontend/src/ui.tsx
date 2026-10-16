@@ -76,9 +76,9 @@ export function Check({ on, onChange, disabled, children }: { on: boolean; onCha
 
 // Toggle is the switch form of the same choice, for a setting that takes effect
 // at once rather than an affirmation that is submitted with a form.
-export function Toggle({ on, onChange, disabled, children }: { on: boolean; onChange: (next: boolean) => void; disabled?: boolean; children?: ReactNode }) {
+export function Toggle({ on, onChange, children }: { on: boolean; onChange: (next: boolean) => void; children?: ReactNode }) {
   return (
-    <button type="button" role="switch" aria-checked={on} disabled={disabled} className={'tg' + (on ? ' on' : '')} onClick={() => onChange(!on)}>
+    <button type="button" role="switch" aria-checked={on} className={'tg' + (on ? ' on' : '')} onClick={() => onChange(!on)}>
       <span className="tg-track">
         <span className="tg-knob" />
       </span>
@@ -295,7 +295,7 @@ export function Segmented<T extends string>({
           aria-checked={value === o.value}
           aria-label={compact ? o.label : undefined}
           {...(compact ? tipAttrs(o.hint ?? o.label) : {})}
-          className={'seg-btn' + (value === o.value ? ' on' : '') + (compact ? ' tip tip-bottom' : '')}
+          className={'seg-btn' + (value === o.value ? ' on' : '') + (compact ? ' tip' : '')}
           onClick={() => onChange(o.value)}
         >
           {o.icon && <Ico name={o.icon} size={13} />}
@@ -316,7 +316,6 @@ export function NumberField({
   value,
   onChange,
   min = 0,
-  max,
   id,
   width = 104,
   ariaLabel,
@@ -326,18 +325,15 @@ export function NumberField({
   value: string
   onChange: (next: string) => void
   min?: number
-  max?: number
   id?: string
   width?: number
   ariaLabel?: string
   autoFocus?: boolean
 }) {
   const { t } = i18n
-  // Every field this draws holds money, and money has cents. It used to strip
-  // the decimal point, so a project could only ever be allocated whole dollars
-  // and a $16.82 balance could not be moved back in one go.
+  // Every field this draws holds money, so a value keeps its cents.
   const n = Number.parseFloat(value)
-  const step = (by: number) => onChange(stepDollars(value, by, min, max))
+  const step = (by: number) => onChange(stepDollars(value, by, min))
   return (
     <div className="numf" style={{ width }}>
       <button type="button" className="numf-step" aria-label={t('stepDown')} onClick={() => step(-1)} disabled={Number.isFinite(n) && n <= min}>
@@ -366,7 +362,7 @@ export function NumberField({
           }
         }}
       />
-      <button type="button" className="numf-step" aria-label={t('stepUp')} onClick={() => step(1)} disabled={max !== undefined && Number.isInteger(n) && n >= max}>
+      <button type="button" className="numf-step" aria-label={t('stepUp')} onClick={() => step(1)}>
         <Ico name="plus" size={12} w={2.2} />
       </button>
     </div>
@@ -533,18 +529,18 @@ export function Disclosure({ summary, children }: { summary: string; children: R
 // 'right' is for a trigger in a vertical stack. Above and below are both a
 // neighbor's row there, as in the folded navigation rail, so the bubble
 // goes out to the side instead, where nothing is stacked.
-type TipSide = 'top' | 'bottom' | 'right'
+type TipSide = 'bottom' | 'right'
 
 // tipAttrs applies the tooltip to an element directly, for the cases where a
 // wrapper element would break an ARIA relationship.
-export function tipAttrs(text: string, side: TipSide = 'bottom') {
-  return { 'data-tip': text, 'data-tip-side': side, className: `tip tip-${side}` }
+export function tipAttrs(text: string) {
+  return { 'data-tip': text, className: 'tip' }
 }
 
-export function Tip({ text, children, side = 'bottom' }: { text?: string; children: ReactNode; side?: TipSide }) {
+export function Tip({ text, children }: { text?: string; children: ReactNode }) {
   if (!text) return <>{children}</>
   return (
-    <span className={'tip tip-' + side} data-tip={text} data-tip-side={side}>
+    <span className="tip" data-tip={text}>
       {children}
     </span>
   )
@@ -587,8 +583,7 @@ export function TipHost() {
       // that cannot take the `tip` class still needs to ask for one: `.tip` is
       // an `inline-flex`, and the rail's nav rows are flex rows of their own
       // that it would undo.
-      const asked = el.getAttribute('data-tip-side')
-      const side: TipSide = asked === 'top' || asked === 'right' ? asked : el.classList.contains('tip-top') ? 'top' : 'bottom'
+      const side: TipSide = el.getAttribute('data-tip-side') === 'right' ? 'right' : 'bottom'
       setTip({ text, side, rect: el.getBoundingClientRect() })
     }
     // One pointer handler covers entering and leaving: whatever is under the
@@ -634,15 +629,7 @@ export function TipHost() {
     // its right edge. Nothing flips here, because the vertical stack this is for has a
     // neighbor above and below, and the clamp below keeps it on screen.
     const beside = tip.side === 'right'
-    const top = beside
-      ? tip.rect.top + tip.rect.height / 2 - b.height / 2
-      : tip.side === 'top'
-        ? fits(above) || !fits(below)
-          ? above
-          : below
-        : fits(below) || !fits(above)
-          ? below
-          : above
+    const top = beside ? tip.rect.top + tip.rect.height / 2 - b.height / 2 : fits(below) || !fits(above) ? below : above
     const left = beside ? tip.rect.right + M : tip.rect.left + tip.rect.width / 2 - b.width / 2
     setAt({
       // Pulled back inside for a trigger near the viewport's edge, where the
@@ -677,13 +664,12 @@ export type Tone = 'neutral' | 'brand' | 'ok' | 'warn' | 'err' | 'run'
 // Pill is the rounded status mark: a role, a tier, a phase, a count. `dot`
 // gives it a leading bullet; `pulse` makes that bullet breathe for something
 // still in flight.
-export function Pill({ tone = 'neutral', icon, dot, pulse, children, title }: { tone?: Tone; icon?: IconName; dot?: boolean; pulse?: boolean; children: ReactNode; title?: string }) {
-  const body = (
+export function Pill({ tone = 'neutral', icon, dot, pulse, children }: { tone?: Tone; icon?: IconName; dot?: boolean; pulse?: boolean; children: ReactNode }) {
+  return (
     <span className={`pill pill-${tone}` + (pulse ? ' pulse' : '')}>
       {dot && <span className="pill-dot" />}
       {icon && <Ico name={icon} size={11} w={2} />}
       {children}
     </span>
   )
-  return title ? <Tip text={title}>{body}</Tip> : body
 }

@@ -9,7 +9,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { type Event, getTranscript, type Job, type Transcript, type Usage } from '../api'
-import { type I18n, type Lang, type TKey } from '../i18n'
+import { countOf, type I18n, type Lang, type TKey } from '../i18n'
 import { clockTime, formatCount } from '../locale'
 import {
   cacheWrittenOf,
@@ -178,7 +178,7 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
             {t('transcript')}
             {tr.live && <span className="live-dot">{t('liveStreaming')}</span>}
           </span>
-          <span className="tx-head-sub">{t('eventsCounted', { n: String(tr.events.length) })}</span>
+          <span className="tx-head-sub">{countOf(t, 'eventsCounted', tr.events.length)}</span>
         </div>
         <div className="tx-stats">
           {usage && (

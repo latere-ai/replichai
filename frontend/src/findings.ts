@@ -10,7 +10,7 @@
 // rules. It answers the questions the schema deliberately does not encode:
 // which claims are still open, and how a rate should be read.
 
-export type Loop = 'inner' | 'outer'
+type Loop = 'inner' | 'outer'
 export type ClaimOutcome = 'verified' | 'partial' | 'blocked' | 'not_scored'
 type MismatchKind = 'numeric' | 'ordering' | 'contradiction' | 'typo'
 type FindingsVerdict = 'reproducible' | 'partial' | 'not_reproducible'

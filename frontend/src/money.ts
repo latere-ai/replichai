@@ -84,9 +84,9 @@ export function typedDollars(text: string): string {
 // and from `min` when it does not, so a step out of an empty field lands on the
 // floor rather than on NaN. The result carries cents only when it has any: a
 // field showing "17" after a step from "16" should not read "17.00".
-export function stepDollars(from: string, by: number, min = 0, max?: number): string {
+export function stepDollars(from: string, by: number, min = 0): string {
   const n = Number.parseFloat(from)
   const base = Number.isFinite(n) ? n : min
-  const next = Math.min(max ?? Number.MAX_SAFE_INTEGER, Math.max(min, base + by))
+  const next = Math.max(min, base + by)
   return String(Math.round(next * 100) / 100)
 }

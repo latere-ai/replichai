@@ -24,7 +24,7 @@ import {
   verdictTone,
 } from '../findings'
 import { artifactUrl, getArtifact, getFindings, getJob, getReproduction, type Job, listArtifacts, type Reproduction } from '../api'
-import { type I18n } from '../i18n'
+import { countOf, type I18n } from '../i18n'
 import { dateOnly } from '../locale'
 import { Ico, type IconName } from '../icons'
 import { type SessionTab } from '../routes'
@@ -296,7 +296,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
 
       <section className="findings-sec">
         <p className="table-caption">
-          <b>{t('unresolved')}.</b> {t('unresolvedHint')}
+          <b>{t('unresolved')}</b> {t('unresolvedHint')}
         </p>
         {open.length === 0 ? (
           <p className="findings-none">{t('unresolvedNone')}</p>
@@ -507,7 +507,7 @@ function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings 
       {!!released.length && (
         <section className="findings-sec">
           <p className="table-caption">
-            <b>{t('releasedTitle')}.</b> {t('releasedHint')}
+            <b>{t('releasedTitle')}</b> {t('releasedHint')}
           </p>
           <div className="ruled-list">
             {released.map((r, i) => (
@@ -533,7 +533,7 @@ function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings 
       {!!scores.length && (
         <section className="findings-sec">
           <p className="table-caption">
-            <b>{t('scorecard')}.</b>
+            <b>{t('scorecard')}</b>
           </p>
           <div className="ruled-list">
             {CRITERIA.map((c) => {
@@ -553,7 +553,7 @@ function ReleasedByAuthors({ i18n, findings }: { i18n: I18n; findings: Findings 
                   {/* Not found is only a finding when it says where it looked. */}
                   {!sc.found && !!sc.searched?.length && (
                     <span className="score-detail muted">
-                      {t('searchedIn')}: {sc.searched.join(', ')}
+                      {t('searchedIn', { where: sc.searched.join(', ') })}
                     </span>
                   )}
                 </div>
@@ -662,7 +662,7 @@ function SessionFailure({ i18n, cause }: { i18n: I18n; cause: string }) {
         <span className="fail-label">{t('failReported')}</span> <span data-test="failure-cause">{summary}</span>
       </p>
       {detail && (
-        <Disclosure summary={lines === 1 ? t('failMoreOne') : t('failMore', { n: String(lines) })}>
+        <Disclosure summary={countOf(t, 'failMore', lines)}>
           <pre data-test="failure-detail">{detail}</pre>
         </Disclosure>
       )}

@@ -92,13 +92,13 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
         <div className="boundary" data-test="evidence-card">
           <div className="boundary-head">
             <span className="eyebrow">{t('evidenceEyebrow')}</span>
-            <span className="boundary-aside">{t('evidenceAcross', { n: String(projects.length) })}</span>
+            <span className="boundary-aside">{countOf(t, 'evidenceAcross', projects.length)}</span>
           </div>
           <div className="boundary-figure">
             <span className="boundary-n" data-test="evidence-n">
               {list === null || !pubKnown ? '—' : published}
             </span>
-            <span className="boundary-of">{t('evidenceOf', { n: String(sessionTotal) })}</span>
+            <span className="boundary-of">{countOf(t, 'evidenceOf', sessionTotal)}</span>
           </div>
           <Meter pct={sessionTotal ? (published / sessionTotal) * 100 : 0} tone="var(--pub)" />
           <div className="boundary-legend">

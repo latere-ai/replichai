@@ -611,19 +611,15 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
   return (
     <section className="lp-section" data-test="lp-strip" ref={ref}>
       <SectionHead i18n={i18n} eyebrow={t('lpStripEyebrow')} titleKey="lpStripTitle" caption={t('lpStripCaption')} />
-      {/* Set as a paper sets its references: numbered, the citation first, the
-          work's own title after it, and what makes it a reproduction last. */}
-      <ol className="lp-strip">
+      {/* The same order as the registry's rows: the title, the paper it
+          reproduces, then who signed it. */}
+      <ul className="lp-strip">
         {rows.map((p, i) => (
           <li key={p.id} style={{ '--i': i } as React.CSSProperties}>
             <a className="lp-card" href={`/p/${p.id}`}>
-              <span className="lp-card-n">{i + 1}</span>
               <span className="lp-card-body">
-                {/* Which paper this is a reproduction of (043). A card's title
-                    is a name its owner typed; the citation is the paper's own,
-                    and it is what a stranger scans the registry by. */}
-                <PaperCite i18n={i18n} papers={p.papers} />
                 <span className="lp-card-title">{p.title}</span>
+                <PaperCite i18n={i18n} papers={p.papers} />
                 {/* Named, and named as what: a bare name under a paper's title
                     reads as the paper's author, which is the one person this
                     line is never about. The signer is who put their name to
@@ -637,7 +633,7 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
             </a>
           </li>
         ))}
-      </ol>
+      </ul>
       <a className="lp-more" href="/registry">
         {t('browseRegistry')} <Ico name="arrowRight" size={13} />
       </a>

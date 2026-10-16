@@ -849,7 +849,7 @@
   color: var(--fg-2);
 }
 
-/* ── 7 The registry, as a list of references ──────────────────────────────── */
+/* ── The registry strip ───────────────────────────────────────────────────── */
 
 .lp-strip {
   list-style: none;
@@ -859,28 +859,16 @@
 }
 .lp-card {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: start;
-  padding: 18px 12px 18px 0;
+  padding: 18px 12px;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   transition: background var(--motion-fast) var(--motion-ease);
 }
 .lp-card:hover {
   background: var(--bg-surface);
-}
-.lp-card-n {
-  padding-top: 1px;
-  font-size: 14px;
-  color: var(--fg-3);
-  font-variant-numeric: tabular-nums;
-}
-.lp-card-n::before {
-  content: '[';
-}
-.lp-card-n::after {
-  content: ']';
 }
 .lp-card-body {
   display: grid;
@@ -1019,9 +1007,6 @@
   .lp-costs,
   .lp-fields {
     grid-template-columns: minmax(0, 1fr);
-    gap: 28px;
-  }
-  .lp-fields {
     gap: 0;
   }
   /* One column: there is no second column for a plate to be sticky in, so the
