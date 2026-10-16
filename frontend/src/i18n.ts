@@ -259,7 +259,14 @@ const en = {
     overdraftCap: 'Overdraft floor (USD)',
     overdraftHint:
       'How far below zero a project may go before a running session is stopped. A session normally runs to completion once started, because stopping it midway wastes what it has spent. This limit only catches a runaway session; the start reserve is what stops the next one. Project members do not see this value.',
-    rateCardHint: 'What a session is charged, per million tokens. A model not on the list is charged the highest rates on it.',
+    rateCardHint: 'What a session is charged, per million tokens. A model without a row is charged the highest rates listed here.',
+    // The rows a price list sets, which the server rewrites every hour, and the
+    // rows an admin sets. {list} is the list's name, such as OpenRouter.
+    rateFromList: 'From {list}',
+    rateFromListNote: 'Applied {when}, and every hour. {list} sets these prices, so they cannot be edited here.',
+    rateOwn: 'Set here',
+    rateOwnNote: 'Models {list} does not price keep the prices given here.',
+    rateListPending: "{list}'s prices have not been read since the server started. Once they are, the rows for the models it prices follow it and cannot be edited here.",
     rateModel: 'Model',
     rateInput: 'Input',
     rateOutput: 'Output',

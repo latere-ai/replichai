@@ -10,6 +10,16 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- Admin → Platform policy shows which rows of the price list follow
+  OpenRouter and which an admin sets. The rows OpenRouter prices are listed
+  first, under its name and the time the server last applied its prices, as
+  text that cannot be edited or removed, because the hourly sync would
+  replace the edit. The other rows stay editable. A save also keeps the rows
+  OpenRouter prices at its prices, so a page opened before the last sync can
+  no longer put back the prices that sync replaced.
+
 ## v0.35.0 - 2026-10-16
 
 ### Added

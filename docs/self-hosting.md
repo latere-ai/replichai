@@ -167,8 +167,10 @@ You do not type Anthropic's prices into the rate card. At every start and then
 every hour, the server reads OpenRouter's public model list, which states
 Anthropic's list prices, and writes the price of every Anthropic model into the
 card, adding the models the card lacks. A row for a model the list prices
-follows the list, so an edit to it lasts until the next hour; a row for any
-other model stays as you set it. A model priced by prompt length, such as
+follows the list: **Admin → Platform** shows those rows under the list's name,
+with the time the server last applied it, and does not let you edit or remove
+them, and a save keeps them at the list's prices. A row for any other model
+stays as you set it. A model priced by prompt length, such as
 Claude Haiku 5.5, is charged at its lower tier, because a session's usage is a
 total over many requests. Set `REPLICHAI_PRICE_LIST_URL` to read another list
 in the same format, or to `off` to price every model by hand. If the list
