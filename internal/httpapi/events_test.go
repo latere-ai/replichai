@@ -6,6 +6,7 @@ package httpapi
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -120,18 +121,41 @@ func TestSSESnapshotThenStream(t *testing.T) {
 	}
 }
 
-// progressRunner drives a job through the phases and reports usage several
-// times during the running phase, as Observe-only updates with no phase
-// change.
-type progressRunner struct{ step time.Duration }
+// progressRunner drives a job through the phases and reports usage during the
+// running phase, as Observe-only updates with no phase change. It waits for
+// the stream reader between steps, so each state stays on the row until the
+// stream has shown it: running with no usage, then running with the first
+// usage. The stream re-reads the row on a timer and sends only the latest
+// state, so without the waits the steps could land in one read and the
+// stream would rightly show only the last of them.
+type progressRunner struct {
+	// running and observed are closed by the reader once the stream has shown
+	// the running phase and the first usage.
+	running, observed <-chan struct{}
+}
 
 func (progressRunner) Resolve(context.Context, *job.Job) error { return nil }
-func (r progressRunner) Execute(_ context.Context, _ *job.Job, observe func(provider.RunStatus)) error {
-	for i := 1; i <= 3; i++ {
-		observe(provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: int64(i * 100)}})
-		time.Sleep(r.step)
+func (r progressRunner) Execute(ctx context.Context, _ *job.Job, observe func(provider.RunStatus)) error {
+	if err := waitFor(ctx, r.running); err != nil {
+		return err
 	}
+	observe(provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 100}})
+	if err := waitFor(ctx, r.observed); err != nil {
+		return err
+	}
+	observe(provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 300}})
 	return nil
+}
+
+// waitFor blocks until ch is closed or ctx ends, so a runner stuck on a test
+// that already failed ends with the test's context instead of leaking.
+func waitFor(ctx context.Context, ch <-chan struct{}) error {
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 func (progressRunner) Publish(context.Context, *job.Job) error         { return nil }
 func (progressRunner) Close(context.Context, managed.SessionRef) error { return nil }
@@ -162,29 +186,53 @@ func TestSSEStreamsWorkerProgress(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	go job.NewWorker(store, progressRunner{step: 15 * time.Millisecond}).Process(ctx)
+	running, observed := make(chan struct{}), make(chan struct{})
+	go job.NewWorker(store, progressRunner{running: running, observed: observed}).Process(ctx)
 
-	var sawProgress, sawDone bool
+	// The runner holds each state until the stream has shown it, so a usage
+	// event can only follow a running event that carried none, with no phase
+	// change between them: the update that put it there was Observe alone.
+	var sawRunning, sawProgress, sawDone bool
+	var doneUsage int64
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		d := strings.TrimPrefix(line, "data: ")
-		if strings.Contains(d, `"input_tokens":100`) || strings.Contains(d, `"input_tokens":300`) || strings.Contains(d, `"InputTokens":100`) {
-			sawProgress = true
+		var ev struct {
+			Phase  job.Phase          `json:"phase"`
+			Status provider.RunStatus `json:"status"`
 		}
-		if strings.Contains(d, `"phase":"done"`) {
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil {
+			t.Fatalf("decode event %q: %v", line, err)
+		}
+		switch {
+		case ev.Phase == job.PhaseRunning && ev.Status.Usage.InputTokens == 0 && !sawRunning:
+			sawRunning = true
+			close(running)
+		case ev.Phase == job.PhaseRunning && ev.Status.Usage.InputTokens == 100 && sawRunning && !sawProgress:
+			sawProgress = true
+			close(observed)
+		case ev.Phase == job.PhaseDone:
 			sawDone = true
+			doneUsage = ev.Status.Usage.InputTokens
 			resp.Body.Close()
 		}
 	}
+	if !sawRunning {
+		t.Error("the stream never showed the running phase")
+	}
 	if !sawProgress {
-		t.Error("the stream never carried the run's observed usage — Observe-only updates are not reaching SSE")
+		t.Error("the stream never carried the run's observed usage while running, so Observe-only updates are not reaching SSE")
 	}
 	if !sawDone {
 		t.Error("the stream did not reach the terminal phase")
+	}
+	// A transition keeps the latest observation rather than copying back an
+	// older one, so the terminal event carries the last usage reported.
+	if sawDone && doneUsage != 300 {
+		t.Errorf("the terminal event carried input tokens %d, want the last observed 300", doneUsage)
 	}
 }
 
