@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -100,24 +101,26 @@ func SyncWorkspace(ctx context.Context, dir string, files map[string][]byte, mes
 		return false, err
 	}
 	// The tree becomes exactly the snapshot: what the session no longer has
-	// is removed, so the history records the removal.
-	err := filepath.WalkDir(dir, func(target string, entry os.DirEntry, err error) error {
+	// is removed, so the history records the removal. Every operation goes
+	// through a root scoped to the workspace, so a link inside it cannot send
+	// a write or a removal outside.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = root.Close() }()
+	err = fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		relative, err := filepath.Rel(dir, target)
-		if err != nil {
-			return err
-		}
-		relative = filepath.ToSlash(relative)
-		if relative == ".git" {
-			return filepath.SkipDir
+		if name == ".git" {
+			return fs.SkipDir
 		}
 		if entry.IsDir() {
 			return nil
 		}
-		if _, kept := files[relative]; !kept {
-			return os.Remove(target)
+		if _, kept := files[name]; !kept {
+			return root.Remove(name)
 		}
 		return nil
 	})
@@ -125,11 +128,10 @@ func SyncWorkspace(ctx context.Context, dir string, files map[string][]byte, mes
 		return false, err
 	}
 	for name, body := range files {
-		target := filepath.Join(dir, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		if err := root.MkdirAll(path.Dir(name), 0o700); err != nil {
 			return false, err
 		}
-		if err := os.WriteFile(target, body, 0o600); err != nil {
+		if err := root.WriteFile(name, body, 0o600); err != nil {
 			return false, err
 		}
 	}
