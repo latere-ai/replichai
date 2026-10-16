@@ -10,8 +10,6 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
-## v0.32.0 - 2026-10-16
-
 ### Added
 
 - A run keeps its work as it goes. On the `local` and `latere` runtimes, every
@@ -20,6 +18,19 @@ committed. The commit log already holds that.
   `<out>/<paper>-transcript.jsonl`. A `latere` run that publishes pushes those
   files to its repository as it goes, so a run that fails late keeps what it
   had done.
+
+### Fixed
+
+- A Latere run that was stopped or timed out kept none of its work: it was
+  read before the platform had saved the last turn's files. It is now read
+  once that turn has stopped.
+- A run that was stopped or timed out had thirty seconds to hand over its
+  files and transcript, which a working directory of any size did not fit in.
+  It now has ten minutes.
+
+## v0.32.0 - 2026-10-16
+
+### Added
 
 - The price list in Admin → Platform policy can be edited. An admin adds a
   model, edits its input, output, cache-read and cache-write prices, or removes
@@ -35,12 +46,6 @@ committed. The commit log already holds that.
 
 ### Fixed
 
-- A Latere run that was stopped or timed out kept none of its work: it was
-  read before the platform had saved the last turn's files. It is now read
-  once that turn has stopped.
-- A run that was stopped or timed out had thirty seconds to hand over its
-  files and transcript, which a working directory of any size did not fit in.
-  It now has ten minutes.
 - Starting a session that the project pays for no longer hangs. With a
   database pooler holding a single server connection, the start waited for a
   second connection while its own transaction held the only one, and every
