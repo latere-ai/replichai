@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.33.0 - 2026-10-16
+
 ### Added
 
 - A run keeps its work as it goes. On the `local` and `latere` runtimes, every
