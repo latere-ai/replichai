@@ -18,7 +18,8 @@ import (
 // LATERE_TOKEN_COMMAND names, and charges their wallet a few cents. It is
 // opt-in (REPLICHAI_LATERE_E2E=1), because it reaches the network and spends
 // money; it prints the transcript when the session does not pass, before the
-// session is released, so a failure says why.
+// session is released, so a failure says why. REPLICHAI_LATERE_ENVIRONMENT
+// names the environment the session runs on.
 func TestRealLatereEndToEnd(t *testing.T) {
 	if os.Getenv("REPLICHAI_LATERE_E2E") != "1" {
 		t.Skip("set REPLICHAI_LATERE_E2E=1 and a Latere credential to run a real session")
@@ -50,12 +51,23 @@ func TestRealLatereEndToEnd(t *testing.T) {
 		ref := modelRef(model)
 		selector = managed.ModelSelector{Exact: &ref}
 	}
+	task, rubric := "Create outputs/result.txt containing only the number that is the sum of 2 and 3. Then end your turn.",
+		"1. outputs/result.txt exists.\n2. It contains the number 5 and nothing else."
+	// REPLICHAI_LATERE_ENVIRONMENT=science checks the statistics image on the
+	// hosted plane instead: R and lme4 must be there already, so the session
+	// fits a mixed model without installing anything.
+	environment := os.Getenv("REPLICHAI_LATERE_ENVIRONMENT")
+	if environment == "science" {
+		task = "Run this command in the shell, exactly: Rscript -e 'suppressMessages(library(lme4)); cat(round(fixef(lmer(Reaction ~ Days + (Days|Subject), sleepstudy))[[\"Days\"]], 2))' " +
+			"Write what it prints, the number alone, to outputs/result.txt. Install nothing. Then end your turn."
+		rubric = "1. outputs/result.txt exists.\n2. It contains the number 10.47 and nothing else.\n3. The transcript shows no package being installed."
+	}
 	spec := managed.SessionSpec{
 		Model:        selector,
 		Instructions: "You are a careful research engineer. Work in the working directory.",
-		Task:         "Create outputs/result.txt containing only the number that is the sum of 2 and 3. Then end your turn.",
-		Sandbox:      managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkOpen}},
-		Evaluation:   &managed.EvaluationSpec{Rubric: "1. outputs/result.txt exists.\n2. It contains the number 5 and nothing else.", MaxRevisions: 1},
+		Task:         task,
+		Sandbox:      managed.SandboxSpec{Environment: environment, Network: managed.NetworkPolicy{Mode: managed.NetworkOpen}},
+		Evaluation:   &managed.EvaluationSpec{Rubric: rubric, MaxRevisions: 1},
 	}
 	ref, err := r.Start(ctx, spec)
 	if err != nil {
