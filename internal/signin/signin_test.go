@@ -147,7 +147,7 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	if err := store.Put(ctx, "carol", "r1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE platform_signins SET sealed = 'garbage' WHERE subject = 'carol'`); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE platform_sign_ins SET sealed = 'garbage' WHERE subject = 'carol'`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Rotate(ctx, "carol", func(string) (string, error) { return "x", nil }); err == nil {

@@ -33,7 +33,7 @@ func (s *PGStore) Put(ctx context.Context, subject, refresh string) error {
 		return err
 	}
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO platform_signins (subject, sealed, updated_at) VALUES ($1, $2, $3)
+		INSERT INTO platform_sign_ins (subject, sealed, updated_at) VALUES ($1, $2, $3)
 		ON CONFLICT (subject) DO UPDATE SET sealed = EXCLUDED.sealed, updated_at = EXCLUDED.updated_at`,
 		subject, sealed, s.now())
 	return err
@@ -43,7 +43,7 @@ func (s *PGStore) Put(ctx context.Context, subject, refresh string) error {
 func (s *PGStore) Rotate(ctx context.Context, subject string, next func(string) (string, error)) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var sealed []byte
-		err := tx.QueryRow(ctx, `SELECT sealed FROM platform_signins WHERE subject = $1 FOR UPDATE`, subject).Scan(&sealed)
+		err := tx.QueryRow(ctx, `SELECT sealed FROM platform_sign_ins WHERE subject = $1 FOR UPDATE`, subject).Scan(&sealed)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNoSignIn
 		}
@@ -62,13 +62,13 @@ func (s *PGStore) Rotate(ctx context.Context, subject string, next func(string) 
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `UPDATE platform_signins SET sealed = $2, updated_at = $3 WHERE subject = $1`, subject, resealed, s.now())
+		_, err = tx.Exec(ctx, `UPDATE platform_sign_ins SET sealed = $2, updated_at = $3 WHERE subject = $1`, subject, resealed, s.now())
 		return err
 	})
 }
 
 // Forget removes the person's sign-in.
 func (s *PGStore) Forget(ctx context.Context, subject string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM platform_signins WHERE subject = $1`, subject)
+	_, err := s.pool.Exec(ctx, `DELETE FROM platform_sign_ins WHERE subject = $1`, subject)
 	return err
 }

@@ -194,7 +194,7 @@ func (m *Minter) post(ctx context.Context, path string, body io.Reader, contentT
 		return response.StatusCode, err
 	}
 	if response.StatusCode/100 != 2 {
-		return response.StatusCode, fmt.Errorf("Auth answered %d", response.StatusCode)
+		return response.StatusCode, fmt.Errorf("the identity provider answered %d", response.StatusCode)
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		return response.StatusCode, fmt.Errorf("decode Auth's answer: %w", err)

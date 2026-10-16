@@ -29,13 +29,21 @@ they work from anywhere inside a clone; from elsewhere, pass
 
 ## Runtimes
 
-A **runtime** is where the agent session runs. Three ship:
+A **runtime** is where the agent session runs. Four ship:
 
 | Runtime | Where the session runs | What it needs |
 |---|---|---|
 | `memory` | in the process, with no model behind it; it produces a fake audit | nothing. Use it to try a command without spending anything |
 | `anthropic-managed` | on Anthropic's Managed Agents backend | `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` for a non-default endpoint |
+| `latere` | on the Latere platform, as a hosted agent session, on any model the platform serves you; your own Latere wallet pays for it | `LATERE_API_KEY`, a personal access token from the Latere console (Keys, for Agents), or `LATERE_TOKEN_COMMAND`, a command that prints a bearer for `api.latere.ai`. Your Latere network preference must be open for an audit |
 | `local` | on this machine: a coding agent (Claude Code or Codex) inside a sandbox | the agent installed and logged in, and the sandbox. [`local-runs.md`](local-runs.md) is the guide |
+
+The model is chosen with `--model`, as an **Effort** level or as one exact model:
+`quick`, `thorough` or `sustained` (the older names `fast`, `balanced` and
+`best` still work), or `provider/id`. On Anthropic each level is one Claude
+model. On Latere each level is the platform's own level of that name, whose
+models the platform chooses, and `provider/id` can be any model it serves you.
+`replichai models --runtime <name>` lists both.
 
 The runtime is chosen by `--runtime`, then by `REPLICHAI_RUNTIME`, then by the
 command's own default: `anthropic-managed` for `audit`, `finish` and `rates`,
@@ -70,7 +78,7 @@ Audits one paper and writes its reproduction into `<out>/<paper>/`. With
 |---|---|---|
 | `--out` | `runs` | directory for the artifacts |
 | `--runtime` | `$REPLICHAI_RUNTIME`, then `anthropic-managed` | the runtime |
-| `--model` | `best` | a tier (`best`, `balanced`, `fast`) or an exact `provider/id` |
+| `--model` | `best` | an Effort level (`quick`, `thorough`, `sustained`, or `fast`, `balanced`, `best`) or one exact model as `provider/id` |
 | `--max-revisions` | `3` | how many times a graded run may be revised; `0` grades it once and never revises it |
 | `--timeout` | `1h0m0s` | the longest the run may take |
 | `--interval` | `20s` | time between status checks |
@@ -86,6 +94,7 @@ Audits one paper and writes its reproduction into `<out>/<paper>/`. With
 replichai audit https://arxiv.org/abs/2603.01795 --runtime memory        # a free dry run
 replichai audit https://arxiv.org/abs/2603.01795                          # anthropic-managed
 replichai audit https://arxiv.org/abs/2603.01795 --runtime local          # this machine
+replichai audit https://arxiv.org/abs/2603.01795 --runtime latere --model thorough   # the Latere platform
 ```
 
 ### `replichai resolve <paper-ref> [flags]`
@@ -252,6 +261,17 @@ reproduction.
 | `--older-than` | `168h0m0s` | with `prune`: only remove sessions older than this |
 | `--dry-run` | off | with `prune`: list what would be removed and remove nothing |
 | `--session-root` | `$REPLICHAI_SESSION_ROOT`, then `~/.replichai/sessions` | where session directories are |
+
+### `replichai models [--runtime <name>]`
+
+Lists what `--model` accepts on a runtime: each Effort level, the stored
+preference it is kept as, and the model it runs now, then every model the
+runtime lets a session name exactly. On `latere` that is the platform's catalog
+as it is offered to you.
+
+```bash
+replichai models --runtime latere
+```
 
 ### `replichai providers`
 
