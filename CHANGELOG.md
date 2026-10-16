@@ -27,16 +27,21 @@ committed. The commit log already holds that.
 - Scrolling is the browser's own: the landing page and the app's panes each
   scroll on their own, so the header, the sidebar and the frame stay still and
   the browser's elastic overscroll moves only what is scrolled.
-- The public registry and a researcher's profile list their reproductions as
-  plain rows, without reference numbers, and the landing page's sections are
-  no longer numbered.
-- Counts read as words ("1 session", "3 sessions", "1 more paper").
+- The public registry, the landing page's registry strip and a researcher's
+  profile list their reproductions as plain rows, without reference numbers.
+  The landing page's sections, figure and tables carry no numbers either.
+- Counts read as words everywhere ("1 session", "3 sessions", "1 more paper",
+  "1 event").
+- A private project offers Publish once, at the head of the project; the
+  Members tab no longer repeats it. The top bar offers no New project on the
+  New project screen.
 
 ### Fixed
 
-- Paper titles, authors, venues and publishers from Crossref or a publisher's
-  page show `&` and other characters instead of HTML entities such as
-  `&amp;`. Records already stored are corrected when the server starts.
+- Paper titles, authors, venues, publishers, volumes, pages and abstracts from
+  Crossref or a publisher's page show `&` and other characters instead of HTML
+  entities such as `&amp;`. Records already stored are corrected when the
+  server starts.
 - The ReplicHAI logo in the sidebar links home, so a reader on the registry
   can get back to the landing page. A signed-out reader is offered one sign-in,
   in the top bar.
