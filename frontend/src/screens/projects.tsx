@@ -18,7 +18,7 @@ import {
   trashProject,
 } from '../api'
 import { invalidateProjects, useProjects } from '../projects-store'
-import { type I18n } from '../i18n'
+import { countOf, type I18n } from '../i18n'
 import { generic, purgeErrLabel, trashErrLabel } from '../errors'
 import { formatUSD } from '../money'
 import { Ico } from '../icons'
@@ -208,7 +208,7 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
                   <div className="row-meta">
                     <OwnerCell i18n={i18n} me={me} p={p} />
                     <span className="row-meta-dot" aria-hidden="true" />
-                    <span>{t('sessionCount', { n: String(p.session_count) })}</span>
+                    <span>{countOf(t, 'sessionCount', p.session_count)}</span>
                     <span className="row-meta-dot" aria-hidden="true" />
                     <ModifiedCell i18n={i18n} at={p.modified_at} />
                   </div>
@@ -403,7 +403,7 @@ export function TrashScreen({ i18n, me }: { i18n: I18n; me: Me }) {
               <div key={p.id} className="row" style={{ cursor: 'default' }}>
                 <div className="row-main">
                   <div className="row-title">{p.title}</div>
-                  <div className="row-sub">{t('sessionCount', { n: String(p.session_count) })}</div>
+                  <div className="row-sub">{countOf(t, 'sessionCount', p.session_count)}</div>
                 </div>
                 <OwnerCell i18n={i18n} me={me} p={p} />
                 <ModifiedCell i18n={i18n} at={p.deleted_at} />
@@ -531,8 +531,7 @@ function RowCitation({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] })
   if (bits.length === 0) return null
   return (
     <div className="row-cite" data-test="row-citation">
-      {bits.join(' · ')}
-      {more > 0 && <span className="row-cite-more">{t('morePapers', { n: String(more) })}</span>}
+      {[...bits, ...(more > 0 ? [countOf(t, 'morePapers', more)] : [])].join(' · ')}
     </div>
   )
 }
@@ -551,10 +550,6 @@ export function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string
         </h1>
         <p className="screen-desc">{t('publicIntro')}</p>
       </div>
-      {/* A list of works, set as a paper sets its references (047): numbered,
-          the paper's own citation first, the reproduction's title after it,
-          and who signed it last. Every row here is public and signed, so a
-          visibility badge would say the same thing on every line. */}
       {list === null ? (
         <div className="empty">…</div>
       ) : list.length === 0 ? (
@@ -562,39 +557,44 @@ export function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string
           <Empty icon="globe" text={t('noPublic')} />
         </div>
       ) : (
-        <ol className="rows ref-list">
-          {list.map((p, i) => (
-            <li key={p.id}>
-              <RowButton className="row ref-row" onOpen={() => onOpen(p.id, p.title)}>
-                <span className="ref-n">{i + 1}</span>
-                <div className="ref-body">
-                  {/* Which paper this row is a reproduction of (043), first,
-                      as a reference list leads with its authors. It is the
-                      paper's own line, not the project's; a project's title is
-                      a name somebody typed. */}
-                  <RowCitation i18n={i18n} papers={p.papers} />
+        <div className="card">
+          {/* The same row as the dashboard's: the title, the paper it
+              reproduces, then who signed it. Every row here is public and
+              signed, so a visibility badge would repeat on every line. */}
+          <div className="rows" data-test="registry-rows">
+            {list.map((p) => (
+              <RowButton key={p.id} className="row" onOpen={() => onOpen(p.id, p.title)}>
+                <div className="row-main">
                   <div className="row-title">{p.title}</div>
-                  <div className="row-sub">
-                    {t('initiator')}:{' '}
-                    {p.signer_handle ? (
-                      // The link opens the signer's page rather than the
-                      // project, so the click is stopped from bubbling into the
-                      // row's own handler.
-                      <a className="link" href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
-                        {signerOf(p)}
-                      </a>
-                    ) : (
-                      signerOf(p)
-                    )}{' '}
-                    · {t('sessionCount', { n: String(p.session_count) })}
+                  <RowCitation i18n={i18n} papers={p.papers} />
+                  {p.description && (
+                    <div className="row-desc" data-test="row-description">
+                      {p.description}
+                    </div>
+                  )}
+                  <div className="row-meta">
+                    <span>
+                      {t('signedBy')}{' '}
+                      {p.signer_handle ? (
+                        // The link opens the signer's page, so the click must
+                        // not also open the row.
+                        <a className="link" href={`/u/${p.signer_handle}`} onClick={(e) => e.stopPropagation()}>
+                          {signerOf(p)}
+                        </a>
+                      ) : (
+                        signerOf(p)
+                      )}
+                    </span>
+                    <span className="row-meta-dot" aria-hidden="true" />
+                    <span>{countOf(t, 'sessionCount', p.session_count)}</span>
                   </div>
                 </div>
                 <StatusBadge i18n={i18n} p={p} />
                 <Ico name="chevronRight" size={15} className="chev" />
               </RowButton>
-            </li>
-          ))}
-        </ol>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

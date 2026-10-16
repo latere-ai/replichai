@@ -19,6 +19,27 @@ committed. The commit log already holds that.
   replace the edit. The other rows stay editable. A save also keeps the rows
   OpenRouter prices at its prices, so a page opened before the last sync can
   no longer put back the prices that sync replaced.
+- The landing page and its search and share descriptions describe what the
+  audit does. The plan to run a paper's study with simulated participants is
+  stated once, on the outer loop, instead of in every caption, and the README
+  gives the four stages one section of their own.
+- The landing page's header keeps its sign-in at every scroll position.
+- Scrolling is the browser's own: the landing page and the app's panes each
+  scroll on their own, so the header, the sidebar and the frame stay still and
+  the browser's elastic overscroll moves only what is scrolled.
+- The public registry and a researcher's profile list their reproductions as
+  plain rows, without reference numbers, and the landing page's sections are
+  no longer numbered.
+- Counts read as words ("1 session", "3 sessions", "1 more paper").
+
+### Fixed
+
+- Paper titles, authors, venues and publishers from Crossref or a publisher's
+  page show `&` and other characters instead of HTML entities such as
+  `&amp;`. Records already stored are corrected when the server starts.
+- The ReplicHAI logo in the sidebar links home, so a reader on the registry
+  can get back to the landing page. A signed-out reader is offered one sign-in,
+  in the top bar.
 
 ## v0.35.0 - 2026-10-16
 

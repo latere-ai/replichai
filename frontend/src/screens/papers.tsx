@@ -23,7 +23,7 @@ import {
   startSession,
 } from '../api'
 import { useProjects } from '../projects-store'
-import { type I18n } from '../i18n'
+import { countOf, type I18n } from '../i18n'
 import { addPaperErrLabel, movePaperErrLabel, removePaperErrLabel, startErrLabel } from '../errors'
 import { formatUSD } from '../money'
 import { Ico } from '../icons'
@@ -263,7 +263,7 @@ export function PapersCard({
                     sends one too, but it is the input to the never-remove-a-run
                     rule (012), not a second answer to the same question. */}
                   <span className="muted small paper-state">
-                    {g.sessions.length > 0 ? t('paperSessions', { n: String(g.sessions.length) }) : t('paperNeverRun')}
+                    {g.sessions.length > 0 ? countOf(t, 'sessionCount', g.sessions.length) : t('paperNeverRun')}
                   </span>
                 {/* Moving is offered whether or not the paper has been run. A
                     paper filed under the wrong project is usually noticed after

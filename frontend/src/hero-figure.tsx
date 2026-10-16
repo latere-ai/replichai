@@ -240,18 +240,11 @@ export function HeroFigure({ i18n }: { i18n: I18n }) {
             {run}
           </text>
 
-          {/* Panel letters, as a journal sets them; the caption names them. */}
-          <text className="hf-panel" x={px(222, RI + 40)} y={py(222, RI + 40)}>
-            {t('figPanelA')}
-          </text>
-          <text className="hf-panel" x={px(136, RO + 22)} y={py(136, RO + 22)}>
-            {t('figPanelB')}
-          </text>
         </svg>
       </div>
       <figcaption className="hf-caption">
         <p>
-          <b>{t('figLabel', { n: '1' })}</b> {t('figTitle')} {t('figBody')}
+          <b>{t('figTitle')}</b> {t('figBody')}
         </p>
         <button
           type="button"

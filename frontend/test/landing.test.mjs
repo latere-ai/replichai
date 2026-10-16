@@ -30,9 +30,8 @@
 //
 // 047 set the page like a paper and guards what that changed: the hero is a
 // drawn figure rather than a WebGL scene, and it runs only when it should and
-// rests on its finished frame otherwise; the header's sign-in stands down while
-// the hero's or the close's is on screen, so a reader is offered the way in
-// once at a time; the example verdict's rate is a footnote under its table; the
+// rests on its finished frame otherwise; the header and its sign-in stay put
+// while the body scrolls; the example verdict's rate is a footnote under its table; the
 // page sets one face, Inter, which it ships, and no serif; every text tone reads
 // at 4.5:1 on its ground in both themes; every control shows its focus ring;
 // and the figure arriving shifts nothing.
@@ -103,7 +102,7 @@ try {
         outerOpacity: +cs(outer).opacity,
         // The outer loop is drawn open: one arc with one gap (047), so its
         // length is short of the full circle it sits on. A closed outer ring
-        // claims the study already runs, which it does not yet.
+        // claims the study with people is re-run.
         open: outer.tagName.toLowerCase() === 'path' && outer.getTotalLength() < 0.9 * 2 * Math.PI * 9.2 && inner.tagName.toLowerCase() === 'circle' && (inner.getAttribute('stroke-dasharray') || '') === '',
         // The wordmark is set in Inter, which the app ships and preloads (047).
         font: cs(document.querySelector('.wordmark')).fontFamily,
@@ -117,7 +116,7 @@ try {
       if (mark.w < 20 || mark.h < 20) fail(`the landing mark is ${mark.w}×${mark.h}px, too small to be the identity`)
       if (mark.innerStroke === 'none' || /rgba\(.*, *0\)/.test(mark.innerStroke)) fail(`the mark's inner ring does not paint (stroke: ${mark.innerStroke})`)
       if (mark.outerStroke === 'none' || mark.outerOpacity < 0.2) fail(`the mark's outer ring does not paint (stroke: ${mark.outerStroke}, opacity: ${mark.outerOpacity})`)
-      if (!mark.open) fail('the outer loop is not drawn open; a closed outer ring claims the study already runs')
+      if (!mark.open) fail('the outer loop is not drawn open; a closed outer ring claims the study with people is re-run')
       if (!/^"?Inter/.test(mark.font) || /serif/i.test(mark.font.replace(/sans-serif/gi, ''))) fail(`the wordmark asks for ${mark.font}; it is set in Inter, which the app ships`)
       if (mark.word !== 'ReplicHAI') fail(`the wordmark reads "${mark.word}"`)
       if (!mark.seam) fail('the wordmark lost its seam')
@@ -139,59 +138,54 @@ try {
     await page.close()
   }
 
-  /* ── The way in is on screen at every scroll position, once ── */
+  /* ── The header and its sign-in stay put while the body scrolls ── */
 
   for (const viewport of [DESKTOP, PHONE]) {
     const page = await open({ authenticated: false }, { viewport })
     await page.waitForSelector('.landing .lp-bar')
-    // The sign-in buttons a reader can see and press right now: inside the
-    // viewport, below the sticky header, and not hidden. 029 kept one on screen
-    // at every position with a sticky header; 047 keeps it to one at a time, so
-    // the header's stands down while the hero's or the close's is on screen.
-    const visible = () =>
+    // The header's sign-in, its box, and where the page scrolls. The header is
+    // outside the one scroll area, so the browser's elastic overscroll cannot
+    // move it; a headless browser draws no overscroll, so the test holds the
+    // structure that guarantees it instead.
+    const frame = () =>
       page.evaluate((vh) => {
-        const header = document.querySelector('.lp-bar').getBoundingClientRect().bottom
-        const shown = (e) => {
-          const cs = getComputedStyle(e)
-          const r = e.getBoundingClientRect()
-          const inHeader = !!e.closest('.lp-bar')
-          return cs.visibility !== 'hidden' && +cs.opacity > 0.5 && r.width >= 90 && r.bottom <= vh && r.top >= (inHeader ? 0 : header)
+        const bar = document.querySelector('.lp-bar')
+        const body = document.querySelector('.lp-body')
+        const signin = document.querySelector('[data-test="lp-signin"]')
+        const cs = getComputedStyle(signin)
+        const r = signin.getBoundingClientRect()
+        const b = getComputedStyle(body)
+        return {
+          barTop: bar.getBoundingClientRect().top,
+          signin: cs.visibility !== 'hidden' && +cs.opacity > 0.5 && r.width >= 90 && r.top >= 0 && r.bottom <= vh,
+          barInScroller: body.contains(bar),
+          windowScroll: document.scrollingElement.scrollTop,
+          bodyScroll: body.scrollTop,
+          overscroll: b.overscrollBehaviorY,
+          willChange: b.willChange,
         }
-        return [...document.querySelectorAll('[data-test="lp-signin"], [data-signin-inline]')].filter(shown).map((e) => (e.closest('.lp-bar') ? 'header' : e.closest('.lp-close') ? 'close' : 'hero'))
       }, viewport.height)
-    // The observer that decides reports a frame after the scroll, and the
-    // header's button then fades over a transition; the count is taken once
-    // both are done.
-    const rest = async () => {
-      await sleep(120)
+    const at = async (where, y) => {
+      await page.evaluate((y) => {
+        const body = document.querySelector('.lp-body')
+        body.scrollTop = y === 'end' ? body.scrollHeight : y
+      }, y)
       await settled(page)
+      const f = await frame()
+      if (!f.signin) fail(`at ${viewport.width}px, ${where}, the header's sign-in is not on screen`)
+      if (Math.abs(f.barTop) > 0.5) fail(`at ${viewport.width}px, ${where}, the header moved to ${f.barTop}px`)
+      if (f.windowScroll !== 0) fail(`at ${viewport.width}px, ${where}, the window scrolled ${f.windowScroll}px; only .lp-body scrolls`)
+      return f
     }
-    const once = async (where) => {
-      await rest()
-      const got = await visible()
-      if (got.length !== 1) fail(`at ${viewport.width}px, ${where}, ${got.length} sign-ins are on screen (${got.join(', ') || 'none'}); a reader is offered the way in once at a time`)
-      return got
-    }
-    const top = await once('at the top')
-    if (top[0] && top[0] !== 'hero') fail(`at ${viewport.width}px the first screen offers the ${top[0]}'s sign-in rather than the hero's`)
-    // The page is long on purpose. The requirement is that the sign-in stays
-    // reachable throughout.
-    const scrolled = await page.evaluate(() => {
-      window.scrollTo(0, Math.round(document.body.scrollHeight / 3))
-      return document.documentElement.scrollHeight > window.innerHeight
-    })
-    if (!scrolled) fail(`at ${viewport.width}px the landing does not scroll; it is meant to be a page, not a card`)
-    await page.waitForFunction(() => window.scrollY > 0)
-    const mid = await once('a third of the way down')
-    if (mid[0] && mid[0] !== 'header') fail(`at ${viewport.width}px mid-page the way in is the ${mid[0]}'s, want the header's`)
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-    await once('at the bottom')
-    // Hidden means out of reach, not only out of sight: the standing-down
-    // header button is out of the tab order while it is hidden.
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await rest()
-    const tabbable = await page.evaluate(() => getComputedStyle(document.querySelector('[data-test="lp-signin"]')).visibility)
-    if (tabbable !== 'hidden') fail(`at the top the header's standing-down sign-in is ${tabbable}; a hidden button must leave the tab order too`)
+    const top = await at('at the top', 0)
+    if (top.barInScroller) fail('the header is inside the scroll area, so elastic overscroll would move it')
+    if (top.overscroll !== 'contain') fail(`.lp-body overscroll-behavior-y is ${top.overscroll}, want contain`)
+    if (!/scroll-position/.test(top.willChange)) fail(`.lp-body will-change is ${top.willChange}; without its own scroller Chromium does not rubber-band it`)
+    // The page is long on purpose; a reader scrolls it, and the header stays.
+    const mid = await at('a third of the way down', await page.evaluate(() => Math.round(document.querySelector('.lp-body').scrollHeight / 3)))
+    if (mid.bodyScroll <= 0) fail(`at ${viewport.width}px the landing does not scroll; it is meant to be a page, not a card`)
+    await at('at the bottom', 'end')
+    await page.evaluate(() => (document.querySelector('.lp-body').scrollTop = 0))
 
     // Nothing runs off the side at either width.
     const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
@@ -203,7 +197,7 @@ try {
     const pts = await page.evaluate(() => document.querySelectorAll('.landing-point').length)
     if (pts !== 3) fail(`the landing shows ${pts} points, want the inner loop, the outer loop, and the verdict`)
     const open_ = await page.evaluate(() => document.querySelectorAll('.landing-point.open').length)
-    if (open_ !== 1) fail(`${open_} points are drawn open; exactly one, the outer loop, does not run yet`)
+    if (open_ !== 1) fail(`${open_} points are drawn open; exactly one, the outer loop, is not re-run`)
     await page.close()
   }
 
@@ -230,7 +224,7 @@ try {
     if (fig.canvases) fail(`the landing draws ${fig.canvases} canvases; Figure 1 is a drawing`)
     if (fig.outer === fig.inner) fail(`both loops are painted ${fig.outer}; the boundary is the color as much as the gap`)
     if (fig.stations !== 4) fail(`the inner loop shows ${fig.stations} stations, want implement, run, compare and record`)
-    if (!/^Figure 1\./.test(fig.caption)) fail(`Figure 1's caption reads "${fig.caption.slice(0, 40)}"; a figure is numbered under itself`)
+    if (!/^The boundary every audit draws\./.test(fig.caption)) fail(`the figure's caption reads "${fig.caption.slice(0, 40)}"; it opens with what the figure shows`)
     if (fig.steps !== 4) fail(`the pipeline figure shows ${fig.steps} steps, want four`)
     if (fig.parts !== 3) fail(`the anatomy figure shows ${fig.parts} parts, want claim, evidence, and verdict`)
 

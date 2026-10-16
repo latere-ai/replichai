@@ -106,8 +106,9 @@ try {
       landing: !!document.querySelector('.landing'),
       rows: document.querySelectorAll('.screen .rows .row').length,
       rail: [...document.querySelectorAll('.rail .nav-btn')].map((b) => b.textContent.trim()),
-      signIn: document.querySelector('[data-test="rail-signin"]')?.getAttribute('href') || '',
+      signIns: document.querySelectorAll('a[href^="/login"]').length,
       topbarSignIn: document.querySelector('[data-test="topbar-signin"]')?.getAttribute('href') || '',
+      home: document.querySelector('.rail-brand')?.getAttribute('href') || '',
       wallet: !!document.querySelector('.wallet-pill'),
       newProject: [...document.querySelectorAll('.topbar-actions button')].some((b) => /new/i.test(b.getAttribute('aria-label') || '')),
       user: !!document.querySelector('.user-btn'),
@@ -121,7 +122,8 @@ try {
     }
     if (!shell.rows) fail('the signed-out registry lists nothing')
     if (shell.rail.length !== 1) fail(`the signed-out rail offers ${shell.rail.length} destinations (${shell.rail.join(', ')}), want only the registry`)
-    if (shell.signIn !== '/login?next=%2Fregistry') fail(`the rail sign-in points at ${shell.signIn || 'nothing'}`)
+    if (shell.signIns !== 1) fail(`the signed-out registry offers ${shell.signIns} sign-ins; one, in the top bar`)
+    if (shell.home !== '/') fail(`the rail's logo links to ${shell.home || 'nothing'}, want the landing at /`)
     if (shell.topbarSignIn !== '/login?next=%2Fregistry') fail(`the topbar sign-in points at ${shell.topbarSignIn || 'nothing'}`)
     if (shell.wallet) fail('a reader with no account is shown a wallet')
     if (shell.newProject) fail('a reader with no account is offered a new project')
@@ -139,7 +141,7 @@ try {
       // Nothing on a project a reader has no stake in offers to change it.
       publish: !!document.querySelector('[data-test="publish-project"]'),
       people: [...document.querySelectorAll('.detail-tabs button')].map((b) => b.textContent.trim()),
-      signIn: document.querySelector('[data-test="rail-signin"]')?.getAttribute('href') || '',
+      signIn: document.querySelector('[data-test="topbar-signin"]')?.getAttribute('href') || '',
       crumb: document.querySelector('.crumb button')?.textContent.trim() || '',
     }))
     if (!got.title.includes('Placebo')) fail('the published project did not render for a signed-out reader')
@@ -193,7 +195,7 @@ try {
     const rail = await page.evaluate(() => ({
       items: document.querySelectorAll('.rail .nav-btn').length,
       user: !!document.querySelector('.user-btn'),
-      signIn: !!document.querySelector('[data-test="rail-signin"]'),
+      signIn: !!document.querySelector('a[href^="/login"]'),
     }))
     if (rail.items < 4) fail(`a signed-in reader lost rail destinations (${rail.items})`)
     if (!rail.user) fail('a signed-in reader lost their account button')

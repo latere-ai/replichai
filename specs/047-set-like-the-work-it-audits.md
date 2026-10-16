@@ -78,7 +78,7 @@ Two traits of the platform are not taken. Its monospace, upper-case eyebrow read
 
 **Inter ships.** Its 400, 500 and 600 woff2 files are copied from the platform byte for byte, under the same paths, so a reader who has visited either site already has them cached. All three are preloaded. Every face is `font-display: block`, as on the platform: the faces are preloaded with the document, and a swap reflows text a reader is already looking at, which is a layout shift.
 
-**Headings are Inter semibold, and nothing is italic for effect.** The landing's claim, its section headings, the console's page titles, a paper's title and a verdict's outcome are all the same face as the text under them, in its semibold. A page reads as research because of its structure (numbered sections, captioned figures, ruled tables, references set as references), not because of a display face. The serif replichai shipped for one italic word in a screen description (040) is removed with it; that word is set in Inter's medium weight.
+**Headings are Inter semibold, and nothing is italic for effect.** The landing's claim, its section headings, the console's page titles, a paper's title and a verdict's outcome are all the same face as the text under them, in its semibold. A page reads as research because of its structure (ruled sections, captioned figures, ruled tables), not because of a display face. The serif replichai shipped for one italic word in a screen description (040) is removed with it; that word is set in Inter's medium weight.
 
 **No monospace label, and no upper-case label, anywhere.** Eyebrows, table heads, rail groups, status and role badges are Inter, sentence case, 12 to 14px, in `--fg-2`. Monospace stays for what is literally code or an identifier: a file name, a commit hash, a paper key.
 
@@ -88,19 +88,19 @@ Two traits of the platform are not taken. Its monospace, upper-case eyebrow read
 
 **One container.** `min(1200px, 100% − 96px)`, as on the platform, and `100% − 32px` at or below 760px, the app's phone breakpoint (030).
 
-**Sections are numbered and ruled, not boxed.** Each landing section opens with a hairline, a numeral and its name in the margin, and a heading ("2  The boundary"), like a paper's sections. The slabs and tinted panels 033 and 040 built (`.lp-block`) go. On paper, a block of color around a section says "advertisement", and a rule says "next section".
+**Sections are ruled, not boxed.** Each landing section opens with a hairline, its name in the margin, and a heading ("The boundary"). Sections carry no numbers: nothing refers to one by number. The slabs and tinted panels 033 and 040 built (`.lp-block`) go. On paper, a block of color around a section says "advertisement", and a rule says "next section".
 
-**Figures are numbered and captioned underneath.** "Figure 1. The boundary every audit draws." and "Table 1. An example verdict." The caption carries the figure's argument in one or two sentences, the way a journal figure does.
+**Figures are captioned underneath.** The caption opens with what the figure shows ("The boundary every audit draws.") and carries its argument in one or two sentences. A figure or a table carries no number and the figure no panel letters, since nothing on the page refers to them.
 
 **The example verdict is a booktabs table.** It has three rules and no fills. Its status words carry a small dot in their tone and keep their word, so color is never the only signal. It is still marked as an example, and its paper key still resolves to nothing (033).
 
 **A rate is a footnote, never a headline.** The verdict leads with its outcome in words and its per-component table. The overall rate is derived from those rows and is set under them at the size of a footnote, with the counts it comes from. One large number would be the thing a reader has to trust, and the rows are what can be checked. This holds on the landing's example and on every verdict in the app.
 
-**The landing lists every file a session commits.** Table 1 names the six files `method.Deliverables()` lists, which the publication gate reads too, and `src/`. The four reports come first, because they are what a reader opens. The two JSON files follow, because they carry the same findings and the study as data.
+**The landing lists every file a session commits.** A table names the six files `method.Deliverables()` lists, which the publication gate reads too, and `src/`. The four reports come first, because they are what a reader opens. The two JSON files follow, because they carry the same findings and the study as data.
 
-**The way in is offered once.** The hero's "Sign in with Latere" and the sticky header's were the same button twice on the first screen. The header's now stands down while the hero's or the close's sign-in is fully on screen below it, and fades in the moment the reader scrolls past. It fades out of the tab order and the accessibility tree as well. So a sign-in is still on screen at every scroll position (029), but there is never more than one. Hiding keeps the button's box, so nothing in the bar moves. A browser without `IntersectionObserver` keeps the header's button throughout.
+**The header keeps its sign-in.** The header sits outside the page's scroll area, so its "Sign in with Latere" is on screen at every scroll position (029), as the platform's header keeps its way in. The hero and the close offer it again where a reader finishes reading.
 
-**The registry strip is a reference list.** Each published reproduction is set as a citation (authors, year, title, venue) with the signer and the session count after it, in a hanging indent. That is the form an academic reader scans a list of works in, and it is what the registry's data already is (043).
+**The registry strip cites each paper.** Each published reproduction shows its paper's citation (authors, year, title, venue) with the signer and the session count after it, which is what the registry's data already is (043).
 
 ### Motion: exact, and only where something changes
 
@@ -134,7 +134,7 @@ Two traits of the platform are not taken. Its monospace, upper-case eyebrow read
 
 A session reads like a paper's results section. The verdict's outcome comes first, in words, and then its per-component table. The rate is the table's footnote. The findings tables (the boundary, the decisions the paper left unstated, the open-science scorecard, what the authors released) are booktabs tables with captions. A mismatch is a row with its two numbers side by side, never a colored strip.
 
-The registry is a reference list, set as the landing's is: a numbered citation, the reproduction's title, and who signed it. A public profile reads like a researcher's publication list.
+The registry lists reproductions the way the dashboard lists projects: the title, the paper it reproduces, and who signed it, with no numbers. A public profile lists the work a researcher signed, each with the date it was signed.
 
 Settings, the wallet and the admin console use the platform's sectioned form: a title and description on the left and the controls on the right. Money is tabular, and a statement is a booktabs table.
 
@@ -153,11 +153,7 @@ Inside the card the primitives are the platform's:
 
 The mechanisms are untouched: 030's drawer and breakpoint, the fold and its persistence, the tooltips on a folded rail, and 034's two evidence cards and filter row.
 
-**Elastic scrolling stays inside the pane.** A trackpad pull past the end of the main pane or the rail stretches that pane, and a pull past either end of the landing stretches the page under its sticky header. The frame, the rail beside the pane, the top bar and the landing's header never move.
-
-Browsers disagree on who stretches. Chromium rubber-bands only the page itself, which moved the whole frame and the landing's sticky header. Safari and Firefox stretch an inner pane on their own. So the page's own bounce is turned off (`overscroll-behavior: none` under the console's fixed frame, and on the landing for a fine pointer), and every pane that scrolls contains its overscroll. A small module, `elastic.ts`, draws the stretch where the browser no longer does: on the landing's body in every browser, and on the console's panes in Chromium only.
-
-The stretch follows the wheel while the pull lasts, with a rubber band's resistance (it gives at first and stiffens toward a reach of 160px). It springs back over 480ms once the wheel goes quiet, and ignores the momentum that follows. At rest nothing carries a `translate`, so no pane becomes a containing block for the menus and dialogs inside it. Touch keeps the platform's own bounce, and reduced motion gets no stretch.
+**Elastic scrolling is the browser's, inside the pane.** The window never scrolls under the console or the landing (`html` is `overflow: hidden`). The rail, the main pane and the landing's body each scroll on their own, contain their overscroll, and are composited scrollers (`will-change: scroll-position`), which is what Chromium needs to rubber-band an inner pane. The frame, the rail beside the pane, the top bar and the landing's header sit outside every scroller, so the browser's own elastic overscroll moves the pane being scrolled and nothing around it. This is the platform site's arrangement.
 
 ### The source, offered
 
@@ -167,7 +163,7 @@ ReplicHAI is AGPL-3.0, and section 13 asks a service run over a network to offer
 
 Every guarantee the browser suite holds survives, and only the measures that encode the old look change:
 
-- 029's guarantee that a sign-in is on screen at every scroll position, on both viewports, now with exactly one on screen at a time;
+- 029's guarantee that a sign-in is on screen at every scroll position, on both viewports, in the header;
 - the reduced-motion resting state;
 - the walkthrough's driver and its stand-down at 900px;
 - the live strip's absence on an empty registry;
@@ -201,8 +197,8 @@ These are recorded here rather than edited into the older files. When this spec 
 9. The mark renders at 16, 24, 48 and 160px in both themes. Its outer ring has exactly one gap, and its inner ring is closed. The favicon swaps its ink for a dark tab.
 10. The wordmark reads "ReplicHAI", in Inter, with its seam.
 11. Every guarantee in "What stays" still holds, at 1440×900 and 390×844.
-11a. At the top of the landing, a third of the way down and at the bottom, exactly one sign-in button is visible and reachable by Tab.
-11b. With the console mounted, `html` and `body` compute `overscroll-behavior: none`, and the rail and the main pane compute `contain`. In Chromium a pixel wheel pull at the top of the main pane, of the rail, and of the landing stretches that pane and springs back to no translate. The top bar, the rail's head and the landing's header do not move.
+11a. At the top of the landing, a third of the way down and at the bottom, the header's sign-in is visible, the header has not moved, and the window has not scrolled.
+11b. With the console or the landing mounted, `html` computes `overflow: hidden`. The rail, the main pane and the landing's body compute `overscroll-behavior: contain` and `will-change: scroll-position`, and the landing's header is not inside its body.
 11c. With `SOURCE.published` false, no source link is rendered. With it true, the footer and the rail each link to the repository.
 12. The whole browser suite, the unit tests and the repository's full check (`make check`, which runs `go tool lateregate`) pass.
 
@@ -222,13 +218,13 @@ All of them read the ink ladder, set Inter alone, and draw labels in sentence ca
 
 - The first draft set headings in Instrument Serif, the platform's display face, with italics for emphasis, and drew the wordmark as outlines of it. It read too tall and too decorative. Headings went back to Inter semibold, the serif was removed outright, and the wordmark is text in Inter again.
 - The draft also replaced 034's shell with the platform's flat one. 034's rounded inset card and raised rail row were preferred and kept, with the platform's primitives inside.
-- Two things were added after the reviews: elastic scrolling inside the pane, and one sign-in on screen at a time.
+- Two things were added after the reviews: elastic scrolling inside the pane, and one sign-in on screen at a time. The owner's review of the live site reversed the second and replaced how the first was done; see below.
 
 **Where it is guarded.**
 
 - `test/landing.test.mjs` is rewritten against this page. It checks:
-  - exactly one sign-in on screen at the top, a third of the way down, and at the bottom, on both viewports;
-  - Figure 1 as an svg with no canvas, a marker that travels, a pause control that stops it and says so, and a reduced-motion frame that parks it on "record";
+  - the header and its sign-in in place at the top, a third of the way down, and at the bottom, on both viewports, with only the landing's body scrolling;
+  - the figure as an svg with no canvas, a marker that travels, a pause control that stops it and says so, and a reduced-motion frame that parks it on "record";
   - no layout shift, Inter loaded, and no serif anywhere;
   - every text tone at 4.5:1 on its ground in both themes, including the figure's labels;
   - a focus ring on each control the keyboard reaches;
@@ -236,9 +232,7 @@ All of them read the ink ladder, set Inter alone, and draw labels in sentence ca
   - the seven files a session commits.
 - `test/findings.test.mjs` checks that a verdict's rate sits under its table, no larger than its cells.
 - `test/mobile.test.mjs` walks the 15 app screens and fails on any label in capitals or monospace, and on any colored left edge.
-- `test/elastic.test.mjs` checks the root's overscroll, the stretch in the main pane, the rail and the landing, the frame and header staying still, and no stretch under reduced motion.
 - `src/brand.test.tsx` checks the mark's one gap at 16, 24, 48 and 160px, the wordmark, and the favicon's dark ink.
-- `src/elastic.test.ts` checks the rubber band's curve.
 - `src/source.test.tsx` checks the source link, off and on.
 
 The three upper-case expectations in the findings test moved to sentence case with the copy. The stacked-card test counts a captioned section as a block.
@@ -251,3 +245,11 @@ The three upper-case expectations in the findings test moved to sentence case wi
 
 **Found on the way.** A switch's knob was white on dark mode's light ink track and nearly invisible; it now takes the accent's own ink. And a phone lost the main pane's inset reset when the drawer's shadow moved, which the phone sweep caught.
 
+## Revised after the owner's review (2026-10-16)
+
+The owner read the live site and rejected four things. Each is changed in the decisions above.
+
+- **The header's sign-in disappeared.** It stood down while the hero's was on screen and kept its box, so the header showed an empty slot beside Registry. The header keeps its sign-in at every position.
+- **Elastic scrolling felt wrong.** `elastic.ts` imitated a rubber band from wheel events, and the page's own bounce was turned off for it. It is deleted. Each pane scrolls natively and the frame is outside every scroller, as on the platform site, so the stretch is the browser's.
+- **Numbering that refers to nothing.** The registry and a profile numbered their rows as a reference list (`[1]`, `[2]`), the landing numbered its sections, and its figure and tables carried "Figure 1." and "Table 1." with panel letters. Nothing cites any of them, so the numbers and letters are gone. The registry's rows are the dashboard's rows.
+- **No way back to the landing.** The rail's logo links to `/`, and a signed-out reader is offered one sign-in, in the top bar, instead of a second one at the rail's foot.

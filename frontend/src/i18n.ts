@@ -34,13 +34,13 @@ const en = {
     // open and a session is what spends.
     landingClaim: 'Does the paper|reproduce?',
     landingLead:
-      'Give ReplicHAI a paper. It finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper does not state, and returns a verdict with its evidence. Next, it builds the paper’s experiment and runs it with simulated participants; that part is coming soon.',
+      'Give ReplicHAI a paper. It finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper does not state, and returns a verdict with its evidence.',
     landingInnerTitle: 'The inner loop',
     landingInnerBody:
       'The algorithm, model or analysis pipeline. ReplicHAI implements it, runs it, and publishes it as a repository with the agent’s commit history.',
     landingOuterTitle: 'The outer loop',
     landingOuterBody:
-      'The study that tests it with people. The audit names it and never simulates it. Coming soon: an agent builds the experiment, simulated participants take part in it, and the result is labeled as simulated and checked against human replications.',
+      'The study that tests it with people. The audit names it and does not run it. Running it with simulated participants is in development, and its result will be reported as a simulation, never as evidence about people.',
     landingVerdictTitle: 'The verdict',
     landingVerdictBody:
       'Written by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning rather than only the number.',
@@ -48,9 +48,9 @@ const en = {
     // and the close. The claim, the lead, and the three points above are 017's
     // and are reused verbatim; the argument did not change, only the space it
     // has.
-    lpLoopsTitle: 'One loop re-runs.|The other comes next.',
+    lpLoopsTitle: 'One loop re-runs.|The other needs people.',
     lpLoopsCaption:
-      'The algorithm can be re-run, so it is drawn as a closed loop. The study with people is drawn open: the audit never simulates it. Running it with simulated participants is coming soon.',
+      'The algorithm can be re-run, so it is drawn as a closed loop. The study with people is drawn open: its evidence comes from people, and the audit does not stand in for them.',
     lpPipelineTitle: 'What a session|does',
     lpPipelineCaption:
       'Four steps. Each leaves something you can open afterwards: the release it found, the repository it wrote, and the transcript of how it got there.',
@@ -94,7 +94,6 @@ const en = {
     lpEyebrowAudited: 'Reproducibility audits',
     lpStepN: 'Step {n}',
     lpStripEyebrow: 'The registry',
-    lpHeroAside: 'The inner loop is re-run today. The outer loop is coming soon.',
     lpLoopsEyebrow: 'The boundary',
     lpPipelineEyebrow: 'A session, step by step',
     lpAnatomyEyebrow: 'In the app',
@@ -154,14 +153,14 @@ const en = {
     lpDemoRow2: 'Reported ablation gain of 4.1 points',
     lpDemoRow2Evidence: 'Observed 2.6. The paper reports 4.1, the run gives 2.6.',
     lpDemoRow3: 'Participants preferred the assisted condition',
-    lpDemoRow3Evidence: 'Rests on 84 participants. Not simulated by the audit.',
+    lpDemoRow3Evidence: 'Rests on 84 participants. Not simulated.',
     // Who it is for. Named as fields rather than as job titles: the thing that
     // decides whether this product fits is the shape of the paper, not the
     // department it came from.
     lpWhoEyebrow: 'Who it is for',
     lpWhoTitle: 'Papers whose evidence|comes from people.',
     lpWhoCaption:
-      'Built for research with human participants. A paper of that kind almost always contains two loops. The audit places the boundary between them and re-runs the inner one; running the outer one with simulated participants is coming soon.',
+      'Built for research with human participants. A paper of that kind almost always contains two loops, and the audit’s job is to place the boundary between them precisely and keep to it.',
     lpWhoHci: 'Human–computer interaction',
     lpWhoHciBody: 'A system paper whose contribution is the system and whose evidence is a user study.',
     lpWhoPsych: 'Psychology',
@@ -186,22 +185,18 @@ const en = {
     // Figure 1 and the two tables (047). A figure is numbered and captioned the
     // way a journal sets one: the number, a title that states the claim, then
     // what each panel shows. The panel letters are the caption's handles.
-    figAlt: 'Figure 1. An inner loop, a closed ring that a marker goes round once per run, inside an outer loop, an open ring that nothing travels yet.',
+    figAlt: 'An inner loop, a closed ring that a marker goes round once per run, inside an outer loop, an open ring that nothing travels.',
     figImplement: 'Implement',
     figRerun: 'Execute',
     figCompare: 'Compare',
     figRecord: 'Record',
     figRunLabel: 'Run',
-    figOpen: 'Coming soon',
-    figPanelA: 'a',
-    figPanelB: 'b',
-    figLabel: 'Figure {n}.',
+    figOpen: 'Needs people',
     figTitle: 'The boundary every audit draws.',
     figBody:
-      '(a) The inner loop: the analysis a machine can re-run on what the authors released. Each lap is one run. (b) The outer loop: the study with people. The audit never simulates it; running it with simulated participants is coming soon.',
+      'The inner loop is the analysis a machine can re-run on what the authors released, and each lap is one run. The outer loop is the study with people. It is left open, because the audit does not run it.',
     figPause: 'Pause the figure',
     figPlay: 'Play the figure',
-    tableLabel: 'Table {n}.',
     lpShipsTable: 'What every session commits to its repository.',
     lpShipsColFile: 'File',
     lpShipsColAnswers: 'What it answers',
@@ -232,6 +227,7 @@ const en = {
     noAccessBody:
       'You are signed in as {email}, but this account cannot use ReplicHAI right now. Sign out and back in. If that does not help, a platform admin has revoked access and can restore it.',
     // shell
+    home: 'ReplicHAI home',
     workspace: 'Workspace',
     navProjects: 'Projects',
     navPublic: 'Public registry',
@@ -469,16 +465,18 @@ const en = {
     errSessionRunning: 'This session is still running. Stop it first.',
     deleteSessionFailed: 'Couldn’t delete this session. Try again in a moment.',
     blockerDeleteHint: 'Delete it to publish the rest of this project.',
-    sessionCount: '{n} session(s)',
+    sessionCount: '{n} sessions',
+    sessionCountOne: '1 session',
     // A row cites the first paper a project holds, and counts the others (043).
-    morePapers: '+{n} more',
+    morePapers: '{n} more papers',
+    morePapersOne: '1 more paper',
     private: 'Private',
     public: 'Public',
     // public zone
     publicIntro:
       'Reproductions that their owners have signed off and made public. Each one includes its sessions and the full transcript that produced them, so you can check the reasoning rather than only the number.',
     noPublic: 'No public projects yet.',
-    initiator: 'Published by',
+    signedBy: 'Signed by',
     // What a reader with no account gets at an address that is not public (028).
     // The server answers one 404 for private, withdrawn, and never-existed, so
     // the copy claims none of them; it says what is certain and offers the two
@@ -631,7 +629,6 @@ const en = {
     fillInDone: 'Filled in {n} paper(s).',
     fillInNothing: 'Nothing more to fill in.',
     fillInFailed: 'Couldn’t look those up. Try again in a moment.',
-    paperSessions: '{n} session(s)',
     paperNeverRun: 'not started',
     paperUntitled: 'Looking up the title…',
     errNotAllowed: 'Your account cannot do this right now. Sign out and back in. If that does not help, ask a platform admin.',
@@ -960,6 +957,12 @@ export function translator(lang: Lang): { t: T; raw: T } {
   // the space back. Deleting it outright once produced "No pageat this address".
   const t: T = (key, vars) => raw(key, vars).replace(/\s*\|\s*/g, ' ')
   return { t, raw }
+}
+
+// countOf says a count in words: the key's `One` form for exactly one, and the
+// key itself, with {n}, for any other number.
+export function countOf(t: T, key: TKey, n: number): string {
+  return n === 1 ? t(`${key}One` as TKey) : t(key, { n: String(n) })
 }
 
 // useI18n stores the chosen language in localStorage and returns a translate

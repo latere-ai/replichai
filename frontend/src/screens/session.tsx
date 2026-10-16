@@ -234,7 +234,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
 
       <section className="findings-sec">
         <p className="table-caption">
-          <b>{t('tableLabel', { n: '1' })}</b> {t('boundary')}
+          <b>{t('boundary')}</b>
         </p>
         {/* Four columns read across, so on a phone the box scrolls sideways
             rather than the table restacking into something that is no longer a
@@ -296,7 +296,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
 
       <section className="findings-sec">
         <p className="table-caption">
-          <b>{t('tableLabel', { n: '2' })}</b> {t('unresolved')}. {t('unresolvedHint')}
+          <b>{t('unresolved')}.</b> {t('unresolvedHint')}
         </p>
         {open.length === 0 ? (
           <p className="findings-none">{t('unresolvedNone')}</p>
@@ -324,7 +324,7 @@ function SessionFindings({ i18n, findings }: { i18n: I18n; findings: Findings })
       {!!f.decisions?.length && (
         <section className="findings-sec">
           <p className="table-caption">
-            <b>{t('tableLabel', { n: '3' })}</b> {t('decisions')}
+            <b>{t('decisions')}</b>
           </p>
           <div className="ruled-list">
             {f.decisions.map((d, i) => (
