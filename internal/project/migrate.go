@@ -6,6 +6,7 @@ package project
 import (
 	"context"
 	"fmt"
+	"html"
 	"log/slog"
 	"time"
 
@@ -195,28 +196,7 @@ ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';
 -- than a summary somebody wrote for it.
 ALTER TABLE project_papers ADD COLUMN abstract TEXT NOT NULL DEFAULT '';
 `},
-	{version: 13, sql: `
--- Crossref and publisher pages carry HTML entities in plain-text fields, and
--- records stored before they were decoded show "Computers &amp; Graphics". The
--- reader decodes them now; this decodes the common ones already stored. &amp;
--- goes last, so an escaped entity is decoded once, not twice.
-CREATE OR REPLACE FUNCTION replichai_decode_entities(s TEXT) RETURNS TEXT LANGUAGE SQL IMMUTABLE AS $$
-	SELECT replace(replace(replace(replace(replace(replace(s,
-		'&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&#x27;', ''''), '&amp;', '&')
-$$;
-UPDATE project_papers SET
-	title     = replichai_decode_entities(title),
-	venue     = replichai_decode_entities(venue),
-	publisher = replichai_decode_entities(publisher),
-	volume    = replichai_decode_entities(volume),
-	issue     = replichai_decode_entities(issue),
-	pages     = replichai_decode_entities(pages),
-	abstract  = replichai_decode_entities(abstract),
-	authors   = ARRAY(SELECT replichai_decode_entities(a) FROM unnest(authors) WITH ORDINALITY AS u(a, i) ORDER BY i)
-WHERE concat_ws(' ', title, venue, publisher, volume, issue, pages, abstract, array_to_string(authors, ' '))
-	~ '&(lt|gt|quot|#39|#x27|amp);';
-DROP FUNCTION replichai_decode_entities(TEXT);
-`},
+	{version: 13, run: decodeStoredEntities},
 	{version: 14, run: keyUnkeyedSessions},
 }
 
@@ -342,6 +322,52 @@ func keyUnkeyedSessions(ctx context.Context, tx pgx.Tx) error {
 			ON CONFLICT (project_id, paper_key) DO NOTHING`,
 			s.project, key, s.ref, s.principal, s.created); err != nil {
 			return fmt.Errorf("list the paper of session %s: %w", s.id, err)
+		}
+	}
+	return nil
+}
+
+// decodeStoredEntities decodes the HTML entities in paper records stored
+// before the paper reader decoded them, such as "Computers &amp; Graphics".
+// It uses the decoder the reader uses, so every named and numeric entity is
+// handled, and an escaped entity ("&amp;amp;") is decoded once. Only rows that
+// contain an entity are read and written.
+func decodeStoredEntities(ctx context.Context, tx pgx.Tx) error {
+	type record struct {
+		project, key string
+		text         [7]string
+		authors      []string
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT project_id, paper_key, title, venue, publisher, volume, issue, pages, abstract, authors
+		FROM project_papers
+		WHERE concat_ws(' ', title, venue, publisher, volume, issue, pages, abstract, array_to_string(authors, ' '))
+			~ '&[#0-9A-Za-z]+;'`)
+	if err != nil {
+		return fmt.Errorf("read records with entities: %w", err)
+	}
+	records, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (record, error) {
+		var r record
+		err := row.Scan(&r.project, &r.key, &r.text[0], &r.text[1], &r.text[2], &r.text[3], &r.text[4], &r.text[5], &r.text[6], &r.authors)
+		return r, err
+	})
+	if err != nil {
+		return fmt.Errorf("read records with entities: %w", err)
+	}
+	for _, r := range records {
+		for i := range r.text {
+			r.text[i] = html.UnescapeString(r.text[i])
+		}
+		authors := make([]string, len(r.authors))
+		for i, a := range r.authors {
+			authors[i] = html.UnescapeString(a)
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE project_papers
+			SET title = $3, venue = $4, publisher = $5, volume = $6, issue = $7, pages = $8, abstract = $9, authors = $10
+			WHERE project_id = $1 AND paper_key = $2`,
+			r.project, r.key, r.text[0], r.text[1], r.text[2], r.text[3], r.text[4], r.text[5], r.text[6], authors); err != nil {
+			return fmt.Errorf("decode the record of %s in %s: %w", r.key, r.project, err)
 		}
 	}
 	return nil
