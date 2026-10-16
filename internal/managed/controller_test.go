@@ -30,6 +30,7 @@ type controllerRuntime struct {
 	calls       []string
 	polls       int
 	statusPolls int
+	live        bool
 }
 
 func newControllerRuntime() *controllerRuntime {
@@ -50,7 +51,7 @@ func newControllerRuntime() *controllerRuntime {
 
 func (r *controllerRuntime) Name() RuntimeName { return r.name }
 func (r *controllerRuntime) Capabilities(context.Context) (Capabilities, error) {
-	return Capabilities{}, nil
+	return Capabilities{LiveArtifacts: r.live}, nil
 }
 func (r *controllerRuntime) Models(context.Context) ([]Model, error) { return nil, nil }
 func (r *controllerRuntime) Validate(SessionSpec) error {
@@ -304,6 +305,86 @@ func TestEvidenceIsKeptOnItsOwnBudget(t *testing.T) {
 	result, err := controller.Execute(context.Background(), controllerSpec(false), hooks)
 	if !result.Released {
 		t.Fatalf("the evidence handoff ran out of time: released=%v, %v", result.Released, err)
+	}
+}
+
+// longRun is a runtime whose session runs for several polls before it ends,
+// on a controller whose clock moves a second per poll and that takes a
+// snapshot every two seconds.
+func longRun(live bool) (*controllerRuntime, *Controller) {
+	runtime := newControllerRuntime()
+	runtime.live = live
+	running := runtime.statuses[0]
+	runtime.statuses = append([]Status{running, running, running, running, running}, runtime.statuses[1])
+	clock := time.Unix(100, 0)
+	controller := NewController(controllerRouter{runtime: runtime}, WithWaitPolicy(WaitPolicy{
+		InitialDelay: time.Second, MaxDelay: time.Second, MaxTemporaryErrors: 3, MaxSilence: time.Minute,
+		CleanupTimeout: time.Second, SnapshotEvery: 2 * time.Second,
+	}), withControllerClock(func() time.Time { return clock }, func(context.Context, time.Duration) error {
+		clock = clock.Add(time.Second)
+		return nil
+	}))
+	return runtime, controller
+}
+
+// A runtime that hands over its files mid-run gets snapshots while the
+// session runs, each with the work so far, and the final handover still runs
+// once at the end.
+func TestSnapshotsAreTakenWhileTheSessionRuns(t *testing.T) {
+	_, controller := longRun(true)
+	var snapshots, retains int
+	hooks := Hooks{
+		Snapshot: func(ctx context.Context, evidence EvidenceReader) error {
+			if evidence.Status.State != StateRunning || len(evidence.Artifacts) != 1 {
+				t.Errorf("a snapshot saw %+v with %d artifacts", evidence.Status, len(evidence.Artifacts))
+			}
+			if body, err := evidence.Fetch(ctx, evidence.Artifacts[0]); err != nil || string(body) != "result" {
+				t.Errorf("a snapshot fetched %q, %v", body, err)
+			}
+			snapshots++
+			return nil
+		},
+		Retain: func(context.Context, EvidenceReader) error {
+			retains++
+			return nil
+		},
+	}
+	result, err := controller.Execute(context.Background(), controllerSpec(false), hooks)
+	if err != nil || !result.Released {
+		t.Fatalf("Execute = %+v, %v", result, err)
+	}
+	if snapshots < 2 || retains != 1 {
+		t.Fatalf("%d snapshots and %d handovers, want at least 2 and exactly 1", snapshots, retains)
+	}
+}
+
+// A failed snapshot is reported and skipped: the run carries on to its end
+// and its final handover.
+func TestAFailedSnapshotDoesNotStopTheRun(t *testing.T) {
+	_, controller := longRun(true)
+	retained := false
+	hooks := Hooks{
+		Snapshot: func(context.Context, EvidenceReader) error { return errors.New("disk full") },
+		Retain: func(context.Context, EvidenceReader) error {
+			retained = true
+			return nil
+		},
+	}
+	result, err := controller.Execute(context.Background(), controllerSpec(false), hooks)
+	if err != nil || !result.Released || !retained || result.Status.State != StateDone {
+		t.Fatalf("a failing snapshot ended the run: %+v, %v, retained=%v", result, err, retained)
+	}
+}
+
+// A runtime that cannot hand over files mid-run is never asked to.
+func TestNoSnapshotWithoutLiveArtifacts(t *testing.T) {
+	_, controller := longRun(false)
+	hooks := Hooks{Snapshot: func(context.Context, EvidenceReader) error {
+		t.Error("a snapshot was taken of a runtime that does not declare live artifacts")
+		return nil
+	}}
+	if _, err := controller.Execute(context.Background(), controllerSpec(false), hooks); err != nil {
+		t.Fatal(err)
 	}
 }
 

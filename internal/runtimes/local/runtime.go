@@ -150,6 +150,9 @@ func (r *Runtime) capabilities(outputDir, inputDir string) managed.Capabilities 
 		// The runtime runs the grading loop itself, so it can keep and
 		// check the findings of every round between the stages.
 		FindingsRounds: true,
+		// The working directory is on this machine, so its files can be
+		// listed and read while the session runs (049).
+		LiveArtifacts: true,
 	}
 }
 

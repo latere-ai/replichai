@@ -66,6 +66,10 @@ type Config struct {
 	// grading round, so a caller that asks for it only where it is declared
 	// can be tested both ways. This runtime keeps no rounds either way.
 	FindingsRounds bool
+	// LiveArtifacts declares that the runtime hands over its files while a
+	// session runs, so a caller that takes snapshots can be tested both ways.
+	// Its files are the configured ones either way.
+	LiveArtifacts bool
 	// InputDir is the input directory the runtime declares. Empty declares
 	// none, so a specification carrying an input is refused, as it is on a
 	// runtime that cannot mount one read-only.
@@ -164,6 +168,7 @@ func (r *Runtime) capabilities() managed.Capabilities {
 		MaxAttachmentBytes: 64 << 20,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
 		FindingsRounds:     r.config.FindingsRounds,
+		LiveArtifacts:      r.config.LiveArtifacts,
 		InputDir:           r.config.InputDir,
 	}
 }
