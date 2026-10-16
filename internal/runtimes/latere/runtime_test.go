@@ -5,8 +5,10 @@ package latere
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/managed/contracttest"
@@ -164,6 +166,7 @@ func TestStartRefusesWhatThePlatformCannotDo(t *testing.T) {
 			s.Resources = []managed.Resource{{Kind: managed.ResourceRepository, Repository: &managed.RepositoryResource{URL: "https://github.com/o/r", Destination: "repo", Access: managed.AccessReadWrite, CredentialRef: "forge"}}}
 		},
 		"a findings file": func(s *managed.SessionSpec) { s.Evaluation.Findings = "verdict.json" },
+		"an environment the deployment does not offer": func(s *managed.SessionSpec) { s.Sandbox.Environment = "science" },
 	}
 	for name, edit := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -218,6 +221,66 @@ func TestCapabilitiesDeclareThePreferencesNetwork(t *testing.T) {
 		}
 		if capabilities.OutputDir != OutputDir || !capabilities.Evaluation || capabilities.FindingsRounds || capabilities.InputDir != "" {
 			t.Fatalf("capabilities = %+v", capabilities)
+		}
+	}
+}
+
+// TestASessionRunsOnTheEnvironmentItNames checks that a session naming an
+// environment the deployment offers runs on that environment's image, and
+// that a package is judged against what that image holds: scipy is in the
+// science image and not in the base one.
+func TestASessionRunsOnTheEnvironmentItNames(t *testing.T) {
+	f := newFakePlatform(t)
+	r, err := New(Config{BaseURL: f.server.URL, HTTP: f.server.Client(), Environments: []string{"base", "science"},
+		Tokens: TokenFunc(func(ctx context.Context) (string, error) { return "bearer-1", nil })})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.sleep = func(context.Context, time.Duration) error { return nil }
+	capabilities, err := r.Capabilities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capabilities.Environments["base"] || !capabilities.Environments["science"] || capabilities.Environments["gui"] {
+		t.Fatalf("offered environments = %v, want base and science", capabilities.Environments)
+	}
+
+	spec := gradedSpec()
+	spec.Sandbox.Packages = append(spec.Sandbox.Packages, managed.Package{Manager: "pip", Name: "scipy"}, managed.Package{Manager: "cran", Name: "lme4"})
+	if err := r.Validate(spec); !errors.Is(err, managed.ErrUnsupported) {
+		t.Fatalf("scipy and lme4 on the base environment: Validate = %v, want unsupported", err)
+	}
+	spec.Sandbox.Environment = "science"
+	if _, err := r.Start(context.Background(), spec); err != nil {
+		t.Fatalf("Start on science: %v", err)
+	}
+	var images []string
+	for _, versions := range f.agents {
+		for _, raw := range versions {
+			var manifest agentManifest
+			if err := json.Unmarshal(raw, &manifest); err != nil {
+				t.Fatal(err)
+			}
+			if manifest.Spec.Machine.Image != "" {
+				images = append(images, manifest.Spec.Machine.Image)
+			}
+		}
+	}
+	if len(images) != 1 || images[0] != "science" {
+		t.Fatalf("the agent's machine images = %v, want [science]", images)
+	}
+}
+
+// TestNewRefusesEnvironmentsItCannotOffer checks that a deployment cannot offer
+// an environment this runtime does not know, nor leave out the one a session
+// that names none runs on.
+func TestNewRefusesEnvironmentsItCannotOffer(t *testing.T) {
+	for name, environments := range map[string][]string{
+		"an unknown environment": {"base", "fortran"},
+		"no default environment": {"science"},
+	} {
+		if _, err := New(Config{Environments: environments}); err == nil {
+			t.Errorf("%s: New accepted %v", name, environments)
 		}
 	}
 }

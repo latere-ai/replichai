@@ -92,9 +92,15 @@ type NetworkPolicy struct {
 // Bootstrap entries are argv arrays rather than shell fragments, so nothing in
 // a specification is handed to a shell to interpret.
 type SandboxSpec struct {
-	Packages  []Package     `json:"packages,omitempty"`
-	Bootstrap [][]string    `json:"bootstrap,omitempty"`
-	Network   NetworkPolicy `json:"network"`
+	// Environment names what the machine runs, such as "science": a
+	// published image with the tools a kind of work needs already in it.
+	// Empty is the runtime's default. A runtime that does not offer the
+	// named environment refuses the specification rather than running the
+	// session on another.
+	Environment string        `json:"environment,omitempty"`
+	Packages    []Package     `json:"packages,omitempty"`
+	Bootstrap   [][]string    `json:"bootstrap,omitempty"`
+	Network     NetworkPolicy `json:"network"`
 }
 
 // AttachmentResource is one file placed into the sandbox outside any mounted
@@ -374,8 +380,12 @@ type Capabilities struct {
 	// OutputDir names. Empty means the runtime cannot hand a session a file
 	// it can read and not change, and a specification carrying an input is
 	// refused.
-	InputDir           string
-	PackageManagers    map[string]bool
+	InputDir        string
+	PackageManagers map[string]bool
+	// Environments are the environments the runtime offers by name. A
+	// runtime that offers none runs every session on its default, and
+	// refuses a specification that names one.
+	Environments       map[string]bool
 	NetworkModes       map[NetworkMode]bool
 	RepositoryModes    map[AccessMode]bool
 	Evaluation         bool

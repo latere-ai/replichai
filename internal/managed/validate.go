@@ -26,9 +26,10 @@ import (
 const DefaultMaxLocatorBytes = 64 << 10
 
 var (
-	preferencePattern = regexp.MustCompile(`^(best|balanced|fast)$`)
-	packagePart       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+\-]*$`)
-	envNamePattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	preferencePattern  = regexp.MustCompile(`^(best|balanced|fast)$`)
+	packagePart        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+\-]*$`)
+	environmentPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	envNamePattern     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 func invalid(field, message string) error { return &InvalidSpecError{Field: field, Message: message} }
@@ -87,6 +88,9 @@ func (s SessionSpec) Validate() error {
 }
 
 func (s SandboxSpec) validate() error {
+	if s.Environment != "" && !environmentPattern.MatchString(s.Environment) {
+		return invalid("sandbox.environment", "invalid environment name")
+	}
 	for i, pkg := range s.Packages {
 		if !packagePart.MatchString(pkg.Manager) {
 			return invalid(fmt.Sprintf("sandbox.packages[%d].manager", i), "invalid package manager")
@@ -308,6 +312,9 @@ func secretKey(value any) bool {
 func ValidateCapabilities(runtime RuntimeName, capabilities Capabilities, spec SessionSpec) error {
 	if err := spec.Validate(); err != nil {
 		return err
+	}
+	if environment := spec.Sandbox.Environment; environment != "" && !capabilities.Environments[environment] {
+		return &UnsupportedError{Runtime: runtime, Field: "sandbox.environment", Capability: "environment:" + environment}
 	}
 	for i, pkg := range spec.Sandbox.Packages {
 		if !capabilities.PackageManagers[pkg.Manager] {

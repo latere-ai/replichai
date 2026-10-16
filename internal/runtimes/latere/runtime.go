@@ -37,16 +37,43 @@ const OutputDir = "/workspace"
 // DefaultBaseURL is the platform's API origin.
 const DefaultBaseURL = "https://api.latere.ai"
 
-// DefaultImage is the machine image a session runs on: the platform's base
-// image, with Python and its document and data libraries.
-const DefaultImage = "base"
+// DefaultEnvironment is what a session that names none runs on: the
+// platform's base image, with Python and its document and data libraries.
+const DefaultEnvironment = "base"
 
-// DefaultImagePackages are the pip packages the base image provides. A
-// session asking for any other is refused rather than run without it, since
-// the platform has no field that installs one.
-var DefaultImagePackages = []string{
+// Environment is one environment the platform's image catalog offers: the
+// catalog name a session's machine runs, and the packages that image
+// already holds, per package manager. A session asking for any other
+// package is refused rather than run without it, since the platform has no
+// field that installs one.
+type Environment struct {
+	Image    string
+	Packages map[string][]string
+}
+
+// basePip are the pip packages the base image provides; every environment
+// is built on it.
+var basePip = []string{
 	"beautifulsoup4", "lxml", "matplotlib", "numpy", "openpyxl", "pandas", "pillow",
 	"pypdf", "python-docx", "pyyaml", "reportlab", "requests",
+}
+
+// KnownEnvironments are the environments the platform's catalog can offer.
+// A deployment offers the ones it names in Config.Environments, because an
+// image is usable only once the platform's catalog holds it.
+var KnownEnvironments = map[string]Environment{
+	"base": {Image: "base", Packages: map[string][]string{"pip": basePip}},
+	// science adds the statistics stack replications need, in Python and in
+	// R, so an analysis runs without installing anything.
+	"science": {Image: "science", Packages: map[string][]string{
+		"pip": slices.Concat(basePip, []string{
+			"geopy", "libpysal", "networkx", "pingouin", "pyreadstat", "scikit-learn",
+			"scipy", "seaborn", "shapely", "spreg", "statsmodels",
+		}),
+		"cran": {"afex", "car", "emmeans", "lme4", "lmertest", "ordinal", "psych", "spdep", "tidyverse"},
+	}},
+	// gui adds a display and a browser, for work done through a page.
+	"gui": {Image: "gui", Packages: map[string][]string{"pip": basePip}},
 }
 
 // The Effort levels, by the preference a session asks for. The stored
@@ -62,11 +89,9 @@ type Config struct {
 	// of its own. A server leaves it nil and puts each session's source on
 	// the context (WithTokenSource).
 	Tokens TokenSource
-	// Image and Packages describe the machine: the image a session runs
-	// on and the pip packages it already provides. Empty is the base
-	// image and its packages.
-	Image    string
-	Packages []string
+	// Environments are the environments this deployment offers, by name
+	// from KnownEnvironments; empty offers DefaultEnvironment alone.
+	Environments []string
 	// HTTP is the client used for every call; nil is a client with the
 	// tracing transport.
 	HTTP *http.Client
@@ -74,12 +99,11 @@ type Config struct {
 
 // Runtime is the Latere platform behind the managed-session contract.
 type Runtime struct {
-	platform platform
-	tokens   TokenSource
-	image    string
-	packages []string
-	now      func() time.Time
-	sleep    func(context.Context, time.Duration) error
+	platform     platform
+	tokens       TokenSource
+	environments map[string]Environment
+	now          func() time.Time
+	sleep        func(context.Context, time.Duration) error
 
 	mu      sync.Mutex
 	network map[managed.NetworkMode]bool
@@ -100,17 +124,24 @@ func New(config Config) (*Runtime, error) {
 	if httpClient == nil {
 		httpClient = defaultHTTPClient()
 	}
-	image := config.Image
-	if image == "" {
-		image = DefaultImage
+	names := config.Environments
+	if len(names) == 0 {
+		names = []string{DefaultEnvironment}
 	}
-	packages := config.Packages
-	if len(packages) == 0 {
-		packages = DefaultImagePackages
+	environments := map[string]Environment{}
+	for _, name := range names {
+		environment, ok := KnownEnvironments[name]
+		if !ok {
+			return nil, fmt.Errorf("the Latere environment %q is not one this runtime knows", name)
+		}
+		environments[name] = environment
+	}
+	if _, ok := environments[DefaultEnvironment]; !ok {
+		return nil, fmt.Errorf("the Latere environments offered must include %q, the one a session that names none runs on", DefaultEnvironment)
 	}
 	return &Runtime{
 		platform: platform{client: &client{base: base, http: httpClient}},
-		tokens:   config.Tokens, image: image, packages: packages,
+		tokens:   config.Tokens, environments: environments,
 		now: time.Now, sleep: sleepContext, logs: map[string][]wireEvent{},
 	}, nil
 }
@@ -186,10 +217,23 @@ func preferenceMode(preference string) (managed.NetworkMode, bool) {
 // last Capabilities read, or against the two modes a preference can give
 // when nothing was read yet. Start reads the preference again before any
 // remote write.
+// environment is what a session runs on: the environment it names, or the
+// default. Validate has refused a name this runtime does not offer.
+func (r *Runtime) environment(name string) Environment {
+	if name == "" {
+		name = DefaultEnvironment
+	}
+	return r.environments[name]
+}
+
 func (r *Runtime) capabilities() managed.Capabilities {
 	packages := map[string]bool{}
-	if len(r.packages) > 0 {
-		packages["pip"] = true
+	offered := map[string]bool{}
+	for name, environment := range r.environments {
+		offered[name] = true
+		for manager := range environment.Packages {
+			packages[manager] = true
+		}
 	}
 	r.mu.Lock()
 	network := r.network
@@ -200,6 +244,7 @@ func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
 		OutputDir:       OutputDir,
 		PackageManagers: packages,
+		Environments:    offered,
 		NetworkModes:    network,
 		RepositoryModes: map[managed.AccessMode]bool{},
 		Evaluation:      true,
@@ -306,8 +351,9 @@ func (r *Runtime) Validate(spec managed.SessionSpec) error {
 	if err := managed.ValidateCapabilities(Name, r.capabilities(), spec); err != nil {
 		return err
 	}
+	environment := r.environment(spec.Sandbox.Environment)
 	for i, pkg := range spec.Sandbox.Packages {
-		if !slices.Contains(r.packages, strings.ToLower(pkg.Name)) || pkg.Version != "" {
+		if !slices.Contains(environment.Packages[pkg.Manager], strings.ToLower(pkg.Name)) || pkg.Version != "" {
 			return &managed.UnsupportedError{Runtime: Name, Field: fmt.Sprintf("sandbox.packages[%d]", i), Capability: "image_package:" + pkg.Name}
 		}
 	}
@@ -391,7 +437,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if spec.Evaluation != nil {
 		rubric = spec.Evaluation.Rubric
 	}
-	manifest, err := workerManifest(spec.Instructions, r.image, model, grader, rubric)
+	manifest, err := workerManifest(spec.Instructions, r.environment(spec.Sandbox.Environment).Image, model, grader, rubric)
 	if err != nil {
 		return managed.SessionRef{}, err
 	}
