@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.36.0 - 2026-10-17
+
 ### Changed
 
 - Admin → Platform policy shows which rows of the price list follow
