@@ -131,7 +131,7 @@ function PlatformPolicy({
     setProvider(settings.draft?.provider ?? '')
     setBaseURL(settings.draft?.base_url ?? '')
     setModel(settings.draft?.model ?? '')
-    setRates((settings.rates?.models ?? []).map(draftOf))
+    setRates((settings.rates?.models ?? []).map((m) => draftOf(m)))
   }, [settings])
 
   const nextReserve = parseUSD(reserve)
@@ -147,7 +147,7 @@ function PlatformPolicy({
   // sent back as the server gave it, so a row this form would refuse, such as
   // an empty card or a row priced at zero, never blocks saving the reserve.
   const serverCard = settings?.rates ?? { models: [] }
-  const edited = !!settings && JSON.stringify(rates.map(shownOf)) !== JSON.stringify(serverCard.models.map(draftOf).map(shownOf))
+  const edited = !!settings && JSON.stringify(rates.map(shownOf)) !== JSON.stringify(serverCard.models.map((m) => shownOf(draftOf(m, -1))))
   const card = edited ? cardOf(rates, t) : { card: serverCard, problem: '' }
   const cardChanged = edited && !!card.card && JSON.stringify(card.card) !== JSON.stringify(serverCard)
   const dirty =
@@ -278,8 +278,8 @@ type PriceField = (typeof PRICES)[number]
 type RateDraft = { key: number; base: Partial<ModelRates> & Record<string, unknown>; model: string } & Record<PriceField, string>
 
 let draftKey = 0
-const draftOf = (m: ModelRates): RateDraft => ({
-  key: draftKey++,
+const draftOf = (m: ModelRates, key = draftKey++): RateDraft => ({
+  key,
   base: m,
   model: m.model,
   input: toDollars(m.input),
@@ -311,7 +311,7 @@ function cardOf(rows: RateDraft[], t: I18n['t']): { card: RateCard | null; probl
     seen.add(model)
     const prices = PRICES.map((f) => parseUSD(r[f]))
     if (prices.some((p) => p === null || p < 0)) return { card: null, problem: t('ratePrice', { model }) }
-    if (prices.every((p) => p === 0) && !r.base.free && !(Array.isArray(r.base.extra) && r.base.extra.length)) {
+    if (prices.every((p) => p === 0) && !r.base.free && !r.base.cache_write && !(Array.isArray(r.base.extra) && r.base.extra.length)) {
       return { card: null, problem: t('rateAllZero', { model }) }
     }
     const next: Record<string, unknown> = { ...r.base, model }
