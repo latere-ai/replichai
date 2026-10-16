@@ -74,7 +74,7 @@ export function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: stri
             <div className="profile-id">
               <div className="profile-name">{p.display_name || p.handle}</div>
               {p.institution && <div className="profile-email">{p.institution}</div>}
-              <div className="profile-email mono">@{p.handle}</div>
+              <div className="profile-email">@{p.handle}</div>
             </div>
           </div>
           <SignerRows i18n={i18n} contact={p.contact_email} orcid={p.orcid} scholar={p.scholar_url} />
