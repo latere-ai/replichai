@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -99,6 +100,11 @@ func TestEveryStageKeepsItsTemporaryFilesInItsOwnSession(t *testing.T) {
 //
 // It runs where srt is installed and is skipped elsewhere.
 func TestACodexStageUnderSrtSharesNoTemporaryDirectoryAndReadsNoSnapshot(t *testing.T) {
+	// Checked before anything is created, so a machine without srt is left
+	// untouched. The driver's own preflight below also needs the stand-in.
+	if _, err := exec.LookPath("srt"); err != nil {
+		t.Skipf("the host sandbox is not installed here: %v", err)
+	}
 	// A unix socket path is limited to 104 bytes on macOS, and srt binds
 	// its sockets under the stage's temporary directory, which is inside
 	// the session. A root under the test's own temporary directory is too
