@@ -10,6 +10,21 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- The rate card follows Anthropic's prices without anyone typing them. At
+  every start and every hour, the server reads OpenRouter's public model list
+  and writes the price of every Anthropic model into the card, adding those it
+  lacks, so a new model such as Claude Opus 5.5 is charged its own price
+  instead of the dearest price on the card. `REPLICHAI_PRICE_LIST_URL` names
+  another list in the same format, or `off` turns this off.
+
+### Changed
+
+- A row on the rate card for a model the price list prices follows the list:
+  an edit to it in Admin → Platform lasts until the next hourly sync. Rows for
+  other models stay as an admin sets them.
+
 ## v0.33.1 - 2026-10-16
 
 ### Fixed

@@ -211,6 +211,11 @@ func run() error {
 		return err
 	}
 	offers := runtimeOffers(offered, selected, built, minter)
+	if url := priceListURL(os.Getenv); url != "" {
+		if syncer, ok := st.platform.(platform.RateSyncer); ok {
+			startPriceSync(ctx, syncer, url)
+		}
+	}
 	reportRateCoverage(ctx, modelResolver, st.platform)
 
 	for _, email := range splitList(os.Getenv("ADMIN_EMAILS")) {
@@ -553,6 +558,41 @@ func sessionCredits(st stores) webauth.CreditsFunc {
 		}
 		return webauth.Credits{Wallet: wallet, StartReserve: reserve}, nil
 	}
+}
+
+// defaultPriceListURL is OpenRouter's public model list, which states
+// Anthropic's list prices for every model, both cache-write lifetimes
+// included.
+const defaultPriceListURL = "https://openrouter.ai/api/v1/models"
+
+// priceListEvery is how often the card is brought back to the price list.
+const priceListEvery = time.Hour
+
+// priceListURL is the model list the card's prices follow: OpenRouter's
+// public one unless REPLICHAI_PRICE_LIST_URL names another, and none when it
+// is "off", for a deployment that prices every model by hand.
+func priceListURL(getenv func(string) string) string {
+	switch v := strings.TrimSpace(getenv("REPLICHAI_PRICE_LIST_URL")); v {
+	case "":
+		return defaultPriceListURL
+	case "off":
+		return ""
+	default:
+		return v
+	}
+}
+
+// startPriceSync applies the price list once, before the boot reports its
+// rate coverage and serves, and then keeps applying it in the background. A
+// first read that fails is logged, and the card keeps its prices until a
+// later one succeeds.
+func startPriceSync(ctx context.Context, store platform.RateSyncer, url string) {
+	client := &http.Client{Timeout: 30 * time.Second, Transport: xotel.Transport(nil)}
+	fetch := func(ctx context.Context) ([]credit.Rates, error) { return credit.FetchPriceList(ctx, client, url) }
+	if _, err := platform.ApplyPriceList(ctx, store, fetch); err != nil {
+		slog.WarnContext(ctx, "prices: the card keeps its prices until the list can be read", "list", url, "error", err)
+	}
+	go platform.SyncPrices(ctx, store, fetch, priceListEvery)
 }
 
 // reportRateCoverage logs, at every boot, whether the rate card names the
