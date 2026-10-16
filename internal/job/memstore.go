@@ -136,6 +136,9 @@ func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
 	if strings.TrimSpace(in.Runtime) == "" || strings.TrimSpace(in.ExternalID) == "" {
 		return Job{}, fmt.Errorf("%w: an imported session needs a runtime and an id", ErrEmptyRef)
 	}
+	if strings.TrimSpace(in.PaperKey) == "" {
+		return Job{}, ErrNoPaperKey
+	}
 	now := s.clock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -196,6 +199,9 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef
 	}
+	if needsPaperKey(sub.Kind) && strings.TrimSpace(sub.PaperKey) == "" {
+		return Job{}, ErrNoPaperKey
+	}
 	id := newID()
 	now := s.clock()
 	j := Job{
@@ -207,10 +213,10 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// The double-trigger guard: at most one non-terminal session per paper, per
-	// project and per principal. An empty key, from an experiment or a paper
-	// that could not be keyed, is never guarded. This mirrors the two partial
-	// unique indexes Postgres enforces, so the in-memory and database stores
-	// refuse the same duplicate.
+	// project and per principal. An empty key, which only an experiment has,
+	// is never guarded. This mirrors the two partial unique indexes Postgres
+	// enforces, so the in-memory and database stores refuse the same
+	// duplicate.
 	if sub.PaperKey != "" {
 		for _, other := range s.jobs {
 			if other.PaperKey != sub.PaperKey || other.Phase.Terminal() {

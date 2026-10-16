@@ -35,7 +35,7 @@ func publicSession(t *testing.T, store *job.MemStore) (*project.MemStore, job.Jo
 	if err := projects.SetPublic(ctx, p.ID, project.SignOff{By: "sub", AttestationVersion: "v1"}); err != nil {
 		t.Fatal(err)
 	}
-	j, err := store.Enqueue(ctx, job.Submission{Principal: "sub", Ref: "ref", Kind: job.KindAudit, Project: p.ID})
+	j, err := store.Enqueue(ctx, job.Submission{Principal: "sub", Ref: "ref", PaperKey: "doi:10.0/ref", Kind: job.KindAudit, Project: p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

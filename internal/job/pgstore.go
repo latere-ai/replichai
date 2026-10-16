@@ -177,6 +177,9 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	if strings.TrimSpace(sub.Ref) == "" {
 		return Job{}, ErrEmptyRef
 	}
+	if needsPaperKey(sub.Kind) && strings.TrimSpace(sub.PaperKey) == "" {
+		return Job{}, ErrNoPaperKey
+	}
 	id := newID()
 	now := s.clock()
 	status, err := encodeStatus(provider.RunStatus{})
@@ -249,6 +252,9 @@ func (s *PGStore) ImportLocal(ctx context.Context, in Import) (Job, error) {
 	}
 	if strings.TrimSpace(in.Runtime) == "" || strings.TrimSpace(in.ExternalID) == "" {
 		return Job{}, fmt.Errorf("%w: an imported session needs a runtime and an id", ErrEmptyRef)
+	}
+	if strings.TrimSpace(in.PaperKey) == "" {
+		return Job{}, ErrNoPaperKey
 	}
 	id := newID()
 	now := s.clock()

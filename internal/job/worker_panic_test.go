@@ -43,7 +43,7 @@ func TestARunnerPanicFailsTheJobNotTheProcess(t *testing.T) {
 		t.Run(at, func(t *testing.T) {
 			store := NewMemStore()
 			w := NewWorker(store, &panickingRunner{fakeRunner: &fakeRunner{}, at: at})
-			j, err := store.Enqueue(context.Background(), Submission{Principal: "p", Project: "proj", Ref: "paper"})
+			j, err := store.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "p", Project: "proj", Ref: "paper"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -65,7 +65,7 @@ func TestARunnerPanicFailsTheJobNotTheProcess(t *testing.T) {
 // one bad row does not crash-loop.
 func TestAPanicWhileReconcilingIsContained(t *testing.T) {
 	store := NewMemStore()
-	j, _ := store.Enqueue(context.Background(), Submission{Principal: "p", Project: "proj", Ref: "paper"})
+	j, _ := store.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "p", Project: "proj", Ref: "paper"})
 	_, _, _ = store.Claim(context.Background(), "old-worker")
 	_ = store.Advance(context.Background(), j.ID, PhaseRunning, nil)
 	_ = store.Observe(context.Background(), j.ID, provider.RunStatus{RunID: "run-1"})

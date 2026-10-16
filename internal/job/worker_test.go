@@ -124,7 +124,7 @@ func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 		t.Run(string(k), func(t *testing.T) {
 			s := NewMemStore()
 			r := &fakeRunner{repo: "open-hai/x"}
-			j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: k, Project: "proj"})
+			j, _ := s.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: k, Project: "proj"})
 
 			drained(t, NewWorker(s, r))
 
@@ -155,7 +155,7 @@ func TestBothKindsWalkTheSameLifecycle(t *testing.T) {
 func TestRepoNameFromResolveReachesPublish(t *testing.T) {
 	s := NewMemStore()
 	r := &fakeRunner{resolveRepo: "open-hai/created-in-resolve"} // repo stays "" so Publish does not overwrite it
-	j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit, Project: "p"})
+	j, _ := s.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit, Project: "p"})
 
 	drained(t, NewWorker(s, r))
 
@@ -177,7 +177,7 @@ func TestRepoNameFromResolveReachesPublish(t *testing.T) {
 func TestProgressIsObservedOntoTheJob(t *testing.T) {
 	s := NewMemStore()
 	r := &fakeRunner{observed: provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 42}}}
-	j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 
 	drained(t, NewWorker(s, r))
 
@@ -192,7 +192,7 @@ func TestWorkerFailurePhases(t *testing.T) {
 	for _, at := range []string{"resolve", "execute", "publish"} {
 		t.Run(at, func(t *testing.T) {
 			s := NewMemStore()
-			j, _ := s.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+			j, _ := s.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 			drained(t, NewWorker(s, &fakeRunner{failAt: at}))
 
 			got, _ := s.Get(context.Background(), j.ID)
@@ -213,11 +213,11 @@ func TestWorkerFailurePhases(t *testing.T) {
 func TestReconcileFailsUnrecoverable(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	stranded, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	stranded, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	if _, ok, _ := s.Claim(ctx, "test-worker"); !ok { // -> resolving, no run id
 		t.Fatal("claim should have taken the job")
 	}
-	fresh, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref2", Kind: KindAudit})
+	fresh, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref2", Kind: KindAudit})
 
 	resumed, failed, err := NewWorker(s, &fakeRunner{}, WithWorkerID("test-worker")).Reconcile(ctx)
 	if err != nil || resumed != 0 || failed != 1 {
@@ -240,7 +240,7 @@ func TestReconcileFailsUnrecoverable(t *testing.T) {
 func TestReconcileLeavesARunAnotherWorkerIsDriving(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_, _, _ = s.Claim(ctx, "pod-a")
 	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})
@@ -274,7 +274,7 @@ func TestReconcileLeavesARunAnotherWorkerIsDriving(t *testing.T) {
 func TestThePoolSweepsForStrandedRuns(t *testing.T) {
 	s := NewMemStore()
 	ctx := t.Context()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_, _, _ = s.Claim(ctx, "pod-gone") // the pod that had it is not coming back
 	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_stranded_01"})
@@ -303,7 +303,7 @@ func TestThePoolSweepsForStrandedRuns(t *testing.T) {
 func TestASweepDoesNotFailASessionItCannotRejoin(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_, _, _ = s.Claim(ctx, "pod-a") // -> resolving on the other replica, no run id yet
 
 	// Lease expired: the other pod has been resolving for longer than the ttl.
@@ -329,7 +329,7 @@ func TestASweepDoesNotFailASessionItCannotRejoin(t *testing.T) {
 func TestReconcileLeavesAFreshlyClaimedSessionAlone(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	if _, ok, _ := s.Claim(ctx, "pod-a"); !ok { // -> resolving, no run id yet
 		t.Fatal("claim should have taken the job")
 	}
@@ -369,7 +369,7 @@ func waitForCall(t *testing.T, r *fakeRunner, call string) {
 func TestReconcileRejoinsLiveRun(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_, _, _ = s.Claim(ctx, "test-worker")                                                   // -> resolving
 	_ = s.Advance(ctx, j.ID, PhaseRunning, func(jb *Job) { jb.RepoName = "open-hai/live" }) // running, repo created pre-crash
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})                     // id observed before the "crash"
@@ -413,7 +413,7 @@ func TestReconcileRejoinsLiveRun(t *testing.T) {
 func TestReconcileRepublishesAnInterruptedPublish(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_, _, _ = s.Claim(ctx, "test-worker") // -> resolving
 	_ = s.Advance(ctx, j.ID, PhaseRunning, func(jb *Job) { jb.RepoName = "open-hai/live" })
 	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_live_01"})
@@ -445,7 +445,7 @@ func TestReconcileRepublishesAnInterruptedPublish(t *testing.T) {
 func TestShutdownLeavesTheJobForReconcile(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 
 	pool, stopPool := context.WithCancel(ctx)
 	r := &fakeRunner{failAt: "execute", onExecute: stopPool} // SIGTERM lands mid-run
@@ -468,7 +468,7 @@ func TestShutdownLeavesTheJobForReconcile(t *testing.T) {
 func TestCancelStillFailsTheJob(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 
 	r := &fakeRunner{failAt: "execute"}
 	if _, err := NewWorker(s, r).Process(ctx); err != nil {
@@ -543,7 +543,7 @@ func TestStartProcessesThePool(t *testing.T) {
 	s := NewMemStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	for range 5 {
-		_, _ = s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+		_, _ = s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	}
 
 	w := NewWorker(s, &fakeRunner{}, WithPoll(time.Millisecond),
@@ -634,7 +634,7 @@ func (r *waitAfterObserveRunner) Execute(ctx context.Context, _ *Job, observe fu
 
 func TestObserveFailureInterruptsAndPreventsPublish(t *testing.T) {
 	base := NewMemStore()
-	j, _ := base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := base.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	storeErr := errors.New("observe write failed")
 	r := &waitAfterObserveRunner{fakeRunner: &fakeRunner{}}
 
@@ -652,7 +652,7 @@ func TestObserveFailureInterruptsAndPreventsPublish(t *testing.T) {
 
 func TestDoneTransitionRetriesAWriteFailure(t *testing.T) {
 	base := NewMemStore()
-	j, _ := base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := base.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	s := &advanceFailureStore{Store: base, phase: PhaseDone, remaining: 1, err: errors.New("transient write failure")}
 
 	if _, err := NewWorker(s, &fakeRunner{}).Process(context.Background()); err != nil {
@@ -665,7 +665,7 @@ func TestDoneTransitionRetriesAWriteFailure(t *testing.T) {
 
 func TestPersistentDoneTransitionFailureSurfaces(t *testing.T) {
 	base := NewMemStore()
-	j, _ := base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := base.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	writeErr := errors.New("persistent write failure")
 	s := &advanceFailureStore{Store: base, phase: PhaseDone, remaining: -1, err: writeErr}
 
@@ -679,7 +679,7 @@ func TestPersistentDoneTransitionFailureSurfaces(t *testing.T) {
 
 func TestRetryablePublishFailureStaysPublishing(t *testing.T) {
 	base := NewMemStore()
-	j, _ := base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := base.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	dependencyErr := errors.New("transcript backend unavailable")
 	r := &fakeRunner{
 		publishErr: RetryablePublish(dependencyErr),
@@ -705,7 +705,7 @@ func TestRetryablePublishFailureStaysPublishing(t *testing.T) {
 
 func TestFailureTransitionFailureSurfaces(t *testing.T) {
 	base := NewMemStore()
-	_, _ = base.Enqueue(context.Background(), Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	_, _ = base.Enqueue(context.Background(), Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	writeErr := errors.New("cannot persist failure")
 	s := &advanceFailureStore{Store: base, phase: PhaseFailed, remaining: -1, err: writeErr}
 
@@ -735,7 +735,7 @@ func equal(a, b []string) bool {
 func TestAQuietRunKeepsItsLease(t *testing.T) {
 	s := NewMemStore()
 	ctx := t.Context()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 
 	const ttl = 60 * time.Millisecond
 	held := make(chan struct{})
@@ -767,7 +767,7 @@ func TestAQuietRunKeepsItsLease(t *testing.T) {
 func TestADriverYieldsASessionItHasLost(t *testing.T) {
 	s := NewMemStore()
 	ctx := t.Context()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 
 	const ttl = 60 * time.Millisecond
 	held, yielded := make(chan struct{}), make(chan struct{})
@@ -807,7 +807,7 @@ func TestAFinishedRunIsNotAnnouncedAsAYield(t *testing.T) {
 
 	s := NewMemStore()
 	ctx := context.Background()
-	j, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_, _, _ = s.Claim(ctx, "pod-a")
 	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)
 	_ = s.Advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = "over" })

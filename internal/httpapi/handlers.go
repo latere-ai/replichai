@@ -1040,7 +1040,7 @@ func (rt *Router) mayWorkInProject(r *http.Request, p project.Project, sub strin
 }
 
 // writeEnqueueError maps an Enqueue failure to a status: the double-trigger
-// guard is a 409, an empty reference a 400, anything else a 500.
+// guard is a 409, an empty reference or paper key a 400, anything else a 500.
 func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, job.ErrActiveSession):
@@ -1049,6 +1049,8 @@ func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusPaymentRequired, "no_credits")
 	case errors.Is(err, job.ErrEmptyRef):
 		writeError(w, http.StatusBadRequest, "missing_url")
+	case errors.Is(err, job.ErrNoPaperKey):
+		writeError(w, http.StatusBadRequest, "missing_key")
 	default:
 		writeError(w, http.StatusInternalServerError, "enqueue_failed")
 	}

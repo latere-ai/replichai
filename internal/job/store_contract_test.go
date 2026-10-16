@@ -26,7 +26,7 @@ func runStoreContract(t *testing.T, s Store) {
 	ctx := context.Background()
 
 	// Enqueue and read back.
-	j, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "arxiv:2302.03714", Kind: KindAudit, Project: "proj"})
+	j, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "arxiv:2302.03714", Kind: KindAudit, Project: "proj"})
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -60,7 +60,7 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// Observe records status in place, without a phase change.
-	obs, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	obs, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	if err := s.Observe(ctx, obs.ID, provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 7}}); err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
@@ -72,7 +72,7 @@ func runStoreContract(t *testing.T, s Store) {
 	// at startup, so the lease stops both of them rejoining one backend session;
 	// without it the losing driver's failure overwrites the winner's published
 	// success.
-	lj, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "leased", Kind: KindAudit})
+	lj, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "leased", Kind: KindAudit})
 	if won, err := s.Adopt(ctx, lj.ID, "pod-a", time.Minute); err != nil || !won {
 		t.Fatalf("first Adopt = %v/%v, want it won", won, err)
 	}
@@ -111,7 +111,7 @@ func runStoreContract(t *testing.T, s Store) {
 	// fires only on a changed status, so a quiet run would otherwise let its
 	// lease expire while working correctly, and another replica would adopt a
 	// live session (044c).
-	tj, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "touched", Kind: KindAudit})
+	tj, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "touched", Kind: KindAudit})
 	if _, err := s.Adopt(ctx, tj.ID, "pod-a", time.Minute); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
@@ -140,7 +140,7 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// A failure records its cause and lands in failed (submitted -> failed).
-	fj, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit})
+	fj, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	_ = s.Advance(ctx, fj.ID, PhaseFailed, func(jb *Job) { jb.Err = "boom" })
 	if got, _ := s.Get(ctx, fj.ID); got.Phase != PhaseFailed || got.Err != "boom" {
 		t.Errorf("failure: phase=%s err=%q", got.Phase, got.Err)
@@ -160,9 +160,9 @@ func runStoreContract(t *testing.T, s Store) {
 	// ListByPrincipal is scoped to one owner and newest-first. Enqueue two jobs
 	// for "owner" and one for a stranger, then assert the stranger's job never
 	// appears and the two are ordered newest-first.
-	first, _ := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-a", Kind: KindAudit})
-	second, _ := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-b", Kind: KindAudit})
-	_, _ = s.Enqueue(ctx, Submission{Principal: "stranger", Ref: "ref-c", Kind: KindAudit})
+	first, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "owner", Ref: "ref-a", Kind: KindAudit})
+	second, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "owner", Ref: "ref-b", Kind: KindAudit})
+	_, _ = s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "stranger", Ref: "ref-c", Kind: KindAudit})
 	mine, err := s.ListByPrincipal(ctx, "owner")
 	if err != nil {
 		t.Fatalf("ListByPrincipal: %v", err)
@@ -187,7 +187,7 @@ func runStoreContract(t *testing.T, s Store) {
 	// reads this row and nothing else, because the submission is gone once
 	// Enqueue returns, so a tier that did not survive the write would reach no
 	// run, and the session would silently take the default its owner declined.
-	chosen, err := s.Enqueue(ctx, Submission{
+	chosen, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(),
 		Principal: "sub", Ref: "tiered", Kind: KindAudit, Project: "proj", Tier: credit.PrefFast,
 	})
 	if err != nil {
@@ -203,7 +203,7 @@ func runStoreContract(t *testing.T, s Store) {
 	// Omitting the tier stores nothing rather than writing a default. Unset is
 	// the state of a session that predates the choice, and OrDefault is the
 	// single place it resolves.
-	unchosen, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "untiered", Kind: KindAudit, Project: "proj"})
+	unchosen, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "untiered", Kind: KindAudit, Project: "proj"})
 	if err != nil {
 		t.Fatalf("Enqueue without a tier: %v", err)
 	}
@@ -243,8 +243,17 @@ func runGuardContract(t *testing.T, s Store) {
 	if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref", Kind: KindAudit, Project: "projA", PaperKey: "arxiv:9999.99999"}); err != nil {
 		t.Errorf("different paper blocked: %v", err)
 	}
-	// An empty key, from an experiment or a ref that cannot be keyed, is never
-	// guarded.
+	// An audit with no key is refused, blank or all spaces, because it would
+	// belong to no paper of its project: the project could not list what it
+	// ran and the guard could not see it. A kind never set is an audit.
+	for _, k := range []Kind{KindAudit, ""} {
+		for _, key := range []string{"", "  "} {
+			if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "10.1145/3529225", Kind: k, Project: "projA", PaperKey: key}); !errors.Is(err, ErrNoPaperKey) {
+				t.Errorf("audit (kind %q) with key %q: want ErrNoPaperKey, got %v", k, key, err)
+			}
+		}
+	}
+	// An experiment is not about a paper, so its empty key is never guarded.
 	for i := range 2 {
 		if _, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "exp", Kind: KindExperiment, Project: "projA"}); err != nil {
 			t.Errorf("empty-key enqueue %d blocked: %v", i, err)
@@ -290,10 +299,10 @@ func runProjectJoinContract(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
 
-	_, _ = s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-1", Kind: KindAudit, Project: "pX"})
-	_, _ = s.Enqueue(ctx, Submission{Principal: "stranger", Ref: "ref-4", Kind: KindAudit, Project: "pX"})
-	_, _ = s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-3", Kind: KindAudit, Project: "pY"})
-	two, _ := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-2", Kind: KindAudit, Project: "pX"}) // newest in pX
+	_, _ = s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "owner", Ref: "ref-1", Kind: KindAudit, Project: "pX"})
+	_, _ = s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "stranger", Ref: "ref-4", Kind: KindAudit, Project: "pX"})
+	_, _ = s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "owner", Ref: "ref-3", Kind: KindAudit, Project: "pY"})
+	two, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "owner", Ref: "ref-2", Kind: KindAudit, Project: "pX"}) // newest in pX
 
 	inX, err := s.ListByProject(ctx, "pX")
 	if err != nil {
@@ -364,7 +373,7 @@ func runSpendWindowContract(t *testing.T, s Store) {
 	// Cost has to reach the total: usage against the session's rate card,
 	// through the same withCost the row rendering uses. Without this the whole
 	// contract compares 0 with 0 and a store that summed nothing would pass.
-	spent, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "ref-paid", Kind: KindAudit, Project: "pZ"})
+	spent, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "owner", Ref: "ref-paid", Kind: KindAudit, Project: "pZ"})
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -416,11 +425,11 @@ func runDeleteContract(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
 
-	kept, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "keep", Kind: KindAudit, Project: "pD"})
+	kept, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "owner", Ref: "keep", Kind: KindAudit, Project: "pD"})
 	if err != nil {
 		t.Fatalf("enqueue keep: %v", err)
 	}
-	gone, err := s.Enqueue(ctx, Submission{Principal: "owner", Ref: "gone", Kind: KindAudit, Project: "pD"})
+	gone, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "owner", Ref: "gone", Kind: KindAudit, Project: "pD"})
 	if err != nil {
 		t.Fatalf("enqueue gone: %v", err)
 	}
@@ -515,7 +524,7 @@ func runClaimContention(t *testing.T, s Store) {
 	ctx := context.Background()
 	const n = 30
 	for range n {
-		if _, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "ref", Kind: KindAudit}); err != nil {
+		if _, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit}); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 	}
@@ -551,7 +560,7 @@ func runLeaseContract(t *testing.T, s Store, at func(time.Time)) {
 	start := time.Date(2026, 8, 16, 9, 0, 0, 0, time.UTC)
 	at(start)
 
-	j, err := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "leased", Kind: KindAudit})
+	j, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "leased", Kind: KindAudit})
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -580,7 +589,7 @@ func runLeaseContract(t *testing.T, s Store, at func(time.Time)) {
 	}
 
 	// Observing a job nobody leased does not lease it.
-	free, _ := s.Enqueue(ctx, Submission{Principal: "sub", Ref: "unleased", Kind: KindAudit})
+	free, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "unleased", Kind: KindAudit})
 	if err := s.Observe(ctx, free.ID, provider.RunStatus{State: provider.StateRunning}); err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
@@ -636,6 +645,14 @@ func runImportContract(t *testing.T, s Store) {
 	alices, _ = s.Get(ctx, first.ID)
 	if alices.ProjectID != "P" {
 		t.Fatalf("Alice's row moved to %s", alices.ProjectID)
+	}
+
+	// A record with no paper key is refused, as a submit is: it would be
+	// filed against no paper the project holds.
+	unkeyed := record("alice", "P", PhaseDone)
+	unkeyed.PaperKey, unkeyed.ExternalID = " ", "c0ffee00"
+	if _, err := s.ImportLocal(ctx, unkeyed); !errors.Is(err, ErrNoPaperKey) {
+		t.Fatalf("import with no paper key: err=%v, want ErrNoPaperKey", err)
 	}
 }
 

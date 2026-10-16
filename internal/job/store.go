@@ -23,8 +23,9 @@ type Submission struct {
 	Kind Kind
 	// Project is the project the session belongs to.
 	Project string
-	// PaperKey is the offline paper identity (006g). When non-empty it keys the
-	// double-trigger guard.
+	// PaperKey is the offline paper identity (006g). It joins the session to
+	// the paper its project lists and keys the double-trigger guard. An audit
+	// without one is refused with ErrNoPaperKey; only an experiment has none.
 	PaperKey string
 	// Tier is the model tier the submitter chose for this session (031). Empty
 	// means no tier was chosen and the engine's default applies. It is copied
@@ -58,7 +59,8 @@ type Import struct {
 	// Ref is the paper reference.
 	Ref string
 	// PaperKey is the offline paper identity, which attaches the session to a
-	// paper the project already holds.
+	// paper the project already holds. A record without one is refused with
+	// ErrNoPaperKey.
 	PaperKey string
 	// Runtime is the managed runtime that executed it.
 	Runtime string
@@ -103,7 +105,8 @@ type Store interface {
 	// the project cannot afford to start is refused with ErrNoCredits, and one
 	// it can afford holds the start reserve against its pot (011). Both checks
 	// run in the writing transaction, so neither is racy and neither can be
-	// skipped by a new caller.
+	// skipped by a new caller. An audit with no paper key is refused with
+	// ErrNoPaperKey, because it would belong to no paper of its project.
 	Enqueue(ctx context.Context, s Submission) (Job, error)
 	// Get returns one job by id, or ErrNotFound.
 	Get(ctx context.Context, id string) (Job, error)
