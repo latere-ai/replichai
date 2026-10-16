@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // runner is a scripted project runner. It records the order and the overlap

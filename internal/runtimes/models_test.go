@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 type modelRuntime struct {

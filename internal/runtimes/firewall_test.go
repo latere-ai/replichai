@@ -39,8 +39,8 @@ func TestRuntimeAdapterImportFirewall(t *testing.T) {
 			switch {
 			case strings.HasPrefix(name, "github.com/anthropics/") && !strings.HasPrefix(rel, filepath.Join("internal", "provider", "anthropic")):
 				t.Errorf("%s imports Anthropic SDK outside its adapter", rel)
-			case strings.HasSuffix(name, "/internal/runtimes/latere") && !strings.HasPrefix(rel, filepath.Join("internal", "runtimes", "builtin")):
-				t.Errorf("%s imports the Latere runtime outside the composition boundary", rel)
+			case portAdapter(name) && !strings.HasPrefix(rel, filepath.Join("internal", "runtimes", "builtin")):
+				t.Errorf("%s imports %s outside the composition boundary", rel, name)
 			case (strings.HasSuffix(name, "/internal/provider/anthropic") || strings.HasSuffix(name, "/internal/provider/memory")) &&
 				!strings.HasPrefix(rel, filepath.Join("internal", "runtimes", "builtin")) &&
 				!strings.HasPrefix(rel, filepath.Join("internal", "provider")):
@@ -52,6 +52,15 @@ func TestRuntimeAdapterImportFirewall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk source tree: %v", err)
 	}
+}
+
+// portAdapter reports whether an import is one of the adapters the
+// managed-session port carries beside its contract, such as the Latere
+// runtime. The contract, its conformance suite and its memory runtime are not
+// adapters: any package may use them.
+func portAdapter(name string) bool {
+	rest, ok := strings.CutPrefix(name, "latere.ai/x/managed-agents/")
+	return ok && rest != "contracttest" && rest != "memory"
 }
 
 // The environment is read at the composition edge, in cmd, and handed down as

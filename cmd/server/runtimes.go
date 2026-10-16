@@ -15,8 +15,9 @@ import (
 
 	xotel "latere.ai/x/pkg/otel"
 
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/httpapi"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
 	"github.com/latere-ai/replichai/internal/signin"

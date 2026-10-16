@@ -13,11 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/runtimes"
+
 	"latere.ai/x/pkg/atomicfile"
+
+	managed "latere.ai/x/managed-agents"
 
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/batch"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -339,8 +342,8 @@ func (r *projectRunner) Execute(ctx context.Context, entry batch.Resolved) (batc
 		} else {
 			opts = append(opts, audit.WithLocalWorkspace())
 		}
-		opts = append(opts, audit.WithSessionHooks(managed.Hooks{
-			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+		opts = append(opts, audit.WithSessionHooks(runtimes.Hooks{
+			Retain: func(ctx context.Context, evidence runtimes.EvidenceReader) error {
 				retained = true
 				if !mounts {
 					workspace, err := workspaceOf(runtime, evidence.Status.Ref)

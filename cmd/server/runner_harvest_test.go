@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	managed "latere.ai/x/managed-agents"
+	managedmemory "latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/job"
-	"github.com/latere-ai/replichai/internal/managed"
-	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/publish"

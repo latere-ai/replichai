@@ -9,7 +9,7 @@ import (
 
 	"latere.ai/x/pkg/hostsandbox"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // PackageManifest is the file in which the bootstrap records the package

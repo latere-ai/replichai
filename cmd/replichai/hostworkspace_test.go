@@ -11,8 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/latere-ai/replichai/internal/managed"
-	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
+	managed "latere.ai/x/managed-agents"
+	managedmemory "latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/runtimes"
 )
 
@@ -29,7 +30,7 @@ func TestTheHostBuildsTheWorkspaceOfAHostedSession(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "workspace")
 	var built string
-	hooks := managed.Hooks{Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+	hooks := runtimes.Hooks{Retain: func(ctx context.Context, evidence runtimes.EvidenceReader) error {
 		var err error
 		built, err = hostWorkspace(ctx, runtime, evidence, dir)
 		return err
@@ -38,7 +39,7 @@ func TestTheHostBuildsTheWorkspaceOfAHostedSession(t *testing.T) {
 		Model: managed.ModelSelector{Preference: "best"}, Instructions: "i", Task: "t",
 		Sandbox: managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkNone}},
 	}
-	if _, err := managed.NewController(router).Execute(context.Background(), spec, hooks); err != nil {
+	if _, err := runtimes.NewController(router).Execute(context.Background(), spec, hooks); err != nil {
 		t.Fatal(err)
 	}
 	if built != dir {

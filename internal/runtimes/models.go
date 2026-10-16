@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // ModelResolver projects a managed runtime's qualified catalog onto the

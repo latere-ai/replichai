@@ -14,9 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/runtimes"
+
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/instrument"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/verdict"
@@ -40,7 +43,7 @@ type SessionMount struct {
 func (mount SessionMount) Set() bool { return strings.TrimSpace(mount.URL) != "" }
 
 // SessionResult is everything one audit produced on the managed path, where the
-// run is a durable managed.Controller session rather than a provider run.
+// run is a durable runtimes.Controller session rather than a provider run.
 type SessionResult struct {
 	Paper        string
 	Ref          managed.SessionRef
@@ -70,17 +73,17 @@ func (result SessionResult) Grade() managed.Grade {
 }
 
 // SessionAuditor runs the same audit as Auditor, but through
-// managed.Controller: the run is a durable session that can be started
+// runtimes.Controller: the run is a durable session that can be started
 // detached and resumed later, and the controller owns waiting and release.
 type SessionAuditor struct {
-	controller   *managed.Controller
+	controller   *runtimes.Controller
 	method       method.Method
 	model        string
 	maxRevisions int
 	timeout      time.Duration
 	unbounded    bool
 	mount        SessionMount
-	hooks        managed.Hooks
+	hooks        runtimes.Hooks
 	// profile fixes the session's egress to a named profile, and paper is the
 	// copy of the paper the session is handed. Both are set for every run of
 	// a study, so its runs have the same inputs (046).
@@ -161,13 +164,13 @@ func WithSessionMount(mount SessionMount) SessionOption {
 // WithSessionHooks installs the caller's lifecycle hooks. Run and Resume wrap
 // the Retain hook: artifacts and the instrument check land in the result first,
 // and the caller's own Retain runs after them.
-func WithSessionHooks(hooks managed.Hooks) SessionOption {
+func WithSessionHooks(hooks runtimes.Hooks) SessionOption {
 	return func(a *SessionAuditor) { a.hooks = hooks }
 }
 
 // NewSessionAuditor builds a SessionAuditor over controller, applying options
 // on top of the package defaults.
-func NewSessionAuditor(controller *managed.Controller, m method.Method, options ...SessionOption) *SessionAuditor {
+func NewSessionAuditor(controller *runtimes.Controller, m method.Method, options ...SessionOption) *SessionAuditor {
 	auditor := &SessionAuditor{
 		controller: controller, method: m, model: DefaultModelPreference,
 		maxRevisions: DefaultMaxRevisions, timeout: DefaultTimeout,
@@ -327,10 +330,10 @@ func networkFor(capabilities managed.Capabilities) managed.NetworkPolicy {
 	return managed.NetworkPolicy{Mode: managed.NetworkNone}
 }
 
-func (a *SessionAuditor) retentionHooks(result *SessionResult, destination string) managed.Hooks {
+func (a *SessionAuditor) retentionHooks(result *SessionResult, destination string) runtimes.Hooks {
 	hooks := a.hooks
 	externalRetain := hooks.Retain
-	hooks.Retain = func(ctx context.Context, evidence managed.EvidenceReader) error {
+	hooks.Retain = func(ctx context.Context, evidence runtimes.EvidenceReader) error {
 		result.Ref = evidence.Status.Ref
 		result.Status = evidence.Status
 		result.Events = append([]managed.Event(nil), evidence.Events...)
@@ -390,7 +393,7 @@ func promptDigest(spec managed.SessionSpec) string {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
-func collectManagedArtifacts(ctx context.Context, evidence managed.EvidenceReader, destination string) ([]managed.Artifact, error) {
+func collectManagedArtifacts(ctx context.Context, evidence runtimes.EvidenceReader, destination string) ([]managed.Artifact, error) {
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		return nil, fmt.Errorf("create destination: %w", err)
 	}
@@ -425,7 +428,7 @@ func (a *SessionAuditor) runContext(ctx context.Context) (context.Context, conte
 	return context.WithTimeout(ctx, a.timeout)
 }
 
-func (a *SessionAuditor) apply(result *SessionResult, managedResult managed.Result) {
+func (a *SessionAuditor) apply(result *SessionResult, managedResult runtimes.Result) {
 	if managedResult.Ref.ID != "" {
 		result.Ref = managedResult.Ref
 	}

@@ -13,6 +13,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.46.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 	golang.org/x/oauth2 v0.36.0
+	latere.ai/x/managed-agents v0.0.0-20261016014632-945e396cfdbf
+	latere.ai/x/managed-agents/latere v0.0.0-20261016014632-945e396cfdbf
 	latere.ai/x/pay v0.2.0
 	latere.ai/x/pkg v0.90.2
 )

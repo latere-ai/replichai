@@ -26,14 +26,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/runtimes"
+
 	"latere.ai/x/pkg/retry"
+
+	managed "latere.ai/x/managed-agents"
 
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/cloud"
 	"github.com/latere-ai/replichai/internal/fetch"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/instrument"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -108,7 +111,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		return err
 	}
 
-	hooks := managed.Hooks{Status: func(_ context.Context, status managed.Status) error {
+	hooks := runtimes.Hooks{Status: func(_ context.Context, status managed.Status) error {
 		_, _ = fmt.Fprintf(stderr, "  %s\n", status.State)
 		return nil
 	}}
@@ -149,7 +152,7 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		} else if keepsWorkspace {
 			opts = append(opts, audit.WithLocalWorkspace())
 		}
-		hooks.Retain = func(ctx context.Context, evidence managed.EvidenceReader) error {
+		hooks.Retain = func(ctx context.Context, evidence runtimes.EvidenceReader) error {
 			// The order is capture, verify, push, finalize, and only then
 			// release. The workspace holds the only copy of the work until
 			// the push has taken it.
@@ -513,7 +516,7 @@ func outcomeLine(status managed.Status) string {
 // runtime that mounted nothing, such as the Latere platform, keeps its files
 // on its side, so they are fetched while the session is still held and
 // committed once, by the host, into dir.
-func hostWorkspace(ctx context.Context, rt managed.Runtime, evidence managed.EvidenceReader, dir string) (string, error) {
+func hostWorkspace(ctx context.Context, rt managed.Runtime, evidence runtimes.EvidenceReader, dir string) (string, error) {
 	if _, ok := rt.(workspaceReader); ok {
 		return workspaceOf(rt, evidence.Status.Ref)
 	}
@@ -783,12 +786,12 @@ func runFinish(ctx context.Context, args []string, stdout, stderr *os.File) erro
 		if *sessionRef == "" {
 			ref = managed.SessionRef{Runtime: runtime.Name(), ID: *session, Revision: 1, LocatorVersion: 1}
 		}
-		hooks := managed.Hooks{
+		hooks := runtimes.Hooks{
 			Status: func(_ context.Context, status managed.Status) error {
 				_, _ = fmt.Fprintf(stderr, "  %s\n", status.State)
 				return nil
 			},
-			Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+			Retain: func(ctx context.Context, evidence runtimes.EvidenceReader) error {
 				// A session that was never mounted has committed into a
 				// directory that has not been pushed. Finalizing without
 				// pushing would verify an empty repository and record the

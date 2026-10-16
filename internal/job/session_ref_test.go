@@ -8,8 +8,9 @@ import (
 	"errors"
 	"testing"
 
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/credit"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
 

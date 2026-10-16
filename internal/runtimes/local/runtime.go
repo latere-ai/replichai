@@ -21,7 +21,8 @@ import (
 
 	"latere.ai/x/pkg/hostsandbox"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
 )
 
@@ -140,11 +141,15 @@ func (r *Runtime) capabilities(outputDir, inputDir string) managed.Capabilities 
 		// The local runtime mounts no writable remote: the host pushes
 		// after the run, which keeps a forge credential out of the sandbox
 		// entirely (045g).
-		RepositoryModes:    map[managed.AccessMode]bool{managed.AccessReadOnly: true},
-		Evaluation:         true,
-		DurableEvents:      true,
-		Artifacts:          true,
-		Cancellation:       true,
+		RepositoryModes: map[managed.AccessMode]bool{managed.AccessReadOnly: true},
+		Evaluation:      true,
+		DurableEvents:   true,
+		Artifacts:       true,
+		Cancellation:    true,
+		// The session lives in its directory under Root, and its stages in
+		// the sandbox, so a runtime built afresh over the same Root and
+		// sandbox finishes a session another process started.
+		Resumable:          true,
 		MaxAttachmentBytes: limit,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
 		// The runtime runs the grading loop itself, so it can keep and

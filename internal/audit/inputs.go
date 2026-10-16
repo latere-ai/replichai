@@ -10,7 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/paper"
 )
 

@@ -20,13 +20,14 @@ import (
 
 	"latere.ai/x/pkg/authkit/jwt"
 
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/batch"
 	"github.com/latere-ai/replichai/internal/cloud"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/project"
@@ -136,9 +137,9 @@ func (r *scriptedRunner) Execute(ctx context.Context, entry batch.Resolved) (bat
 	if err != nil {
 		return batch.Outcome{}, err
 	}
-	policy := managed.DefaultWaitPolicy()
+	policy := runtimes.DefaultWaitPolicy()
 	policy.InitialDelay, policy.MaxDelay = time.Millisecond, time.Millisecond
-	controller := managed.NewController(router, managed.WithWaitPolicy(policy))
+	controller := runtimes.NewController(router, runtimes.WithWaitPolicy(policy))
 
 	m, err := method.Load(writeMethod(r.t))
 	if err != nil {
@@ -149,7 +150,7 @@ func (r *scriptedRunner) Execute(ctx context.Context, entry batch.Resolved) (bat
 	// rather than something done after the session is released. The workspace
 	// is the one the session that ran names, read by reference as the product
 	// reads it.
-	hooks := managed.Hooks{Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+	hooks := runtimes.Hooks{Retain: func(ctx context.Context, evidence runtimes.EvidenceReader) error {
 		out, errOut := newTemp(r.t), newTemp(r.t)
 		workspace, err := workspaceOf(runtime, evidence.Status.Ref)
 		if err != nil {

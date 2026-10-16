@@ -14,8 +14,9 @@ import (
 
 	"latere.ai/x/pkg/hostsandbox"
 
-	"github.com/latere-ai/replichai/internal/managed"
-	"github.com/latere-ai/replichai/internal/managed/memory"
+	managed "latere.ai/x/managed-agents"
+	"latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/runtimes/local/sandbox"
 )
 

@@ -9,8 +9,9 @@ import (
 	"fmt"
 	"strings"
 
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/instrument"
-	"github.com/latere-ai/replichai/internal/managed"
 )
 
 // Caps bound what one pilot may cost, so a synthetic run cannot be silently

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // TestCodexDecodesItsOwnStream checks that the recorded stream decodes to the

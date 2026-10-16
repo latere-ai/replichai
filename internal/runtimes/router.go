@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // RouteVersion is the only route version this package understands. Validate
@@ -77,7 +77,7 @@ func (r *Router) Route() Route { return Route{Version: RouteVersion, Runtime: r.
 // default. It is the seam that lets work routed under one default keep reaching
 // that runtime once the default has changed. Binding to a route whose runtime
 // is not installed fails here rather than at the first session.
-func (r *Router) Bind(route Route) (managed.RuntimeRouter, error) {
+func (r *Router) Bind(route Route) (RuntimeRouter, error) {
 	if err := route.Validate(); err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (r *Router) WithDefault(name managed.RuntimeName) (*Router, error) {
 
 // ForNew selects the default runtime. The specification is deliberately
 // ignored: the route policy is deployment-wide, and the parameter is here only
-// to satisfy managed.RuntimeRouter.
+// to satisfy RuntimeRouter.
 func (r *Router) ForNew(managed.SessionSpec) (managed.Runtime, error) {
 	return r.runtime(r.defaultRuntime)
 }
@@ -158,5 +158,5 @@ func sortedNames(names []managed.RuntimeName) []managed.RuntimeName {
 	return sorted
 }
 
-var _ managed.RuntimeRouter = (*Router)(nil)
-var _ managed.RuntimeRouter = boundRouter{}
+var _ RuntimeRouter = (*Router)(nil)
+var _ RuntimeRouter = boundRouter{}

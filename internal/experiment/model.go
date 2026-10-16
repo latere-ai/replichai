@@ -12,8 +12,11 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/latere-ai/replichai/internal/runtimes"
+
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/instrument"
-	"github.com/latere-ai/replichai/internal/managed"
 )
 
 // CohortDataFile is the conforming trial data a model cohort writes and the
@@ -47,7 +50,7 @@ func AssertNoPersona(prompt string) error {
 type ModelCohort struct {
 	N          int
 	Trials     int
-	Controller *managed.Controller
+	Controller *runtimes.Controller
 	Config     PilotConfig
 	Coverage   Coverage // the servable components to drive; the rest are skipped
 
@@ -78,7 +81,7 @@ func (m *ModelCohort) Collect(ctx context.Context, decl instrument.Instrument) (
 		Sandbox:    managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkOpen}},
 		Evaluation: nil,
 	}
-	hooks := managed.Hooks{Retain: func(retainCtx context.Context, evidence managed.EvidenceReader) error {
+	hooks := runtimes.Hooks{Retain: func(retainCtx context.Context, evidence runtimes.EvidenceReader) error {
 		m.usage = evidence.Status.Usage
 		var retainErr error
 		data, retainErr = m.collectData(retainCtx, evidence)
@@ -112,7 +115,7 @@ func (m *ModelCohort) task(decl instrument.Instrument) string {
 		m.N, CohortDataFile, strings.Join(cols, ", "))
 }
 
-func (m *ModelCohort) collectData(ctx context.Context, evidence managed.EvidenceReader) (CohortData, error) {
+func (m *ModelCohort) collectData(ctx context.Context, evidence runtimes.EvidenceReader) (CohortData, error) {
 	for _, a := range evidence.Artifacts {
 		if a.Path != CohortDataFile {
 			continue

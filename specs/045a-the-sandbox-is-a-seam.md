@@ -173,7 +173,7 @@ Release must not run before the push. The ordering is stated in [045g](045g-the-
 
 ## Acceptance criteria
 
-1. `local` passes `internal/managed/contracttest.Run` without exception or skip, under both drivers, including the "a ref naming another runtime is refused" cases.
+1. `local` passes the managed-session port's `contracttest` suite without exception or skip, under both drivers, including the "a ref naming another runtime is refused" cases.
 2. `builtin.Catalog` installs it, and `builtin_test.go`'s `Names()` assertion is updated to `["anthropic-managed", "local", "memory"]` rather than loosened.
 3. A driver contract suite runs both drivers through the same cases: launch, observe to exit, read output from an offset, stop, discard, and a launched stage surviving the death of the launching process.
 4. A session directory is `0700`, and no stage spec ever grants write access to `session/`. A test asserts it by inspecting the `StageSpec` the runtime builds for every stage under both drivers.

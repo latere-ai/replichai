@@ -5,7 +5,7 @@ status: implemented
 
 # 041a — One managed-session contract
 
-**Status:** implemented.
+**Status:** implemented. Since 2026-10-16 the contract described here is the managed-session port, `latere.ai/x/managed-agents`, which ReplicHAI imports in place of `internal/managed` ([041](041-the-runtime-is-not-the-model-vendor.md), Outcome).
 
 **Scope:** replace the Anthropic resource graph exposed by `internal/provider` with a semantic managed-session contract. Define the request, durable reference, capabilities, errors, state, evidence, and usage invariants. No consumer migration and no new vendor adapter in this leaf.
 

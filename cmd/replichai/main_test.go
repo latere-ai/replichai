@@ -19,9 +19,10 @@ import (
 	"testing"
 	"time"
 
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/instrument"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/paper"
 )
 

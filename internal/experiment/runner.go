@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/runtimes"
+
+	managed "latere.ai/x/managed-agents"
 )
 
 // Defaults for a runner. The instrument is mounted read-only, the dataset lands
@@ -40,7 +42,7 @@ const (
 //
 // It uses the same normalized controller as audits, with Evaluation left nil.
 type Runner struct {
-	controller   *managed.Controller
+	controller   *runtimes.Controller
 	blobs        ArtifactStore
 	instructions string // the experiment doctrine (method/experiment.md)
 
@@ -69,7 +71,7 @@ func WithRunnerTimeout(d time.Duration) RunnerOption {
 
 // NewRunner builds a Runner. instructions is the experiment doctrine loaded from
 // method/experiment.md; blobs is where result artifacts are persisted.
-func NewRunner(controller *managed.Controller, blobs ArtifactStore, instructions string, opts ...RunnerOption) *Runner {
+func NewRunner(controller *runtimes.Controller, blobs ArtifactStore, instructions string, opts ...RunnerOption) *Runner {
 	r := &Runner{
 		controller:   controller,
 		blobs:        blobs,
@@ -146,7 +148,7 @@ func (r *Runner) Run(ctx context.Context, e *Experiment, inst Instrument, input 
 		runCtx, cancel = context.WithTimeout(ctx, r.timeout)
 	}
 	defer cancel()
-	hooks := managed.Hooks{Retain: func(retainCtx context.Context, evidence managed.EvidenceReader) error {
+	hooks := runtimes.Hooks{Retain: func(retainCtx context.Context, evidence runtimes.EvidenceReader) error {
 		out, err = r.collect(retainCtx, e, evidence, command)
 		return err
 	}}
@@ -185,7 +187,7 @@ The input data is at %s. The instrument repository is mounted read-only at %s â€
 // collect reads the worker's report and persists the output artifacts. A missing
 // or unreadable report is itself an outcome: a run that produced nothing
 // reportable did not run, and that is recorded rather than raised as an error.
-func (r *Runner) collect(ctx context.Context, e *Experiment, evidence managed.EvidenceReader, command string) (Outcome, error) {
+func (r *Runner) collect(ctx context.Context, e *Experiment, evidence runtimes.EvidenceReader, command string) (Outcome, error) {
 	byPath := make(map[string]managed.Artifact, len(evidence.Artifacts))
 	for _, a := range evidence.Artifacts {
 		byPath[a.Path] = a
