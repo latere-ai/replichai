@@ -322,3 +322,46 @@ func TestAuthFailuresAreReported(t *testing.T) {
 		t.Error("an unreachable Auth gave a token")
 	}
 }
+
+// A store that cannot reach its database, a sealed token under another key,
+// and an Auth address that is not one each fail rather than act.
+func TestFailuresAreReportedNotActedOn(t *testing.T) {
+	ctx := context.Background()
+	if base := os.Getenv("TEST_DATABASE_URL"); base != "" {
+		pool, err := pgxpool.New(ctx, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pool.Close()
+		if err := Migrate(ctx, pool); err == nil {
+			t.Error("a migration over a closed pool succeeded")
+		}
+		closed := NewPGStore(pool, sealer(t))
+		if err := closed.Put(ctx, "alice", "r"); err == nil {
+			t.Error("a Put over a closed pool succeeded")
+		}
+		if err := closed.Rotate(ctx, "alice", func(string) (string, error) { return "x", nil }); err == nil {
+			t.Error("a Rotate over a closed pool succeeded")
+		}
+		if err := closed.Forget(ctx, "alice"); err == nil {
+			t.Error("a Forget over a closed pool succeeded")
+		}
+	}
+	store := NewMemStore(sealer(t))
+	if err := store.Put(ctx, "alice", "r"); err != nil {
+		t.Fatal(err)
+	}
+	other, err := NewSealer(strings.Repeat("cd", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.sealer = other
+	if err := store.Rotate(ctx, "alice", func(string) (string, error) { return "x", nil }); err == nil {
+		t.Error("a token sealed under another key opened")
+	}
+	minter := NewMinter(NewMemStore(sealer(t)), Config{Issuer: "http://bad\x7f", HTTP: http.DefaultClient})
+	_ = minter.store.Put(ctx, "alice", "r")
+	if _, err := minter.Token(ctx, "alice"); err == nil {
+		t.Error("an Auth address that is not one gave a token")
+	}
+}
