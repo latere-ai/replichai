@@ -10,6 +10,13 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- Starting a session that the project pays for no longer hangs. With a
+  database pooler holding a single server connection, the start waited for a
+  second connection while its own transaction held the only one, and every
+  other request to the app waited behind it until the pooler gave up.
+
 ## v0.31.0 - 2026-10-16
 
 ### Added
