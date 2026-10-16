@@ -5,6 +5,8 @@ status: draft
 
 # 023 — The outer loop, as a product
 
+**Revised by [050](050-the-outer-loop-simulated.md).** The sequence below, which ran real participants last and kept simulation as a pilot, is replaced by 050's pipeline: a gate after the inner loop, an experiment the agent builds, and simulated participants that take part in it. The census below describes the corpus of September 2026, not the calibration set 050 chooses from.
+
 **Status:** draft. Parent of [023a](023a-experiments-persisted-and-dispatched.md), [023b](023b-the-experiment-http-surface.md), [023c](023c-running-an-experiment-from-the-app.md), [023d](023d-ground-truth-for-a-cohort.md).
 
 **Scope:** wire the experiment engine, built and tested in [007b](007b-experiments-over-instruments.md) and [007c](007c-the-synthetic-pilot.md), to a person. The engine can already run all four data sources; nothing user-facing can reach it. This parent holds the decisions the four leaves share and the order they land in, and records why the sequence is what it is.

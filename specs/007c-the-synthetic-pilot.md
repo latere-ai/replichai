@@ -5,6 +5,8 @@ status: implemented
 
 # 007c — The synthetic pilot
 
+**Revised by [050](050-the-outer-loop-simulated.md).** Population profiles move from refused to admitted, declared before a run, recorded with it and calibrated per profile; the released-data requirement becomes calibration against human replications instead of a refusal. The indelible label, the reading of a synthetic comparison as a statement about the model, and no fitting to the target are kept.
+
 **Status:** implemented (engine half; the Postgres `NOT NULL cohort_kind` column and the HTTP/UI surface remain, per Out of scope)
 **Scope:** the `synthetic` data source: driving a cohort through an extracted protocol without any people, in two sub-kinds, a deterministic data generator that exercises the pipeline, and a model cohort that answers the protocol's task. Plus the labeling that keeps neither from ever being read as evidence about people. A child of [007](007-from-reproduction-to-replication.md).
 **Depends on:** [007b](007b-experiments-over-instruments.md) (the experiment model and runner), [007a](007a-the-study-protocol-as-an-artifact.md) (the protocol and its reported ground truth).
