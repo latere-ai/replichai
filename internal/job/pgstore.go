@@ -190,8 +190,12 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	// A person-paid session is priced by the platform that charges the
 	// person, so it snapshots no card and holds no reserve.
 	var card credit.Card
+	var reserve int64
 	if sub.Payer.PaysProject() {
 		if card, err = s.snapshot(ctx); err != nil {
+			return Job{}, err
+		}
+		if reserve, err = s.reserveAmount(ctx); err != nil {
 			return Job{}, err
 		}
 	}
@@ -206,7 +210,7 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	var j Job
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if sub.Payer.PaysProject() {
-			if err := s.takeReserveTx(ctx, tx, sub.Project, id); err != nil {
+			if err := s.takeReserveTx(ctx, tx, sub.Project, id, reserve); err != nil {
 				return err
 			}
 		}
@@ -292,19 +296,24 @@ func (s *PGStore) ImportLocal(ctx context.Context, in Import) (Job, error) {
 	return imported, err
 }
 
+// reserveAmount reads how much a project-paid start holds. It is read before
+// the transaction that inserts the session opens, because the reserve comes
+// from the platform settings over the pool: read inside the transaction, it
+// would need a second connection while the transaction holds one, and behind a
+// pooler with a single server connection that wait never ends.
+func (s *PGStore) reserveAmount(ctx context.Context) (int64, error) {
+	if s.credits == nil || s.reserve == nil {
+		return 0, nil
+	}
+	return s.reserve(ctx)
+}
+
 // takeReserveTx refuses a submission the project cannot afford to start, and
 // holds the reserve against its pot. It runs inside the transaction that
 // inserts the session, so the balance it read cannot change before the insert
-// and a new submit path cannot skip it.
-func (s *PGStore) takeReserveTx(ctx context.Context, tx pgx.Tx, project, jobID string) error {
-	if s.credits == nil || s.reserve == nil {
-		return nil
-	}
-	amount, err := s.reserve(ctx)
-	if err != nil {
-		return err
-	}
-	if amount <= 0 {
+// and a new submit path cannot skip it. It uses only tx.
+func (s *PGStore) takeReserveTx(ctx context.Context, tx pgx.Tx, project, jobID string, amount int64) error {
+	if s.credits == nil || amount <= 0 {
 		return nil
 	}
 	if err := s.credits.HoldTx(ctx, tx, credit.Pot(project), jobID, amount); err != nil {

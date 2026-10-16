@@ -9,6 +9,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -200,6 +201,61 @@ func TestPGStoreGateContract(t *testing.T) {
 	}
 	fund(t, ledger, "race", 3*testReserve)
 	runGateConcurrency(t, NewPGStore(pool, WithPGCredits(ledger, fixedReserve(testReserve))), 3, 12)
+}
+
+// TestPGStoreEnqueueOnOneConnection checks that starting a project-paid
+// session needs only the one connection its transaction holds. Production
+// serves through a pooler that holds a single server connection, and the
+// reserve is read from the platform settings over the pool. Read inside the
+// transaction, that read waited for a connection the transaction itself held,
+// so every start hung until the pooler gave up and the whole app stalled behind
+// it.
+func TestPGStoreEnqueueOnOneConnection(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set TEST_DATABASE_URL to run the Postgres gate contract")
+	}
+	ctx := context.Background()
+	setup, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer setup.Close()
+	if err := Migrate(ctx, setup); err != nil {
+		t.Fatalf("job migrate: %v", err)
+	}
+	if err := credit.Migrate(ctx, setup); err != nil {
+		t.Fatalf("credit migrate: %v", err)
+	}
+	if _, err := setup.Exec(ctx, `TRUNCATE jobs, ledger_entries`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	fund(t, credit.NewPGStore(setup, nil, nil), "one", testReserve)
+
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	// The reserve is read over the same pool, as platform.StartReserve reads
+	// the settings row.
+	reserve := func(ctx context.Context) (int64, error) {
+		var n int64
+		err := pool.QueryRow(ctx, `SELECT $1::bigint`, testReserve).Scan(&n)
+		return n, err
+	}
+	store := NewPGStore(pool, WithPGCredits(credit.NewPGStore(pool, nil, nil), reserve))
+
+	start, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, err := store.Enqueue(start, Submission{Principal: "p", Ref: "x", Kind: KindAudit, Project: "one", PaperKey: "k"}); err != nil {
+		t.Fatalf("a project-paid start on one connection: %v", err)
+	}
 }
 
 // TestNoLedgerMeansUnmetered checks that a store with no ledger admits every
