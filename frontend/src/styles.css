@@ -1858,6 +1858,44 @@ button.quota-pill:hover {
   overflow: auto;
 }
 
+/* A failed session's own account of why it stopped, under the session's head
+   on every pane. The error tone is in the frame and the first line; what the
+   run recorded reads in the body color, since it is the part a reader copies
+   into a bug report. It sits in the .tx flex column, which would otherwise grow
+   it. */
+.fail-note {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  margin: 14px var(--page-gutter) 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--err) 32%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--err) 6%, transparent);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.fail-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--err);
+  font-weight: 500;
+}
+.fail-cause {
+  margin: 0;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.fail-label {
+  color: var(--fg-2);
+}
+.fail-note .disc-body pre {
+  max-height: min(35vh, 280px);
+  tab-size: 2;
+}
+
 /* The app's own tooltip, so the delay and the appearance are the app's rather
    than the browser's. `.tip` only marks a trigger. The bubble is one element
    portalled to <body> by TipHost and placed from the trigger's rect, because a

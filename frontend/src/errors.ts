@@ -171,14 +171,46 @@ export function purgeErrLabel(t: T, e: unknown): string {
 // on our side, not the paper's source being unreachable, so the publish
 // patterns are tested before the network ones, and the network ones match words
 // rather than bare status numbers.
+//
+// Only the first line is read. A runner that panicked records its stack under
+// it, and a stack names every package it passed through: one that passed
+// through the GitHub client would read as a failure to publish.
 export function sessionFailureText(t: T, cause: string): string {
-  const c = cause.toLowerCase()
+  const c = failureParts(cause).summary.toLowerCase()
   if (/secret|credential|private key/.test(c)) return t('failSecret')
   if (/not a doi|unresolvable|empty reference|needs a fetcher/.test(c)) return t('failUnresolvable')
   if (/github|repo|push|commit|manifest|installation|unexpected status/.test(c)) return t('failPublish')
   if (/fetch|lookup|arxiv|deadline exceeded|timeout|no such host|connection refused/.test(c)) return t('failSource')
   if (/credit|overdraft|budget/.test(c)) return t('failCredits')
   return t('failGeneric')
+}
+
+// failureParts splits what a run recorded into the line that says what went
+// wrong and the rest of the report. A runner that panicked records its stack
+// trace under that first line, dozens of lines of it: the first line reads on
+// its own, and the trace is for whoever debugs the runner.
+export function failureParts(cause: string): { summary: string; detail: string } {
+  const text = cause.trim()
+  const nl = text.indexOf('\n')
+  if (nl < 0) return { summary: text, detail: '' }
+  return { summary: text.slice(0, nl).trim(), detail: text.slice(nl + 1).replace(/^\s*\n/, '').trimEnd() }
+}
+
+// TIP_CAUSE_MAX is the most of a run's first line a row's tooltip quotes. A
+// tooltip is a glance: a longer line, or a report that runs on below it, is
+// read in the session itself, and the tooltip says so.
+export const TIP_CAUSE_MAX = 200
+
+// failureTip is the row's tooltip on a failed session: the run's first line,
+// clamped, and a pointer to the session when there is more to read.
+export function failureTip(t: T, cause: string): string {
+  const { summary, detail } = failureParts(cause)
+  const short = summary.length > TIP_CAUSE_MAX ? summary.slice(0, TIP_CAUSE_MAX - 1).trimEnd() + '…' : summary
+  const tip = t('failDetail', { cause: short })
+  if (!detail && short === summary) return tip
+  // The pointer is a sentence of its own: the tooltip folds line breaks, and a
+  // Go error ends with no stop of its own.
+  return `${tip}${/[.!?…]$/.test(tip) ? '' : '.'} ${t('failOpenSession')}`
 }
 
 /* ─── everything else ─── */

@@ -7,12 +7,15 @@ import {
   addPaperErrLabel,
   checkoutErrLabel,
   createOutcome,
+  failureParts,
+  failureTip,
   generic,
   movePaperErrLabel,
   refusal,
   removePaperErrLabel,
   sessionFailureText,
   startErrLabel,
+  TIP_CAUSE_MAX,
 } from './errors'
 import { MICRO } from './money'
 
@@ -141,6 +144,30 @@ test('a failed run reads as a sentence, not a Go error', () => {
   // Anything unrecognised still says something true, and still says nothing
   // about our internals.
   expect(sessionFailureText(t, 'nil pointer dereference in grade step')).toBe('failGeneric')
+  // A stack under a panic names the packages it passed through, the GitHub
+  // client among them; the class comes from the first line alone.
+  expect(sessionFailureText(t, 'resolve: runner panicked: nil map\ngoroutine 1:\ninternal/github.(*App).call()')).toBe('failGeneric')
+})
+
+// A runner that panicked records its stack under the first line. The first
+// line is the summary; the stack is the rest, and the row's tooltip quotes only
+// the summary, clamped, and says where the rest is.
+test("a run's report splits into its first line and the rest", () => {
+  expect(failureParts('cancelled by owner')).toEqual({ summary: 'cancelled by owner', detail: '' })
+  expect(failureParts('resolve: runner panicked: boom\ngoroutine 1 [running]:\nmain.go:1\n')).toEqual({
+    summary: 'resolve: runner panicked: boom',
+    detail: 'goroutine 1 [running]:\nmain.go:1',
+  })
+  expect(failureParts('step: failed\n\n  trace')).toEqual({ summary: 'step: failed', detail: '  trace' })
+})
+
+test("a row's tooltip quotes the first line and points to the session for more", () => {
+  expect(failureTip(t, 'cancelled by owner')).toBe('failDetail:cancelled by owner')
+  expect(failureTip(t, 'boom\ngoroutine 1')).toBe('failDetail:boom. failOpenSession')
+  const long = failureTip(t, 'x'.repeat(TIP_CAUSE_MAX + 50))
+  expect(long.endsWith('… failOpenSession')).toBe(true)
+  expect(long.length).toBe('failDetail:'.length + TIP_CAUSE_MAX + ' failOpenSession'.length)
+  expect(failureTip(t, 'x'.repeat(TIP_CAUSE_MAX))).toBe(`failDetail:${'x'.repeat(TIP_CAUSE_MAX)}`)
 })
 
 // A request that never reached a server is not a server fault, and the two want
