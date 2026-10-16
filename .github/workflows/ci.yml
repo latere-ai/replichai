@@ -100,4 +100,8 @@ jobs:
           sudo chown root:root "$sandbox"
           sudo chmod 4755 "$sandbox"
           echo "CHROME_DEVEL_SANDBOX=$sandbox" >> "$GITHUB_ENV"
+      # Against the bundle built above, through vite preview: the dev server
+      # compiles on request and is too slow on this runner for the suite's waits.
       - run: cd frontend && bun run test:browser
+        env:
+          WEB_TEST_BUILT: "1"
