@@ -143,9 +143,13 @@ func run() error {
 		return err
 	}
 	credentials := runtimes.ResolveCredentials(os.LookupEnv)
+	// The Latere environments an admin offers live in the platform settings,
+	// which open after the runtimes are built; the runtime reads them on each
+	// session.
+	latereEnvironments := &settingsEnvironments{}
 	catalog, err := builtin.Catalog(builtin.Config{Local: serverLocalConfig(), Anthropic: builtin.AnthropicConfig{
 		APIKey: credentials.AnthropicKey, BaseURL: credentials.AnthropicBase,
-	}, Latere: builtin.LatereConfig{BaseURL: credentials.LatereAPIURL, TokenCommand: devLatereCommand(*dev, credentials.LatereTokenCommand), Environments: credentials.LatereEnvironments}})
+	}, Latere: builtin.LatereConfig{BaseURL: credentials.LatereAPIURL, TokenCommand: devLatereCommand(*dev, credentials.LatereTokenCommand), Environments: latereEnvironments.read}})
 	if err != nil {
 		return err
 	}
@@ -202,6 +206,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	latereEnvironments.store = st.platform
 	defer st.close()
 	jobStore, projectStore, accessStore, memberStore := st.jobs, st.projects, st.access, st.members
 	// A runtime the person pays for acts as the person, so the server keeps
@@ -391,7 +396,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
-	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc), webauth.WithPaperSweep(sweep)))
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc), webauth.WithPaperSweep(sweep), webauth.WithLatereEnvironments(builtin.LatereEnvironmentNames())))
 
 	// The freeze gate sits inside the auth middleware, where identity is already
 	// on the request, and outside the mux, so every mutating request from a
@@ -558,6 +563,19 @@ func sessionCredits(st stores) webauth.CreditsFunc {
 		}
 		return webauth.Credits{Wallet: wallet, StartReserve: reserve}, nil
 	}
+}
+
+// settingsEnvironments reads the Latere environments an admin offers from the
+// platform settings (051). The runtimes are built before the stores open, so
+// the store is set once they have.
+type settingsEnvironments struct{ store platform.Store }
+
+func (s *settingsEnvironments) read(ctx context.Context) ([]string, error) {
+	if s.store == nil {
+		return nil, errors.New("the platform settings are not open yet")
+	}
+	set, err := s.store.Settings(ctx)
+	return set.LatereEnvironments, err
 }
 
 // defaultPriceListURL is OpenRouter's public model list, which states

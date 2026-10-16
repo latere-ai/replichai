@@ -58,9 +58,10 @@ On `latere`, the environments are the platform's: `base` (Python with its data
 and document libraries), `science` (adds SciPy, statsmodels, scikit-learn,
 pingouin and the spatial libraries, and R with lme4, lmerTest, ordinal, car,
 emmeans, afex, psych, spdep and the tidyverse) and `gui` (adds a display and a
-browser). A deployment offers the ones it lists in `LATERE_ENVIRONMENTS`, comma
-separated, because one is usable only once the platform holds it; unset offers
-`base` alone.
+browser). A run from your own machine may name any of them. In the app, an
+admin chooses which ones sessions may name, in Admin, Platform policy, because
+one is usable only once the platform holds its image; `base` and `science` are
+on to start with.
 
 On `anthropic-managed`, `base` is Anthropic's own image and `science` installs
 the same Python packages on it, and R with the same packages from Ubuntu's R

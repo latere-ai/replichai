@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
 	"net/http"
 	"path"
 	"slices"
@@ -89,9 +91,12 @@ type Config struct {
 	// of its own. A server leaves it nil and puts each session's source on
 	// the context (WithTokenSource).
 	Tokens TokenSource
-	// Environments are the environments this deployment offers, by name
-	// from KnownEnvironments; empty offers DefaultEnvironment alone.
-	Environments []string
+	// Environments reads which environments this deployment offers, by name
+	// from KnownEnvironments, each time the runtime is asked what it can do,
+	// so an admin's change applies to the next session. Nil offers every
+	// known environment, which suits a run on an operator's own machine,
+	// where the operator names the environment explicitly.
+	Environments func(context.Context) ([]string, error)
 	// HTTP is the client used for every call; nil is a client with the
 	// tracing transport.
 	HTTP *http.Client
@@ -99,15 +104,17 @@ type Config struct {
 
 // Runtime is the Latere platform behind the managed-session contract.
 type Runtime struct {
-	platform     platform
-	tokens       TokenSource
-	environments map[string]Environment
-	now          func() time.Time
-	sleep        func(context.Context, time.Duration) error
+	platform platform
+	tokens   TokenSource
+	offered  func(context.Context) ([]string, error)
+	now      func() time.Time
+	sleep    func(context.Context, time.Duration) error
 
 	mu      sync.Mutex
 	network map[managed.NetworkMode]bool
-	logs    map[string][]wireEvent
+	// environments are the ones offered as last read.
+	environments map[string]Environment
+	logs         map[string][]wireEvent
 }
 
 // New builds the runtime. It reaches nothing: credentials are asked for on
@@ -124,24 +131,14 @@ func New(config Config) (*Runtime, error) {
 	if httpClient == nil {
 		httpClient = defaultHTTPClient()
 	}
-	names := config.Environments
-	if len(names) == 0 {
-		names = []string{DefaultEnvironment}
-	}
-	environments := map[string]Environment{}
-	for _, name := range names {
-		environment, ok := KnownEnvironments[name]
-		if !ok {
-			return nil, fmt.Errorf("the Latere environment %q is not one this runtime knows", name)
-		}
-		environments[name] = environment
-	}
-	if _, ok := environments[DefaultEnvironment]; !ok {
-		return nil, fmt.Errorf("the Latere environments offered must include %q, the one a session that names none runs on", DefaultEnvironment)
+	environments := maps.Clone(KnownEnvironments)
+	if config.Environments != nil {
+		// Until the deployment's list is first read, only the default.
+		environments = offering([]string{DefaultEnvironment})
 	}
 	return &Runtime{
 		platform: platform{client: &client{base: base, http: httpClient}},
-		tokens:   config.Tokens, environments: environments,
+		tokens:   config.Tokens, offered: config.Environments, environments: environments,
 		now: time.Now, sleep: sleepContext, logs: map[string][]wireEvent{},
 	}, nil
 }
@@ -176,6 +173,9 @@ func (r *Runtime) bearer(ctx context.Context) (string, error) {
 // Capabilities reads the person's network preference, which is the only
 // network a session of theirs can have, and declares exactly that mode.
 func (r *Runtime) Capabilities(ctx context.Context) (managed.Capabilities, error) {
+	if err := r.readEnvironments(ctx); err != nil {
+		slog.WarnContext(ctx, "latere: reading the environments offered; offering the base one", "error", err)
+	}
 	bearer, err := r.bearer(ctx)
 	if err != nil {
 		return managed.Capabilities{}, err
@@ -223,19 +223,49 @@ func (r *Runtime) environment(name string) Environment {
 	if name == "" {
 		name = DefaultEnvironment
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return r.environments[name]
+}
+
+// readEnvironments reads which environments the deployment offers now. A
+// failed read offers the default alone, which every deployment has, rather
+// than failing the session; the error is returned for the caller to log.
+func (r *Runtime) readEnvironments(ctx context.Context) error {
+	if r.offered == nil {
+		return nil
+	}
+	names, err := r.offered(ctx)
+	if err != nil {
+		names = nil
+	}
+	r.mu.Lock()
+	r.environments = offering(names)
+	r.mu.Unlock()
+	return err
+}
+
+// offering is the known environments among names, always with the default.
+func offering(names []string) map[string]Environment {
+	environments := map[string]Environment{DefaultEnvironment: KnownEnvironments[DefaultEnvironment]}
+	for _, name := range names {
+		if environment, ok := KnownEnvironments[name]; ok {
+			environments[name] = environment
+		}
+	}
+	return environments
 }
 
 func (r *Runtime) capabilities() managed.Capabilities {
 	packages := map[string]bool{}
 	offered := map[string]bool{}
+	r.mu.Lock()
 	for name, environment := range r.environments {
 		offered[name] = true
 		for manager := range environment.Packages {
 			packages[manager] = true
 		}
 	}
-	r.mu.Lock()
 	network := r.network
 	r.mu.Unlock()
 	if network == nil {
@@ -410,6 +440,9 @@ const cancelKey = "replichai.cancelled"
 // returns once the session exists. A failure after the session was created
 // deletes it before returning.
 func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.SessionRef, error) {
+	if err := r.readEnvironments(ctx); err != nil {
+		slog.WarnContext(ctx, "latere: reading the environments offered; offering the base one", "error", err)
+	}
 	if err := r.Validate(spec); err != nil {
 		return managed.SessionRef{}, err
 	}

@@ -4456,3 +4456,12 @@ input.submit-input {
     column-gap: 20px;
   }
 }
+
+/* The environments a Latere session may name (051): one check per line, so a
+   long description wraps under its own box. */
+.policy-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}

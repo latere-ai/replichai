@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,6 +33,15 @@ type Admin struct {
 	projects  ProjectCaps
 	overrides access.FreezeOverrides
 	sweep     PaperSweep
+	// environments are the Latere environments the runtime knows, which an
+	// admin chooses among (051). Nil checks no name against them.
+	environments []string
+}
+
+// WithLatereEnvironments names the environments the Latere runtime knows, so
+// the console offers them and a list naming another is refused.
+func WithLatereEnvironments(known []string) func(*Admin) {
+	return func(a *Admin) { a.environments = known }
 }
 
 // PaperSweep fills in the bibliography of every paper the platform holds that is
@@ -215,7 +225,18 @@ func (a *Admin) Settings(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.WarnContext(r.Context(), "admin: reading platform settings", "error", err)
 	}
-	writeJSON(w, s)
+	writeJSON(w, a.withKnown(s))
+}
+
+// settingsView is the settings as the console reads them, with the Latere
+// environments it may offer beside the ones in force.
+type settingsView struct {
+	platform.Settings
+	KnownLatereEnvironments []string `json:"known_latere_environments,omitempty"`
+}
+
+func (a *Admin) withKnown(s platform.Settings) settingsView {
+	return settingsView{Settings: s, KnownLatereEnvironments: a.environments}
 }
 
 // SetSettings writes the platform policy row.
@@ -241,6 +262,10 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		// pointer for the same reason: a console that edits only the reserve
 		// must not switch drafting off.
 		Draft *draft.Config `json:"draft"`
+		// LatereEnvironments are the environments a Latere session may name
+		// (051). A pointer, so a console that edits only the reserve keeps
+		// the list in force.
+		LatereEnvironments *[]string `json:"latere_environments"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
@@ -276,6 +301,16 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 	if body.Draft != nil {
 		next.Draft = *body.Draft
 	}
+	next.LatereEnvironments = current.LatereEnvironments
+	if body.LatereEnvironments != nil {
+		next.LatereEnvironments = *body.LatereEnvironments
+		for _, name := range next.LatereEnvironments {
+			if a.environments != nil && !slices.Contains(a.environments, name) {
+				httpapi.WriteError(w, http.StatusBadRequest, "bad_environments")
+				return
+			}
+		}
+	}
 	if err := a.platform.SetSettings(r.Context(), principalFrom(r), next); err != nil {
 		writeAdminError(w, err)
 		return
@@ -285,7 +320,7 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		writeAdminError(w, err)
 		return
 	}
-	writeJSON(w, s)
+	writeJSON(w, a.withKnown(s))
 }
 
 // Solvency reports outstanding sold liability: the sum of every wallet and pot
@@ -428,6 +463,8 @@ func writeAdminError(w http.ResponseWriter, err error) {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_amount")
 	case errors.Is(err, credit.ErrBadCard):
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_card")
+	case errors.Is(err, platform.ErrEnvironments):
+		httpapi.WriteError(w, http.StatusBadRequest, "bad_environments")
 	default:
 		httpapi.WriteError(w, http.StatusInternalServerError, "grant_failed")
 	}

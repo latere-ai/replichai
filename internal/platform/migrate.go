@@ -129,6 +129,13 @@ ALTER TABLE platform_settings ADD COLUMN min_topup_micro BIGINT NOT NULL DEFAULT
 -- model is configured.
 ALTER TABLE platform_settings ADD COLUMN draft JSONB NOT NULL DEFAULT '{}'::jsonb;
 `},
+	{8, `
+-- The environments a session on the Latere platform may name (051): the
+-- platform images this deployment offers. The base image and the statistics
+-- stack are offered from the start, since the platform's catalog holds both;
+-- an admin changes the list in the console.
+ALTER TABLE platform_settings ADD COLUMN latere_environments JSONB NOT NULL DEFAULT '["base","science"]'::jsonb;
+`},
 }
 
 // defaultCardJSON renders the seeded price list for the migration. It is

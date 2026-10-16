@@ -15,8 +15,9 @@ committed. The commit log already holds that.
 - A run can name the environment its machine runs: `--environment` on `audit`
   and `run`, or `environment:` in a project file. On the `latere` runtime,
   `science` adds the statistics stack in Python and R to the base image, and
-  `gui` a display and a browser; a deployment offers them with
-  `LATERE_ENVIRONMENTS` once the platform holds them. A runtime that does not
+  `gui` a display and a browser. In the app, an admin chooses in Admin,
+  Platform policy which ones sessions may name; `base` and `science` are on to
+  start with. A runtime that does not
   offer the named environment refuses the run before it starts, and the run
   record names the environment. `anthropic-managed` offers `base` and
   `science` too.

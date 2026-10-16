@@ -8,8 +8,10 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -59,9 +61,9 @@ type LatereConfig struct {
 	// TokenCommand prints a bearer for the platform's API, in the manner
 	// of a git credential helper.
 	TokenCommand string
-	// Environments are the environments a session may name; empty offers
-	// the base environment alone.
-	Environments []string
+	// Environments reads which environments a session may name, each time a
+	// session asks; nil offers every environment the runtime knows.
+	Environments func(context.Context) ([]string, error)
 }
 
 // WithLatereSignIn attaches the person a Latere call acts for, as a function
@@ -100,6 +102,12 @@ var AnthropicEnvironments = map[string]map[string][]string{
 		"pip": {"geopy", "libpysal", "networkx", "pingouin", "pyreadstat", "scikit-learn", "scipy", "seaborn", "shapely", "spreg", "statsmodels"},
 		"apt": {"r-base-core", "r-cran-afex", "r-cran-car", "r-cran-emmeans", "r-cran-lme4", "r-cran-lmertest", "r-cran-ordinal", "r-cran-psych", "r-cran-spdep", "r-cran-tidyverse"},
 	},
+}
+
+// LatereEnvironmentNames are the environments the Latere runtime knows, which
+// an admin chooses among. Only this package may name the runtime's internals.
+func LatereEnvironmentNames() []string {
+	return slices.Sorted(maps.Keys(latere.KnownEnvironments))
 }
 
 // Latere names the runtime that runs a session on the Latere platform.
