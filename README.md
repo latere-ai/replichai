@@ -1,11 +1,17 @@
 # ReplicHAI
 
-**Audits whether a research paper reproduces.** Give it a paper. It finds what
-the authors released, works out which parts of the work a machine can re-run
-and which parts need people, implements and runs the machine-runnable part,
-records every decision the paper left unwritten, and returns a verdict: a
-per-component table saying what was reproduced, what only partly, and what was
-blocked, each with its evidence or its specific blocker.
+**Replicates research with human participants, from the paper to the study.**
+Give it a paper. It finds what the authors released, works out which parts of
+the work a machine can re-run and which parts need people, implements and runs
+the machine-runnable part, records every decision the paper left unwritten, and
+returns a verdict: a per-component table saying what was reproduced, what only
+partly, and what was blocked, each with its evidence or its specific blocker.
+
+That is the first half. The goal is the study itself: where the analysis
+reproduces reliably across repeated runs, an agent builds the paper's
+experiment, simulated participants drawn from the population the paper sampled
+take part in it, and the paper's conclusion is checked against what they did.
+The second half is coming soon.
 
 [![CI](https://github.com/latere-ai/replichai/actions/workflows/ci.yml/badge.svg)](https://github.com/latere-ai/replichai/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/latere-ai/replichai)](https://github.com/latere-ai/replichai/releases)
@@ -28,9 +34,25 @@ A paper of that kind almost always contains two loops:
   a machine can re-run;
 - an **outer loop**: the study that validates it with human participants.
 
-The inner loop is reproducible. The outer loop is not, and reproducibility
-claims most often go wrong by treating it as if it were. The audit places that
-boundary precisely and defends it. It never simulates the participants.
+ReplicHAI works through both, in order:
+
+1. **What replicates.** An audit re-runs the inner loop from what the authors
+   released and says, claim by claim, what reproduced. The audit never
+   simulates participants: it places the boundary between the two loops and
+   reports the inner one.
+2. **Whether to go on.** Repeated runs of one paper show whether its inner
+   loop reproduces reliably, and whether its study could be served by a
+   machine. Only a paper that passes continues. *Repeated runs are built; the
+   gate is coming soon.*
+3. **The experiment.** An agent builds the study the paper ran, for example
+   the website that shows participants its stimuli, and checks it against the
+   paper's protocol. *Coming soon.*
+4. **The study, simulated.** Simulated participants with a declared
+   population profile take part in that experiment through its interface, the
+   paper's own analysis runs over their responses, and the result is compared
+   with the paper's conclusion. A simulated result is always labeled as one,
+   and reported with how well simulation matched people on studies whose
+   human replications are known. *Coming soon.*
 
 ## Try it
 
@@ -112,9 +134,9 @@ several times to see how far its runs agree.
 
 ## Not built yet
 
-- Running the outer loop as a product: hosting a paper's study for real
-  participants, or re-running its analysis on your own data. The engine for
-  binding a study's instrument to a new data source exists; nothing in the
+- The outer loop: building a paper's experiment and running it with simulated
+  participants, and the gate that decides which papers go on to it. The engine
+  for binding a study's instrument to a new data source exists; nothing in the
   application reaches it yet.
 - Submitting a paper as an uploaded PDF. A paper is referenced by an identifier
   or a URL.

@@ -34,13 +34,13 @@ const en = {
     // open and a session is what spends.
     landingClaim: 'Does the paper|reproduce?',
     landingLead:
-      'Give ReplicHAI a paper. It finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper does not state, and returns a verdict with its evidence.',
+      'Give ReplicHAI a paper. It finds what the authors released, implements and re-runs the part a machine can run, records every decision the paper does not state, and returns a verdict with its evidence. Next, it builds the paper’s experiment and runs it with simulated participants; that part is coming soon.',
     landingInnerTitle: 'The inner loop',
     landingInnerBody:
       'The algorithm, model or analysis pipeline. ReplicHAI implements it, runs it, and publishes it as a repository with the agent’s commit history.',
     landingOuterTitle: 'The outer loop',
     landingOuterBody:
-      'The study that tests it with people. ReplicHAI names it, marks it out of scope, and never simulates it. Simulating a human study is a common way reproducibility claims go wrong.',
+      'The study that tests it with people. The audit names it and never simulates it. Coming soon: an agent builds the experiment, simulated participants take part in it, and the result is labeled as simulated and checked against human replications.',
     landingVerdictTitle: 'The verdict',
     landingVerdictBody:
       'Written by the system, signed by a named researcher, and published with the full transcript, so you can check the reasoning rather than only the number.',
@@ -48,9 +48,9 @@ const en = {
     // and the close. The claim, the lead, and the three points above are 017's
     // and are reused verbatim; the argument did not change, only the space it
     // has.
-    lpLoopsTitle: 'One loop re-runs.|The other cannot.',
+    lpLoopsTitle: 'One loop re-runs.|The other comes next.',
     lpLoopsCaption:
-      'The algorithm can be re-run, so it is drawn as a closed loop. The study with people cannot, so it is drawn open. ReplicHAI never simulates it.',
+      'The algorithm can be re-run, so it is drawn as a closed loop. The study with people is drawn open: the audit never simulates it. Running it with simulated participants is coming soon.',
     lpPipelineTitle: 'What a session|does',
     lpPipelineCaption:
       'Four steps. Each leaves something you can open afterwards: the release it found, the repository it wrote, and the transcript of how it got there.',
@@ -94,7 +94,7 @@ const en = {
     lpEyebrowAudited: 'Reproducibility audits',
     lpStepN: 'Step {n}',
     lpStripEyebrow: 'The registry',
-    lpHeroAside: 'The inner loop is re-run. The outer loop is not.',
+    lpHeroAside: 'The inner loop is re-run today. The outer loop is coming soon.',
     lpLoopsEyebrow: 'The boundary',
     lpPipelineEyebrow: 'A session, step by step',
     lpAnatomyEyebrow: 'In the app',
@@ -139,7 +139,7 @@ const en = {
     lpDemoPublished: 'Published',
     lpDemoOutcome: 'Partly reproduces',
     lpDemoSummary:
-      'The inner loop reproduces on the released code, with one numeric mismatch in Table 3 that the run recorded and did not adjust. The outer loop is out of scope: the effect rests on 84 participants, and the run does not simulate them.',
+      'The inner loop reproduces on the released code, with one numeric mismatch in Table 3 that the run recorded and did not adjust. The outer loop is not part of the audit: the effect rests on 84 participants, and the audit does not simulate them.',
     lpDemoColClaim: 'Claim',
     lpDemoColLoop: 'Loop',
     lpDemoColOutcome: 'Outcome',
@@ -154,14 +154,14 @@ const en = {
     lpDemoRow2: 'Reported ablation gain of 4.1 points',
     lpDemoRow2Evidence: 'Observed 2.6. The paper reports 4.1, the run gives 2.6.',
     lpDemoRow3: 'Participants preferred the assisted condition',
-    lpDemoRow3Evidence: 'Rests on 84 participants. Not simulated.',
+    lpDemoRow3Evidence: 'Rests on 84 participants. Not simulated by the audit.',
     // Who it is for. Named as fields rather than as job titles: the thing that
     // decides whether this product fits is the shape of the paper, not the
     // department it came from.
     lpWhoEyebrow: 'Who it is for',
     lpWhoTitle: 'Papers whose evidence|comes from people.',
     lpWhoCaption:
-      'Built for research with human participants. A paper of that kind almost always contains two loops, and the audit’s job is to place the boundary between them precisely and keep to it.',
+      'Built for research with human participants. A paper of that kind almost always contains two loops. The audit places the boundary between them and re-runs the inner one; running the outer one with simulated participants is coming soon.',
     lpWhoHci: 'Human–computer interaction',
     lpWhoHciBody: 'A system paper whose contribution is the system and whose evidence is a user study.',
     lpWhoPsych: 'Psychology',
@@ -169,7 +169,7 @@ const en = {
     lpWhoSocial: 'Social science',
     lpWhoSocialBody: 'A model and a survey instrument, published together and checked separately.',
     lpWhoElse: 'And anywhere else',
-    lpWhoElseBody: 'a finding rests on what people did, and the outer loop is named and left open.',
+    lpWhoElseBody: 'a finding rests on what people did.',
     // What it costs. What 006q and 011 made true and nothing more: no prices.
     // The rate card is a database row behind an admin endpoint, and a number
     // typed here would be a number that drifts.
@@ -186,19 +186,19 @@ const en = {
     // Figure 1 and the two tables (047). A figure is numbered and captioned the
     // way a journal sets one: the number, a title that states the claim, then
     // what each panel shows. The panel letters are the caption's handles.
-    figAlt: 'Figure 1. An inner loop, a closed ring that a marker goes round once per run, inside an outer loop, an open ring that nothing travels.',
+    figAlt: 'Figure 1. An inner loop, a closed ring that a marker goes round once per run, inside an outer loop, an open ring that nothing travels yet.',
     figImplement: 'Implement',
     figRerun: 'Execute',
     figCompare: 'Compare',
     figRecord: 'Record',
     figRunLabel: 'Run',
-    figOpen: 'Never simulated',
+    figOpen: 'Coming soon',
     figPanelA: 'a',
     figPanelB: 'b',
     figLabel: 'Figure {n}.',
     figTitle: 'The boundary every audit draws.',
     figBody:
-      '(a) The inner loop: the analysis a machine can re-run on what the authors released. Each lap is one run. (b) The outer loop: the study with people. It is named and left open, and ReplicHAI never simulates it.',
+      '(a) The inner loop: the analysis a machine can re-run on what the authors released. Each lap is one run. (b) The outer loop: the study with people. The audit never simulates it; running it with simulated participants is coming soon.',
     figPause: 'Pause the figure',
     figPlay: 'Play the figure',
     tableLabel: 'Table {n}.',
