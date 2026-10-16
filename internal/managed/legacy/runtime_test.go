@@ -409,3 +409,114 @@ func contains(value, part string) bool {
 	}
 	return false
 }
+
+// workspaceRecordingProvider records the workspaces asked for and the ones
+// released, and reports a shared workspace as shared, as the Anthropic
+// provider does.
+type workspaceRecordingProvider struct {
+	*providermemory.Provider
+	asked    []provider.WorkspaceSpec
+	released []provider.WorkspaceRef
+}
+
+func (p *workspaceRecordingProvider) EnsureWorkspace(ctx context.Context, spec provider.WorkspaceSpec) (provider.WorkspaceRef, error) {
+	p.asked = append(p.asked, spec)
+	ref, err := p.Provider.EnsureWorkspace(ctx, spec)
+	ref.Shared = spec.Shared
+	return ref, err
+}
+
+func (p *workspaceRecordingProvider) ReleaseResources(_ context.Context, _ provider.WorkerRef, workspace provider.WorkspaceRef) error {
+	p.released = append(p.released, workspace)
+	return nil
+}
+
+// TestEnvironmentsShareAWorkspace checks that with environments configured,
+// sessions asking for the same environment, packages and network share one
+// workspace under one name, that a named environment adds its packages and
+// gets a workspace of its own, that releasing a session leaves a shared
+// workspace in place, and that an environment the runtime does not offer is
+// refused before anything is created.
+func TestEnvironmentsShareAWorkspace(t *testing.T) {
+	backend := &workspaceRecordingProvider{Provider: providermemory.New()}
+	runtime, err := New(Config{Name: "anthropic-managed", ModelProvider: "anthropic", Provider: backend,
+		Environments: map[string]map[string][]string{"base": {}, "science": {"pip": {"scipy"}, "apt": {"r-base-core"}}}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := context.Background()
+	first, err := runtime.Start(ctx, baseSpec())
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := runtime.Start(ctx, baseSpec()); err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+	science := baseSpec()
+	science.Sandbox.Environment = "science"
+	if _, err := runtime.Start(ctx, science); err != nil {
+		t.Fatalf("Start on science: %v", err)
+	}
+	limited := baseSpec()
+	limited.Sandbox.Network = managed.NetworkPolicy{Mode: managed.NetworkNone}
+	if _, err := runtime.Start(ctx, limited); err != nil {
+		t.Fatalf("Start with no network: %v", err)
+	}
+
+	asked := backend.asked
+	if !asked[0].Shared || asked[0].Name != asked[1].Name || !strings.HasPrefix(asked[0].Name, "managed-base-") {
+		t.Fatalf("two base sessions asked for %q and %q, want one shared name", asked[0].Name, asked[1].Name)
+	}
+	if asked[2].Name == asked[0].Name || !strings.HasPrefix(asked[2].Name, "managed-science-") {
+		t.Fatalf("the science session asked for %q", asked[2].Name)
+	}
+	if !contains(strings.Join(asked[2].Packages["pip"], ","), "scipy") || !contains(strings.Join(asked[2].Packages["apt"], ","), "r-base-core") {
+		t.Fatalf("the science workspace's packages = %v", asked[2].Packages)
+	}
+	if asked[3].Name == asked[0].Name {
+		t.Fatal("a session with another network shares the open network's workspace")
+	}
+
+	if err := runtime.Release(ctx, first); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if len(backend.released) != 1 || !backend.released[0].Shared {
+		t.Fatalf("released %+v, want the shared workspace marked shared", backend.released)
+	}
+
+	gui := baseSpec()
+	gui.Sandbox.Environment = "gui"
+	before := len(backend.asked)
+	if _, err := runtime.Start(ctx, gui); !errors.Is(err, managed.ErrUnsupported) {
+		t.Fatalf("Start on an environment not offered = %v, want unsupported", err)
+	}
+	if len(backend.asked) != before {
+		t.Fatal("a workspace was created for a refused environment")
+	}
+
+	if _, err := New(Config{Name: "anthropic-managed", ModelProvider: "anthropic", Provider: backend,
+		Environments: map[string]map[string][]string{"science": {}}}); err == nil {
+		t.Fatal("New accepted environments without base")
+	}
+}
+
+// TestALocatorWithoutTheSharedMarkReleasesItsWorkspace checks that a session
+// started before workspaces were shared still has its own workspace deleted
+// when it is released.
+func TestALocatorWithoutTheSharedMarkReleasesItsWorkspace(t *testing.T) {
+	backend := &workspaceRecordingProvider{Provider: providermemory.New()}
+	runtime := newRuntime(t, backend)
+	ref, err := runtime.Start(context.Background(), baseSpec())
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if contains(string(ref.Locator), "shared_workspace") {
+		t.Fatalf("a runtime with no environments marked its workspace shared: %s", ref.Locator)
+	}
+	if err := runtime.Release(context.Background(), ref); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if len(backend.released) != 1 || backend.released[0].Shared {
+		t.Fatalf("released %+v, want the session's own workspace", backend.released)
+	}
+}

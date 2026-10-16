@@ -18,9 +18,15 @@ committed. The commit log already holds that.
   `gui` a display and a browser; a deployment offers them with
   `LATERE_ENVIRONMENTS` once the platform holds them. A runtime that does not
   offer the named environment refuses the run before it starts, and the run
-  record names the environment.
+  record names the environment. `anthropic-managed` offers `base` and
+  `science` too.
 
 ### Changed
+
+- Sessions on `anthropic-managed` that ask for the same environment, packages
+  and network share one Anthropic environment instead of creating and deleting
+  one each, so Anthropic installs their packages once and reuses them. A
+  session started before this keeps deleting its own environment when it ends.
 
 - The landing page, its search and share descriptions, and the README describe
   what ReplicHAI is for end to end: the audit re-runs the inner loop today, and

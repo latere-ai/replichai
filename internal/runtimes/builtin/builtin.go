@@ -89,6 +89,19 @@ func buildLatere(config LatereConfig) (managed.Runtime, error) {
 	return latere.New(latere.Config{BaseURL: config.BaseURL, Tokens: tokens, Environments: config.Environments})
 }
 
+// AnthropicEnvironments are the environments the anthropic-managed runtime
+// offers, as packages installed on top of Anthropic's base image, which
+// already holds NumPy, pandas and Matplotlib. science matches the Latere
+// platform's environment of that name: the Python statistics stack, and R with
+// the packages replications use, from Ubuntu's own R packages.
+var AnthropicEnvironments = map[string]map[string][]string{
+	"base": {},
+	"science": {
+		"pip": {"geopy", "libpysal", "networkx", "pingouin", "pyreadstat", "scikit-learn", "scipy", "seaborn", "shapely", "spreg", "statsmodels"},
+		"apt": {"r-base-core", "r-cran-afex", "r-cran-car", "r-cran-emmeans", "r-cran-lme4", "r-cran-lmertest", "r-cran-ordinal", "r-cran-psych", "r-cran-spdep", "r-cran-tidyverse"},
+	},
+}
+
 // Latere names the runtime that runs a session on the Latere platform.
 const Latere = latere.Name
 
@@ -256,7 +269,7 @@ func Catalog(config Config) (*runtimes.Catalog, error) {
 			if err != nil {
 				return nil, err
 			}
-			return legacy.New(legacy.Config{Name: AnthropicManaged, ModelProvider: "anthropic", Provider: backend})
+			return legacy.New(legacy.Config{Name: AnthropicManaged, ModelProvider: "anthropic", Provider: backend, Environments: AnthropicEnvironments})
 		}},
 	)
 }
