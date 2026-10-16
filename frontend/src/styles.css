@@ -839,10 +839,12 @@ textarea {
   padding: 0 18px;
   font-size: 14px;
 }
+/* The small button sits in a row beside other controls, so it keeps the
+   narrow measure it had before 047 and takes only the platform's height. */
 .btn.sm {
   height: 28px;
-  padding: 0 12px;
-  font-size: 12.5px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 /* ── Screen ── */
@@ -1565,17 +1567,16 @@ input.text.title-input {
   margin-left: auto;
 }
 /* What is left to spend, beside the button that spends it (006l). */
-/* The balance on the bar, at the console's control height. A button when it
+/* A balance, as a pill: in a person's row, and on the bar. A button when it
    opens the top-up, so it clears the browser's own button fill. */
 .quota-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
-  font: 500 13px/1 var(--font-sans);
+  font: 500 12px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
-  padding: 0 12px;
+  padding: 6px 10px;
   background: transparent;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
@@ -1585,6 +1586,12 @@ input.text.title-input {
 button.quota-pill:hover {
   background: var(--bg-raised);
   border-color: var(--border-control);
+}
+/* On the bar it stands with the bar's controls, at their height. */
+.topbar-actions .quota-pill {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
 }
 /* Running low is a warning and empty is an error; the pill's tone says which. */
 .quota-pill.low {
@@ -3844,6 +3851,14 @@ input.submit-input {
        rail's fill is transparent in the flow and has nothing behind it here. */
     background: var(--bg);
     border-right: none;
+  }
+  /* No inset on a phone: 390px has no width to spend on a margin, and the
+     drawer already separates navigation from work (034). */
+  .main {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
   /* The shadow belongs to the open drawer only: on a closed one it spilled
      onto the screen's left edge. */
