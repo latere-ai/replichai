@@ -30,6 +30,11 @@ committed. The commit log already holds that.
   database pooler holding a single server connection, the start waited for a
   second connection while its own transaction held the only one, and every
   other request to the app waited behind it until the pooler gave up.
+- A session no longer fails with "runner panicked" when the GitHub
+  organization holds a repository without a `replication.json`, such as one
+  left by a session that did not finish. On a deployment signed in as a GitHub
+  App, any answer from GitHub other than success crashed the run that asked;
+  a missing file now reads as absent.
 - Scrolling the list of models in the runtime picker no longer closes it. Only
   a scroll of the page behind the picker does.
 

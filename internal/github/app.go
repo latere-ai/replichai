@@ -21,8 +21,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	xotel "latere.ai/x/pkg/otel"
 )
 
 // This file makes github.Client authenticate as a GitHub App instead of with a
@@ -65,10 +63,7 @@ func NewApp(appID int64, privateKeyPEM []byte, owner string, opts ...Option) (*C
 	if err != nil {
 		return nil, fmt.Errorf("github app key: %w", err)
 	}
-	c := &Client{base: DefaultBaseURL, http: &http.Client{Timeout: 3 * time.Minute, Transport: xotel.Transport(nil)}}
-	for _, o := range opts {
-		o(c)
-	}
+	c := newClient(opts)
 	c.app = &appAuth{
 		appID:   appID,
 		key:     key,
