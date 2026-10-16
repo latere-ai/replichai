@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -118,6 +119,13 @@ func newEngineRunner(d engineDeps) (*engineRunner, error) {
 	case d.workDir == "":
 		return nil, fmt.Errorf("%w: work directory", errEngineIncomplete)
 	}
+	// Each session's evidence is written under the work directory when the
+	// session ends. Proving it writable here makes a deployment that cannot
+	// write it fail to start, rather than fail every session at its end after
+	// the session's cost is spent.
+	if err := writableDir(d.workDir); err != nil {
+		return nil, fmt.Errorf("work directory: %w", err)
+	}
 	return &engineRunner{
 		controller: d.controller, sessions: d.sessions, method: d.method, fetch: d.fetch,
 		projects: d.projects, jobs: d.jobs, workDir: d.workDir,
@@ -125,6 +133,22 @@ func newEngineRunner(d engineDeps) (*engineRunner, error) {
 		router: d.router, signIn: d.signIn,
 		newController: func(router managed.RuntimeRouter) *managed.Controller { return managed.NewController(router) },
 	}, nil
+}
+
+// writableDir creates dir if it is missing and proves it accepts a file.
+func writableDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	probe, err := os.CreateTemp(dir, ".writable-*")
+	if err != nil {
+		return err
+	}
+	name := probe.Name()
+	if err := probe.Close(); err != nil {
+		return errors.Join(err, os.Remove(name))
+	}
+	return os.Remove(name)
 }
 
 // actAs attaches the person a session belongs to, so a runtime the person

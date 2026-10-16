@@ -6,6 +6,8 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/job"
@@ -40,6 +42,26 @@ func TestNewEngineRunnerRefusesAMissingDependency(t *testing.T) {
 		if _, err := newEngineRunner(d); !errors.Is(err, errEngineIncomplete) {
 			t.Errorf("without %s: err=%v, want errEngineIncomplete", name, err)
 		}
+	}
+}
+
+// TestNewEngineRunnerRefusesAWorkDirItCannotWrite checks that a work
+// directory the server cannot create is a startup error. Each session's
+// evidence is written there when the session ends, so a deployment that cannot
+// write it would otherwise fail every session at its end, after the session's
+// whole cost was spent.
+func TestNewEngineRunnerRefusesAWorkDirItCannotWrite(t *testing.T) {
+	controller, router := managedStack(t, job.LegacyRuntime, legacyRuntime(t, job.LegacyRuntime, memory.New()))
+	blocker := filepath.Join(t.TempDir(), "a-file")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := engineDeps{
+		controller: controller, sessions: router, jobs: job.NewMemStore(), workDir: filepath.Join(blocker, "runs"),
+		fetch: paper.FetcherFunc(func(context.Context, string) ([]byte, error) { return nil, nil }),
+	}
+	if _, err := newEngineRunner(d); err == nil {
+		t.Fatal("a work directory under a file was accepted, want a startup error")
 	}
 }
 

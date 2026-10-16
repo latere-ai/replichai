@@ -26,6 +26,8 @@ COPY . .
 COPY --from=frontend /app/internal/spa/dist ./internal/spa/dist
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags "-X main.version=${VERSION}" -o /out/server ./cmd/server
+# An empty directory that becomes the image's /tmp.
+RUN mkdir -p /out/tmp
 
 # Stage 3: ship the binary on scratch with the method data and CA roots.
 FROM scratch
@@ -35,10 +37,14 @@ COPY --from=build /out/server /app/server
 # method.Load discovers ./method from the working directory.
 COPY method /app/method
 EXPOSE 8080
+# The server writes each session's evidence under /tmp when the session ends.
+# scratch has no /tmp, and the non-root user below cannot create one at the
+# root, so the image carries one that user owns.
+COPY --from=build --chown=65532:65532 /out/tmp /tmp
 # Run as a non-root user. scratch has no passwd file, so the user is numeric.
 # The server binds a high port, reads /app/method and the CA bundle, and writes
-# nothing, so it needs no home directory and owns no files. There is no
-# HEALTHCHECK: scratch has no shell or curl to run one with, and the Kubernetes
-# probes in deploy/base/deployment.yaml call /healthz instead.
+# only under /tmp, so it needs no home directory. There is no HEALTHCHECK:
+# scratch has no shell or curl to run one with, and the Kubernetes probes in
+# deploy/base/deployment.yaml call /healthz instead.
 USER 65532:65532
 ENTRYPOINT ["/app/server"]
