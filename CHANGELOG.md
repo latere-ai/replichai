@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.34.0 - 2026-10-16
+
 ### Added
 
 - The rate card follows Anthropic's prices without anyone typing them. At
