@@ -303,14 +303,36 @@ func (p platform) catalog(ctx context.Context, bearer string) ([]wireCatalogMode
 	return nil, fmt.Errorf("the model catalog did not end after 100 pages")
 }
 
-// storageList lists every file under a folder of the owner's Storage space.
+// storageList lists every file under a folder of the owner's Storage space,
+// following the listing's cursor: Storage answers a page at a time, and a
+// working directory with an installed library in it holds more files than
+// one page.
 func (p platform) storageList(ctx context.Context, bearer, owner, folder string) ([]wireStorageEntry, error) {
-	var out struct {
-		Entries []wireStorageEntry `json:"entries"`
+	var all []wireStorageEntry
+	cursor := ""
+	for range 1000 {
+		query := url.Values{"list": {"1"}, "limit": {strconv.Itoa(storagePage)}}
+		if cursor != "" {
+			query.Set("cursor", cursor)
+		}
+		var page struct {
+			Entries    []wireStorageEntry `json:"entries"`
+			NextCursor string             `json:"next_cursor"`
+		}
+		if err := p.client.call(ctx, bearer, http.MethodGet, "/v1/storage/files/"+escape(owner)+"/"+folder+"?"+query.Encode(), nil, "", &page); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Entries...)
+		if page.NextCursor == "" || len(page.Entries) == 0 {
+			return all, nil
+		}
+		cursor = page.NextCursor
 	}
-	err := p.client.call(ctx, bearer, http.MethodGet, "/v1/storage/files/"+escape(owner)+"/"+folder+"?list=1", nil, "", &out)
-	return out.Entries, err
+	return nil, fmt.Errorf("the session's folder did not end after 1000 pages")
 }
+
+// storagePage is how many entries one Storage listing asks for.
+const storagePage = 500
 
 func (p platform) storageRead(ctx context.Context, bearer, owner, path string) ([]byte, error) {
 	return p.client.send(ctx, bearer, http.MethodGet, "/v1/storage/files/"+escape(owner)+"/"+path, nil, "")

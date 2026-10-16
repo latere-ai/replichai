@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -415,7 +416,20 @@ func (f *fakePlatform) storage(w http.ResponseWriter, r *http.Request) {
 			entries = append(entries, wireStorageEntry{Path: "files/conversations/" + id + "/work/" + name, Size: int64(len(body))})
 		}
 		entries = append(entries, wireStorageEntry{Path: "files/conversations/" + id + "/work/__pycache__/x.pyc"})
-		writeFake(w, http.StatusOK, map[string]any{"entries": entries})
+		slices.SortFunc(entries, func(a, b wireStorageEntry) int { return strings.Compare(a.Path, b.Path) })
+		// Storage answers a page at a time. A page of two makes every test
+		// follow the cursor, as a real working directory does.
+		from, _ := strconv.Atoi(r.URL.Query().Get("cursor"))
+		size := 2
+		if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit < size {
+			size = limit
+		}
+		end := min(from+size, len(entries))
+		answer := map[string]any{"entries": entries[from:end]}
+		if end < len(entries) {
+			answer["next_cursor"] = strconv.Itoa(end)
+		}
+		writeFake(w, http.StatusOK, answer)
 		return
 	}
 	body, ok := s.files[strings.TrimPrefix(file, "/")]

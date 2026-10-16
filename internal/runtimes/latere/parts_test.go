@@ -220,7 +220,10 @@ func TestEffortsNameEachLevelsModelAndPrice(t *testing.T) {
 
 func TestArtifactsComeFromTheSessionsFolder(t *testing.T) {
 	f := newFakePlatform(t)
-	f.files = map[string]string{"outputs/result.txt": "5\n", "README.md": "# r\n"}
+	// More files than one page of Storage's listing, sorted so the run's own
+	// files come after the page break, as an installed library in the
+	// working directory puts them.
+	f.files = map[string]string{"outputs/result.txt": "5\n", "README.md": "# r\n", ".pylibs/a.py": "a", ".pylibs/b.py": "b", ".pylibs/c.py": "c"}
 	r := f.runtime(t)
 	ref, status := run(t, r, gradedSpec())
 	if status.State != managed.StateDone {
@@ -234,10 +237,10 @@ func TestArtifactsComeFromTheSessionsFolder(t *testing.T) {
 	for _, a := range artifacts {
 		paths = append(paths, a.Path)
 	}
-	if strings.Join(paths, ",") != "README.md,outputs/result.txt" {
+	if strings.Join(paths, ",") != ".pylibs/a.py,.pylibs/b.py,.pylibs/c.py,README.md,outputs/result.txt" {
 		t.Fatalf("artifacts = %v: inputs and compiled files are not what the session produced", paths)
 	}
-	body, err := r.FetchArtifact(context.Background(), ref, artifacts[1])
+	body, err := r.FetchArtifact(context.Background(), ref, artifacts[4])
 	if err != nil || string(body) != "5\n" {
 		t.Fatalf("fetch = %q, %v", body, err)
 	}
