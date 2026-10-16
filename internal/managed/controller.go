@@ -103,15 +103,22 @@ type WaitPolicy struct {
 	// MaxSilence is how long the controller waits without a successful poll
 	// before it declares the session timed out rather than failed.
 	MaxSilence time.Duration
-	// CleanupTimeout bounds cancel, terminal wait, retention, and release,
-	// which run on a context detached from the caller's so an abandoned
-	// request still cleans up after itself.
+	// CleanupTimeout bounds the cancel of an abandoned session and the wait
+	// for its terminal observation, which run on a context detached from the
+	// caller's so an abandoned request still cleans up after itself.
 	CleanupTimeout time.Duration
+	// RetainTimeout bounds reading the evidence, the Retain hook and release,
+	// on a context of its own detached from the caller's: a session that is
+	// cancelled, or ends at the caller's deadline, still hands over what it
+	// produced, which can take far longer than cancelling it. Zero is
+	// CleanupTimeout.
+	RetainTimeout time.Duration
 }
 
 // DefaultWaitPolicy returns the budget tuned for production: poll from two
 // seconds up to fifteen, tolerate five consecutive temporary failures or two
-// minutes of silence, and allow thirty seconds to clean up. Tests shrink these
+// minutes of silence, allow thirty seconds to cancel an abandoned session, and
+// ten minutes to hand over its evidence. Tests shrink these
 // durations instead of inventing their own policy.
 func DefaultWaitPolicy() WaitPolicy {
 	return WaitPolicy{
@@ -120,6 +127,7 @@ func DefaultWaitPolicy() WaitPolicy {
 		MaxTemporaryErrors: 5,
 		MaxSilence:         2 * time.Minute,
 		CleanupTimeout:     30 * time.Second,
+		RetainTimeout:      10 * time.Minute,
 	}
 }
 
@@ -314,7 +322,9 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 		}
 		previous = status
 		if status.State.Terminal() {
-			return c.retainAndRelease(ctx, runtime, status, hooks, nil)
+			retainCtx, cancel := c.retainContext(ctx)
+			defer cancel()
+			return c.retainAndRelease(retainCtx, runtime, status, hooks, nil)
 		}
 		if err := c.clock.sleep(ctx, delay); err != nil {
 			return c.abort(ctx, runtime, ref, status, hooks, err)
@@ -343,7 +353,9 @@ func (c *Controller) abort(ctx context.Context, runtime Runtime, ref SessionRef,
 	} else {
 		status = terminal
 	}
-	result, finishErr := c.retainAndRelease(cleanupCtx, runtime, status, hooks, nil)
+	retainCtx, cancelRetain := c.retainContext(ctx)
+	defer cancelRetain()
+	result, finishErr := c.retainAndRelease(retainCtx, runtime, status, hooks, nil)
 	if finishErr != nil {
 		cleanupErrors = append(cleanupErrors, finishErr)
 	}
@@ -351,6 +363,17 @@ func (c *Controller) abort(ctx context.Context, runtime Runtime, ref SessionRef,
 		return result, errors.Join(append([]error{cause}, cleanupErrors...)...)
 	}
 	return result, cause
+}
+
+// retainContext is the context evidence is handed over on: detached from the
+// caller's, so a session that ends at the caller's deadline or is abandoned
+// still hands over what it produced, and bounded by RetainTimeout.
+func (c *Controller) retainContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := c.policy.RetainTimeout
+	if timeout <= 0 {
+		timeout = c.policy.CleanupTimeout
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
 }
 
 func (c *Controller) retainAndRelease(ctx context.Context, runtime Runtime, status Status, hooks Hooks, cause error) (Result, error) {

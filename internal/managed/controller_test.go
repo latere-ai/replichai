@@ -276,6 +276,37 @@ func TestStartedAndCheckpointFailuresAbort(t *testing.T) {
 	}
 }
 
+// Keeping the evidence has a budget of its own. A run that is cancelled, or
+// ends at its deadline, still has a folder of files to read and hand over,
+// which can take far longer than cancelling the session does; on the cleanup
+// budget alone that handoff was cut short and the work was lost.
+func TestEvidenceIsKeptOnItsOwnBudget(t *testing.T) {
+	clock := time.Unix(100, 0)
+	controller := NewController(controllerRouter{runtime: newControllerRuntime()}, WithWaitPolicy(WaitPolicy{
+		InitialDelay: 1, MaxDelay: 4, MaxTemporaryErrors: 3, MaxSilence: time.Minute,
+		CleanupTimeout: 5 * time.Millisecond, RetainTimeout: 5 * time.Second,
+	}), withControllerClock(func() time.Time { return clock }, func(context.Context, time.Duration) error {
+		clock = clock.Add(time.Second)
+		return nil
+	}))
+	hooks := Hooks{
+		Status: func(_ context.Context, status Status) error {
+			if status.State == StateRunning {
+				return errors.New("observe")
+			}
+			return nil
+		},
+		Retain: func(ctx context.Context, _ EvidenceReader) error {
+			time.Sleep(20 * time.Millisecond) // longer than the cleanup budget
+			return ctx.Err()
+		},
+	}
+	result, err := controller.Execute(context.Background(), controllerSpec(false), hooks)
+	if !result.Released {
+		t.Fatalf("the evidence handoff ran out of time: released=%v, %v", result.Released, err)
+	}
+}
+
 func TestControllerValidationAndRoutingFailuresDoNotStart(t *testing.T) {
 	runtime := newControllerRuntime()
 	runtime.validate = errors.New("unsupported")
