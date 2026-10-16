@@ -14,7 +14,7 @@ import (
 
 	"latere.ai/x/pkg/atomicfile"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 const stateVersion = 1

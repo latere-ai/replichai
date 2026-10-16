@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // ModelResolver turns a model preference into the concrete model a backend

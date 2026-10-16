@@ -73,7 +73,7 @@ replichai run <project-file> --parallel 4 [--publish] [--resume]
 replichai login | project create | push <project-file> --project <id>
 ```
 
-The local runtime is a peer of `anthropic-managed`, not a fork: it satisfies the same `managed.Runtime` contract and passes the contract tests in `internal/managed/contracttest`, as the memory runtime does. Nothing about it touches the credit ledger; the operator bought that compute from the vendor themselves.
+The local runtime is a peer of `anthropic-managed`, not a fork: it satisfies the same `managed.Runtime` contract and passes the contract tests in the port's `contracttest`, as the memory runtime does. Nothing about it touches the credit ledger; the operator bought that compute from the vendor themselves.
 
 This has been run, which is the reason to believe any of it. A session driven by a real `srt` around a real Claude Code, and a second around a real Codex, on the operator's existing login with no API key: bootstrap, worker, judge, verdict. Roughly a dozen defects sat between the deck as written and that run, and every one of them was a fact about somebody else's program rather than a mistake in the reasoning: a sandbox that refuses a wildcard, a login kept in a keychain, a client that will not trust an injected authority, a shell that needs a scratch directory. [045](045-the-run-happens-on-your-machine.md)'s Outcome carries the list and the lesson.
 
@@ -131,7 +131,7 @@ This has been run, which is the reason to believe any of it. A session driven by
 
 ## Architecture at a glance
 
-**The neutral core, the named edges.** The orchestrator (`internal/audit`) and the contracts (`internal/managed`, `internal/provider`) name only roles; the adapters and the composition root (`internal/runtimes/builtin`, `cmd/`) name the vendor, and a test walks the import graph to keep it that way. A `memory` runtime runs nothing, so the whole orchestrator is testable offline.
+**The neutral core, the named edges.** The orchestrator (`internal/audit`) and the contracts (the managed-session port `latere.ai/x/managed-agents`, and `internal/provider`) name only roles; the adapters and the composition root (`internal/runtimes/builtin`, `cmd/`) name the vendor, and a test walks the import graph to keep it that way. A `memory` runtime runs nothing, so the whole orchestrator is testable offline.
 
 **The package map:**
 
@@ -142,8 +142,9 @@ This has been run, which is the reason to believe any of it. A session driven by
 | `internal/instrument` | the `instrument.json` schema and its validation (007a) |
 | `internal/verdict` | the `verdict.json` schema — the findings as data (021a) |
 | `internal/provider` | the original backend contract; its neutral half is still everyone's event vocabulary (041) |
-| `internal/managed` | the vendor-neutral managed-session contract and the controller that drives one (041a, 041b) |
-| `internal/runtimes` | the explicit runtime catalog and durable router — no registry, no `init` (041, 041c) |
+| `latere.ai/x/managed-agents` | the vendor-neutral managed-session contract, its conformance suite and memory runtime, imported as `managed` (041a); its `latere` module is the Latere runtime (041g) |
+| `internal/managed/legacy` | the `anthropic-managed` runtime over the provider protocol (041e) |
+| `internal/runtimes` | the explicit runtime catalog, the durable router and the controller that drives a session — no registry, no `init` (041, 041b, 041c) |
 | `internal/audit` | the orchestrator: run an audit, optionally into a mounted repo |
 | `internal/fetch` | the one outbound fetcher for user-supplied URLs |
 | `internal/batch` | one project file: many papers, several runs each, one copy of each paper and its artifacts for all its runs, in parallel and resumable (045h, 046) |

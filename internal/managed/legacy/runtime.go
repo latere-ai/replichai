@@ -15,7 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/provider"
 )
 
@@ -65,14 +66,17 @@ func (r *Runtime) Capabilities(context.Context) (managed.Capabilities, error) {
 // Validate to discard an error it cannot return.
 func (r *Runtime) capabilities() managed.Capabilities {
 	return managed.Capabilities{
-		OutputDir:          r.config.Provider.OutputDir(),
-		PackageManagers:    map[string]bool{"pip": true},
-		NetworkModes:       map[managed.NetworkMode]bool{managed.NetworkNone: true, managed.NetworkOpen: true},
-		RepositoryModes:    map[managed.AccessMode]bool{managed.AccessReadOnly: true, managed.AccessReadWrite: true},
-		Evaluation:         true,
-		DurableEvents:      true,
-		Artifacts:          true,
-		Cancellation:       true,
+		OutputDir:       r.config.Provider.OutputDir(),
+		PackageManagers: map[string]bool{"pip": true},
+		NetworkModes:    map[managed.NetworkMode]bool{managed.NetworkNone: true, managed.NetworkOpen: true},
+		RepositoryModes: map[managed.AccessMode]bool{managed.AccessReadOnly: true, managed.AccessReadWrite: true},
+		Evaluation:      true,
+		DurableEvents:   true,
+		Artifacts:       true,
+		Cancellation:    true,
+		// The vendor keeps the session and the reference names it by id, so
+		// a process started later reaches it again.
+		Resumable:          true,
 		MaxAttachmentBytes: 64 << 20,
 		MaxLocatorBytes:    managed.DefaultMaxLocatorBytes,
 	}

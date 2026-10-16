@@ -25,7 +25,7 @@ import (
 
 	"go.yaml.in/yaml/v4"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // Entry is one paper in a project, with the overrides that apply to it.

@@ -15,13 +15,15 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"latere.ai/x/pkg/hostsandbox"
 
-	"github.com/latere-ai/replichai/internal/managed"
-	"github.com/latere-ai/replichai/internal/managed/contracttest"
+	managed "latere.ai/x/managed-agents"
+	"latere.ai/x/managed-agents/contracttest"
+
 	"github.com/latere-ai/replichai/internal/runtimes/local"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
 	"github.com/latere-ai/replichai/internal/runtimes/local/localtest"
@@ -146,23 +148,50 @@ func TestTheLoginGrantReachesOnlyASessionOnTheOperatorsLogin(t *testing.T) {
 	}
 }
 
-// The runtime is held to the same black-box suite as every other adapter.
+// The runtime is held to the same black-box suite as every other adapter. A
+// restart is a runtime built afresh over the same Root and sandbox, which is
+// all a new process has. The rejecting runtime checks the shared terminal
+// state for a rejected evaluation: failed, not done. Local once reported
+// done, and the job store maps state one to one, so the same outcome was
+// recorded as done here and failed on every other runtime.
 func TestLocalMeetsTheManagedContract(t *testing.T) {
-	contracttest.Run(t, func() managed.Runtime {
-		runtime, _ := build(t, localtest.Script{})
+	var mu sync.Mutex
+	configs := map[managed.Runtime]local.Config{}
+	fresh := func(script localtest.Script) managed.Runtime {
+		registry, err := harness.NewRegistry(harness.NewClaudeCode(), harness.NewCodex())
+		if err != nil {
+			t.Fatalf("NewRegistry: %v", err)
+		}
+		catalog, err := local.NewCatalog(local.DefaultCatalogFile(), registry, noCredentials)
+		if err != nil {
+			t.Fatalf("NewCatalog: %v", err)
+		}
+		config := local.Config{Sandbox: localtest.New(script), Harness: harness.NewClaudeCode(), Catalog: catalog, Root: t.TempDir(), Lookup: os.LookupEnv}
+		runtime, err := local.New(config)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		configs[runtime] = config
 		return runtime
-	})
-}
-
-// The runtime also reports the shared terminal state for a rejected
-// evaluation: failed, not done. Local once reported done, and the job store
-// maps state one to one, so the same outcome was recorded as done here and
-// failed on every other runtime.
-func TestLocalFailingEvaluationMeetsTheContract(t *testing.T) {
-	contracttest.RunFailingEvaluation(t, func() managed.Runtime {
-		runtime, _ := build(t, localtest.Script{Grades: []string{"needs_revision", "needs_revision"}})
-		return runtime
-	})
+	}
+	contracttest.Suite{
+		New: func() managed.Runtime { return fresh(localtest.Script{}) },
+		Restart: func(previous managed.Runtime) managed.Runtime {
+			mu.Lock()
+			config := configs[previous]
+			mu.Unlock()
+			runtime, err := local.New(config)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			return runtime
+		},
+		Rejecting: func() managed.Runtime {
+			return fresh(localtest.Script{Grades: []string{"needs_revision", "needs_revision"}})
+		},
+	}.Run(t)
 }
 
 func spec(graded bool) managed.SessionSpec {

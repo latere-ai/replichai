@@ -16,12 +16,13 @@ import (
 	"latere.ai/x/pkg/hostsandbox"
 	xotel "latere.ai/x/pkg/otel"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
+	"latere.ai/x/managed-agents/latere"
+	managedmemory "latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/managed/legacy"
-	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/provider/anthropic"
 	"github.com/latere-ai/replichai/internal/runtimes"
-	"github.com/latere-ai/replichai/internal/runtimes/latere"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
 	"github.com/latere-ai/replichai/internal/runtimes/local/container"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
@@ -82,8 +83,19 @@ func buildLatere(config LatereConfig) (managed.Runtime, error) {
 		tokens = latere.PersonalAccessToken(authURL, strings.TrimSpace(config.APIKey), &http.Client{Timeout: 30 * time.Second, Transport: xotel.Transport(nil)})
 	case strings.TrimSpace(config.TokenCommand) != "":
 		tokens = latere.Command(config.TokenCommand)
+	default:
+		// No sign-in of the runtime's own: a call acts for the person on its
+		// context, and one with none says how to give this program one.
+		tokens = latere.TokenFunc(func(context.Context) (string, error) {
+			return "", fmt.Errorf("%w (set LATERE_API_KEY to a personal access token)", latere.ErrNoCredential)
+		})
 	}
-	return latere.New(latere.Config{BaseURL: config.BaseURL, Tokens: tokens})
+	return latere.New(latere.Config{
+		BaseURL: config.BaseURL, Tokens: tokens, Product: latereProduct,
+		// Long enough for a large file read from Storage, and traced, as every
+		// outbound call here is.
+		HTTP: &http.Client{Timeout: 5 * time.Minute, Transport: xotel.Transport(nil)},
+	})
 }
 
 // Latere names the runtime that runs a session on the Latere platform.
@@ -104,6 +116,11 @@ func LatereEfforts(ctx context.Context, runtime managed.Runtime) ([]Effort, erro
 	}
 	return platform.Efforts(ctx)
 }
+
+// latereProduct is how the person's Latere console names what ReplicHAI
+// starts. Its key names the agents (replichai-<digest>), so it stays fixed:
+// changing it would make every session apply new agents.
+var latereProduct = latere.Product{Key: "replichai", Name: "ReplicHAI"}
 
 // DefaultLatereAuthURL is Latere Auth in production.
 const DefaultLatereAuthURL = "https://auth.latere.ai"

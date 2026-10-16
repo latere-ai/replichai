@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // EnvironmentFile is the record a local session keeps of what it ran on: the

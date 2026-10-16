@@ -29,14 +29,16 @@ flowchart LR
     server --> spa["spa<br/>the built frontend, embedded"]
     server --> runner["job.Runner"]
     runner --> audit["audit"]
-    audit --> controller["managed.Controller"]
+    audit --> controller["runtimes.Controller"]
     controller --> router["runtime router"]
     audit --> finalize["publish.FinalizeLive"]
     finalize --> github["github"]
 ```
 
 Postgres holds `jobs`, `projects`, `project_papers`, `project_members`,
-`access_grants`, `freeze_overrides`, `platform_settings`, `profiles`, and the
+`access_grants`, `freeze_overrides`, `platform_settings`, `profiles`,
+`platform_sign_ins` (the sealed Latere sign-in that lets a session on the
+`latere` runtime act for the person who started it), and the
 ledger's `ledger_entries`, whose schema the `latere.ai/x/pay` module owns. On a
 database created by an older release, the rows of the earlier `credit_entries`
 table are copied into `ledger_entries` once, and that table is left in place
@@ -48,15 +50,15 @@ One binary. The HTTP server and the worker run in the same process; the database
 
 **Paper identity** (`internal/paper/`) answers the question "is this the same paper we already audited?". Identity is a resolved external identifier: a DOI, else an arXiv ID upgraded to its published DOI, else a digest of the fetched content. It is never the title, which changes between preprint and camera-ready. The slug answers "what should the repository be called?" and never feeds identity. An arXiv lookup that cannot complete returns an error rather than guessing, so identity does not depend on connectivity. The network is reached through a `Fetcher` seam the caller supplies, which keeps the package testable without one.
 
-**Orchestrator** (`internal/audit/`) describes one session: model preference, instructions, task, sandbox, resources, and optional evaluation. `managed.Controller` owns start, polling, retry, cancellation, evidence retention, and release. Audit and experiment code never names a vendor workspace, agent, container, or response.
+**Orchestrator** (`internal/audit/`) describes one session: model preference, instructions, task, sandbox, resources, and optional evaluation. The controller (`runtimes.Controller`) owns start, polling, retry, cancellation, evidence retention, and release. Audit and experiment code never names a vendor workspace, agent, container, or response.
 
-**Managed-session contract** (`internal/managed/`) is the seam: one `SessionSpec` starts one session and returns a provider-tagged, versioned `SessionRef`. That complete reference is persisted before the first poll and routes every later poll, transcript, artifact, cancel, and release back to its owning runtime, even after a restart or a change of default.
+**Managed-session contract** (`latere.ai/x/managed-agents`, imported as `managed`) is the seam: one `SessionSpec` starts one session and returns a provider-tagged, versioned `SessionRef`. That complete reference is persisted before the first poll and routes every later poll, transcript, artifact, cancel, and release back to its owning runtime, even after a restart or a change of default.
 
-**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Three runtimes ship: `anthropic-managed`, which adapts Anthropic's Managed Agents backend; `memory`, a deterministic reference runtime that produces a fake audit, for tests and local development; and `local`, which runs a session on the operator's own machine. Here and below, the **operator** is whoever runs replichai: the person at the terminal for the CLI, or whoever administers a deployment of the server. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
+**Runtime adapters and routing** (`internal/runtimes/`) are composed explicitly; there is no global registry or `init` registration. Four runtimes ship: `anthropic-managed`, which adapts Anthropic's Managed Agents backend (`internal/managed/legacy`); `latere`, which runs a session on the Latere platform, paid from the Latere wallet of the person who starts it (the port's `latere.ai/x/managed-agents/latere` module); `memory`, a deterministic reference runtime that produces a fake audit, for tests and local development; and `local`, which runs a session on the operator's own machine. Here and below, the **operator** is whoever runs replichai: the person at the terminal for the CLI, or whoever administers a deployment of the server. Vendor wire payloads and usage fields are translated inside the adapter; HTTP and billing consume only normalized events, model references, and meters.
 
-Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means implementing the managed contract and registering it at the composition boundary; consumers do not change. Other adapters, such as one that calls OpenAI directly, are not built.
+Every operation that can block takes a `context.Context` and honors cancellation. Adding a runtime means an adapter that implements the managed contract and passes its conformance suite, and an entry at the composition boundary; consumers do not change. Other adapters, such as one that calls OpenAI directly, are not built.
 
-**The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed` behind the same contract, passes the contract tests in `internal/managed/contracttest` as the memory runtime does, and the choices that vary inside it are not part of its name. The **harness** is the coding agent's command-line program that does the work inside the sandbox, Claude Code or Codex, and `srt` is Anthropic's sandbox runtime (`@anthropic-ai/sandbox-runtime`):
+**The local runtime** (`internal/runtimes/local/`) is the same engine on the operator's own machine. It is a peer of `anthropic-managed` behind the same contract, passes the port's contract tests (`contracttest`) as the memory runtime does, and the choices that vary inside it are not part of its name. The **harness** is the coding agent's command-line program that does the work inside the sandbox, Claude Code or Codex, and `srt` is Anthropic's sandbox runtime (`@anthropic-ai/sandbox-runtime`):
 
 ```mermaid
 flowchart LR
@@ -111,7 +113,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **Platform policy** (`internal/platform/`) is the settings row an admin tunes at runtime: the start reserve (what a project must hold before a session may start), the overdraft floor, and the **rate card**, the per-model price list, in dollars per million input and output tokens, that a session's usage is charged at. It stores policy and does not enforce it; enforcement lives where the money moves.
 
-**The ledger** (`internal/credit/`) is append-only, in micro-USD, and no balance is stored anywhere: every number in the product is computed by summing the table. A session takes a reserve inside the transaction that inserts it and settles in the transaction that ends it. There is no payment package of its own: the card processor is the shared `latere.ai/x/pay` seam (open a hosted checkout, verify and read a webhook) with its Stripe adapter composed in `cmd/server`. `internal/httpapi/payments.go` holds the checkout and webhook routes. The webhook is the only thing that posts a credit, and it dedupes on an external reference so a retried delivery cannot double it. `internal/webauth/freeze.go` is where a negative wallet turns into a view-only account.
+**The ledger** (`internal/credit/`) is append-only, in micro-USD, and no balance is stored anywhere: every number in the product is computed by summing the table. A session takes a reserve inside the transaction that inserts it and settles in the transaction that ends it. A session on a runtime whose platform charges the person who started it (the `latere` runtime) takes neither: its job records that the person pays, and its cost is the figure that platform reports. There is no payment package of its own: the card processor is the shared `latere.ai/x/pay` seam (open a hosted checkout, verify and read a webhook) with its Stripe adapter composed in `cmd/server`. `internal/httpapi/payments.go` holds the checkout and webhook routes. The webhook is the only thing that posts a credit, and it dedupes on an external reference so a retried delivery cannot double it. `internal/webauth/freeze.go` is where a negative wallet turns into a view-only account.
 
 **Profiles** (`internal/profile/`) are who a principal says they are: the researcher identity a public sign-off is published under, and the handle a public page resolves. It is deliberately not part of `access`: a grant is an authorization, a profile is an assertion, and they have different lifetimes.
 

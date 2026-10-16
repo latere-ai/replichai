@@ -10,8 +10,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/latere-ai/replichai/internal/runtimes"
+
 	"github.com/latere-ai/replichai/internal/job"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
@@ -205,7 +206,7 @@ func engineOver(t *testing.T, backend provider.Provider, repo string) (*engineRu
 
 // legacySessions is the router a runner reads a legacy row's transcript
 // through: one anthropic-managed adapter over backend.
-func legacySessions(t *testing.T, backend provider.Provider) managed.RuntimeRouter {
+func legacySessions(t *testing.T, backend provider.Provider) runtimes.RuntimeRouter {
 	t.Helper()
 	_, router := managedStack(t, job.LegacyRuntime, legacyRuntime(t, job.LegacyRuntime, backend))
 	return router

@@ -12,8 +12,9 @@ import (
 
 	goruntime "runtime"
 
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/audit"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
 	"github.com/latere-ai/replichai/internal/runtimes/local/host"

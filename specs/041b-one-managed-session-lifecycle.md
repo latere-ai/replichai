@@ -5,7 +5,7 @@ status: implemented
 
 # 041b — One managed-session lifecycle
 
-**Status:** implemented.
+**Status:** implemented. Since 2026-10-16 the controller is `runtimes.Controller` in `internal/runtimes`, beside the router, since the contract it drives moved to the managed-session port ([041](041-the-runtime-is-not-the-model-vendor.md), Outcome).
 
 **Scope:** add one controller for start, durable handoff, wait/retry, evidence retention, cancellation, and release; migrate audit, experiment runner, and model cohort away from assembling or polling runtime resources themselves. Preserve their product outputs.
 

@@ -12,9 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	managed "latere.ai/x/managed-agents"
+	managedmemory "latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/job"
-	"github.com/latere-ai/replichai/internal/managed"
-	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
 	"github.com/latere-ai/replichai/internal/signin"
@@ -181,10 +182,10 @@ func TestAJobRunsWhereItChoseAndMountsOnlyWhereItCan(t *testing.T) {
 		t.Fatal(err)
 	}
 	var bound []managed.RuntimeName
-	e := &engineRunner{router: router, newController: func(r managed.RuntimeRouter) *managed.Controller {
+	e := &engineRunner{router: router, newController: func(r runtimes.RuntimeRouter) *runtimes.Controller {
 		runtime, _ := r.ForNew(managed.SessionSpec{})
 		bound = append(bound, runtime.Name())
-		return managed.NewController(r)
+		return runtimes.NewController(r)
 	}}
 	for _, c := range []struct {
 		runtime string

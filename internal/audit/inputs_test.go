@@ -10,8 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/latere-ai/replichai/internal/managed"
-	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
+	managed "latere.ai/x/managed-agents"
+	managedmemory "latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/paper"
 )
 

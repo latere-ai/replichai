@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package managed
+package runtimes
 
 import (
 	"context"
@@ -11,13 +11,15 @@ import (
 	"reflect"
 	"time"
 
+	managed "latere.ai/x/managed-agents"
+
 	"latere.ai/x/pkg/wait"
 )
 
 // RuntimeRouter chooses a runtime for a new specification or a durable ref.
 type RuntimeRouter interface {
-	ForNew(SessionSpec) (Runtime, error)
-	ForRef(SessionRef) (Runtime, error)
+	ForNew(managed.SessionSpec) (managed.Runtime, error)
+	ForRef(managed.SessionRef) (managed.Runtime, error)
 }
 
 // Hooks are the caller's synchronous callbacks on the session lifecycle. Every
@@ -30,14 +32,14 @@ type Hooks struct {
 	// Started runs immediately after the runtime accepted the session and
 	// before the first poll, so a successful remote start can never become
 	// invisible. The server persists the durable reference here.
-	Started func(context.Context, SessionRef) error
+	Started func(context.Context, managed.SessionRef) error
 	// Checkpoint receives the previous and the advanced reference whenever a
 	// runtime raises its locator revision. It must persist the new reference,
 	// because the controller calls the runtime again only after it returns.
-	Checkpoint func(context.Context, SessionRef, SessionRef) error
+	Checkpoint func(context.Context, managed.SessionRef, managed.SessionRef) error
 	// Status receives the initial pending observation and every later
 	// observation that differs from the one before it; duplicates are dropped.
-	Status func(context.Context, Status) error
+	Status func(context.Context, managed.Status) error
 	// Retain is the evidence handoff, called once while the remote resources
 	// still exist. Only a successful Retain permits release, so a failure here
 	// deliberately leaves the session unreleased and recoverable.
@@ -50,20 +52,20 @@ type Hooks struct {
 type EvidenceReader struct {
 	// Status is the terminal observation, or the last partial one when the
 	// session was cancelled or abandoned before it settled.
-	Status Status
+	Status managed.Status
 	// Events is the transcript as the runtime normalized it, in the order the
 	// runtime reports; the controller neither filters nor reorders it.
-	Events []Event
+	Events []managed.Event
 	// Artifacts is the metadata for every file the session produced; the bytes
 	// are read through Fetch.
-	Artifacts []Artifact
-	runtime   Runtime
+	Artifacts []managed.Artifact
+	runtime   managed.Runtime
 }
 
 // Fetch reads one artifact's bytes from the still-live runtime. Call it only
 // from inside the Retain hook: afterwards the session is released and the
 // remote copy may be gone.
-func (e EvidenceReader) Fetch(ctx context.Context, artifact Artifact) ([]byte, error) {
+func (e EvidenceReader) Fetch(ctx context.Context, artifact managed.Artifact) ([]byte, error) {
 	return e.runtime.FetchArtifact(ctx, e.Status.Ref, artifact)
 }
 
@@ -73,14 +75,14 @@ func (e EvidenceReader) Fetch(ctx context.Context, artifact Artifact) ([]byte, e
 type Result struct {
 	// Ref is the last durable reference the controller saw, and is zero only
 	// when the session never started.
-	Ref SessionRef
+	Ref managed.SessionRef
 	// Status is the final observation, terminal unless the runtime stopped
 	// answering, in which case the controller names the terminal reason itself.
-	Status Status
+	Status managed.Status
 	// Events is the transcript captured before release.
-	Events []Event
+	Events []managed.Event
 	// Artifacts is the artifact metadata captured before release.
-	Artifacts []Artifact
+	Artifacts []managed.Artifact
 	// Released is true only when Release succeeded. False is not proof that the
 	// session still exists, because a failure early in the lifecycle returns
 	// before the cleanup it triggered can report back.
@@ -174,10 +176,10 @@ func NewController(router RuntimeRouter, options ...ControllerOption) *Controlle
 // Capabilities reports what the runtime routed for spec supports, without
 // starting or mutating anything, so a caller can reject an unsupported request
 // before any remote work happens.
-func (c *Controller) Capabilities(ctx context.Context, spec SessionSpec) (Capabilities, error) {
+func (c *Controller) Capabilities(ctx context.Context, spec managed.SessionSpec) (managed.Capabilities, error) {
 	runtime, err := c.router.ForNew(spec)
 	if err != nil {
-		return Capabilities{}, err
+		return managed.Capabilities{}, err
 	}
 	return runtime.Capabilities(ctx)
 }
@@ -185,7 +187,7 @@ func (c *Controller) Capabilities(ctx context.Context, spec SessionSpec) (Capabi
 // Start validates and creates a durable session, invoking Started before it
 // returns. It exists for the CLI's explicit detached workflow. Ordinary callers
 // use Execute, so that retention and release cannot be forgotten.
-func (c *Controller) Start(ctx context.Context, spec SessionSpec, hooks Hooks) (SessionRef, error) {
+func (c *Controller) Start(ctx context.Context, spec managed.SessionSpec, hooks Hooks) (managed.SessionRef, error) {
 	// The runtime that start resolves is discarded here. The detached workflow
 	// reattaches by reference on the next call. Only Execute keeps the
 	// runtime, to poll in the same process.
@@ -200,38 +202,41 @@ func (c *Controller) Start(ctx context.Context, spec SessionSpec, hooks Hooks) (
 // terminal observation, hand the evidence to Retain, release. Because it sees
 // the specification, it also knows whether an evaluation was requested, and so
 // holds the runtime to the matching verdict, which Resume cannot do.
-func (c *Controller) Execute(ctx context.Context, spec SessionSpec, hooks Hooks) (Result, error) {
+func (c *Controller) Execute(ctx context.Context, spec managed.SessionSpec, hooks Hooks) (Result, error) {
 	runtime, ref, err := c.start(ctx, spec, hooks)
 	if err != nil {
 		return Result{Ref: ref}, err
 	}
-	graded := spec.Evaluation != nil
-	return c.wait(ctx, runtime, ref, hooks, &graded)
+	grading := managed.GradingNotRequested
+	if spec.Evaluation != nil {
+		grading = managed.GradingRequested
+	}
+	return c.wait(ctx, runtime, ref, hooks, grading)
 }
 
-func (c *Controller) start(ctx context.Context, spec SessionSpec, hooks Hooks) (Runtime, SessionRef, error) {
+func (c *Controller) start(ctx context.Context, spec managed.SessionSpec, hooks Hooks) (managed.Runtime, managed.SessionRef, error) {
 	runtime, err := c.router.ForNew(spec)
 	if err != nil {
-		return nil, SessionRef{}, err
+		return nil, managed.SessionRef{}, err
 	}
 	if err := runtime.Validate(spec); err != nil {
-		return nil, SessionRef{}, err
+		return nil, managed.SessionRef{}, err
 	}
 	ref, err := runtime.Start(ctx, spec)
 	if err != nil {
-		return nil, SessionRef{}, err
+		return nil, managed.SessionRef{}, err
 	}
 	if err := validateRuntimeRef(runtime, ref); err != nil {
-		_, abortErr := c.abort(ctx, runtime, ref, Status{Ref: ref, State: StateFailed, TerminalReason: ReasonRuntimeFailed}, hooks, err)
+		_, abortErr := c.abort(ctx, runtime, ref, managed.Status{Ref: ref, State: managed.StateFailed, TerminalReason: managed.ReasonRuntimeFailed}, hooks, err)
 		return nil, ref, abortErr
 	}
 	if hooks.Started != nil {
 		if err := hooks.Started(ctx, ref); err != nil {
-			_, abortErr := c.abort(ctx, runtime, ref, Status{Ref: ref, State: StateFailed, TerminalReason: ReasonRuntimeFailed}, hooks, err)
+			_, abortErr := c.abort(ctx, runtime, ref, managed.Status{Ref: ref, State: managed.StateFailed, TerminalReason: managed.ReasonRuntimeFailed}, hooks, err)
 			return nil, ref, abortErr
 		}
 	}
-	initial := Status{Ref: ref, State: StatePending}
+	initial := managed.Status{Ref: ref, State: managed.StatePending}
 	if hooks.Status != nil {
 		if err := hooks.Status(ctx, initial); err != nil {
 			_, abortErr := c.abort(ctx, runtime, ref, initial, hooks, err)
@@ -244,7 +249,7 @@ func (c *Controller) start(ctx context.Context, spec SessionSpec, hooks Hooks) (
 // Resume reattaches to a session started earlier, after a process restart or
 // when reconciliation retries a retention that failed, and drives the same
 // wait, retain, and release path to its end.
-func (c *Controller) Resume(ctx context.Context, ref SessionRef, hooks Hooks) (Result, error) {
+func (c *Controller) Resume(ctx context.Context, ref managed.SessionRef, hooks Hooks) (Result, error) {
 	runtime, err := c.router.ForRef(ref)
 	if err != nil {
 		return Result{Ref: ref}, err
@@ -255,31 +260,31 @@ func (c *Controller) Resume(ctx context.Context, ref SessionRef, hooks Hooks) (R
 	// The persisted reference does not encode whether the original request was
 	// graded. Resume therefore validates any verdict it sees, but does not infer
 	// that a missing verdict means the runtime violated the original request.
-	return c.wait(ctx, runtime, ref, hooks, nil)
+	return c.wait(ctx, runtime, ref, hooks, managed.GradingUnknown)
 }
 
 // Cancel stops a live session and still finishes the lifecycle: it waits for a
 // terminal observation within the cleanup budget, retains the partial
 // evidence, and releases. It is idempotent, so cancelling a session that has
 // already ended is success.
-func (c *Controller) Cancel(ctx context.Context, ref SessionRef, hooks Hooks) (Result, error) {
+func (c *Controller) Cancel(ctx context.Context, ref managed.SessionRef, hooks Hooks) (Result, error) {
 	runtime, err := c.router.ForRef(ref)
 	if err != nil {
 		return Result{Ref: ref}, err
 	}
-	status := Status{Ref: ref, State: StateFailed, TerminalReason: ReasonCancelled}
+	status := managed.Status{Ref: ref, State: managed.StateFailed, TerminalReason: managed.ReasonCancelled}
 	return c.abort(ctx, runtime, ref, status, hooks, nil)
 }
 
-func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, hooks Hooks, graded *bool) (Result, error) {
-	var previous Status
+func (c *Controller) wait(ctx context.Context, runtime managed.Runtime, ref managed.SessionRef, hooks Hooks, grading managed.Grading) (Result, error) {
+	var previous managed.Status
 	lastSuccess := c.clock.now()
 	temporaryErrors := 0
 	delay := c.policy.InitialDelay
 	for {
 		status, err := runtime.Poll(ctx, ref)
 		if err != nil {
-			if !IsTemporary(err) || ctx.Err() != nil {
+			if !managed.IsTemporary(err) || ctx.Err() != nil {
 				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
 			}
 			silent := c.clock.now().Sub(lastSuccess) >= c.policy.MaxSilence
@@ -296,7 +301,7 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 		temporaryErrors = 0
 		lastSuccess = c.clock.now()
 		delay = c.policy.InitialDelay
-		if err := validateObservation(runtime, ref, previous, status, graded); err != nil {
+		if err := managed.ValidateObservation(ref, runtime.Name(), previous, status, grading); err != nil {
 			return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
 		}
 		if status.Ref.Revision > ref.Revision {
@@ -323,19 +328,19 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 	}
 }
 
-func (c *Controller) abort(ctx context.Context, runtime Runtime, ref SessionRef, status Status, hooks Hooks, cause error) (Result, error) {
+func (c *Controller) abort(ctx context.Context, runtime managed.Runtime, ref managed.SessionRef, status managed.Status, hooks Hooks, cause error) (Result, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.policy.CleanupTimeout)
 	defer cancel()
 	var cleanupErrors []error
-	if err := runtime.Cancel(cleanupCtx, ref); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := runtime.Cancel(cleanupCtx, ref); err != nil && !errors.Is(err, managed.ErrNotFound) {
 		cleanupErrors = append(cleanupErrors, fmt.Errorf("cancel %s: %w", ref.ID, err))
 	}
 	if status.Ref.ID == "" {
 		status.Ref = ref
 	}
-	if status.State == StateUnknown || !status.State.Terminal() {
-		status.State = StateFailed
-		status.TerminalReason = ReasonRuntimeFailed
+	if status.State == managed.StateUnknown || !status.State.Terminal() {
+		status.State = managed.StateFailed
+		status.TerminalReason = managed.ReasonRuntimeFailed
 	}
 	terminal, terminalErr := c.waitAfterCancel(cleanupCtx, runtime, ref, status, hooks)
 	if terminalErr != nil {
@@ -353,7 +358,7 @@ func (c *Controller) abort(ctx context.Context, runtime Runtime, ref SessionRef,
 	return result, cause
 }
 
-func (c *Controller) retainAndRelease(ctx context.Context, runtime Runtime, status Status, hooks Hooks, cause error) (Result, error) {
+func (c *Controller) retainAndRelease(ctx context.Context, runtime managed.Runtime, status managed.Status, hooks Hooks, cause error) (Result, error) {
 	result := Result{Ref: status.Ref, Status: status}
 	events, err := runtime.Events(ctx, status.Ref)
 	if err != nil {
@@ -372,81 +377,24 @@ func (c *Controller) retainAndRelease(ctx context.Context, runtime Runtime, stat
 		}
 	}
 	if err := runtime.Release(ctx, status.Ref); err != nil {
-		return result, errors.Join(cause, &CleanupError{Err: err})
+		return result, errors.Join(cause, &managed.CleanupError{Err: err})
 	}
 	result.Released = true
 	return result, cause
 }
 
-func validateRuntimeRef(runtime Runtime, ref SessionRef) error {
+func validateRuntimeRef(runtime managed.Runtime, ref managed.SessionRef) error {
 	if ref.Runtime != runtime.Name() {
-		return &RuntimeMismatchError{Expected: runtime.Name(), Actual: ref.Runtime}
+		return &managed.RuntimeMismatchError{Expected: runtime.Name(), Actual: ref.Runtime}
 	}
 	return ref.Validate(0)
 }
 
-func validateObservation(runtime Runtime, expected SessionRef, previous, current Status, graded *bool) error {
-	if err := validateRuntimeRef(runtime, current.Ref); err != nil {
-		return fmt.Errorf("%w: %w", ErrContract, err)
-	}
-	if !current.Ref.SameIdentity(expected) || current.Ref.Revision < expected.Revision {
-		return fmt.Errorf("%w: invalid session checkpoint", ErrContract)
-	}
-	if current.Ref.Revision == expected.Revision && !reflect.DeepEqual(current.Ref, expected) {
-		return fmt.Errorf("%w: locator changed without a revision", ErrContract)
-	}
-	if !current.State.Valid() {
-		return fmt.Errorf("%w: invalid state %s", ErrContract, current.State)
-	}
-	if !current.Model.Valid() {
-		return fmt.Errorf("%w: status has no resolved model", ErrContract)
-	}
-	if previous.State.Valid() {
-		if previous.State.Terminal() && current.State != previous.State {
-			return fmt.Errorf("%w: terminal state changed", ErrContract)
-		}
-		if stateRank(current.State) < stateRank(previous.State) {
-			return fmt.Errorf("%w: state regressed from %s to %s", ErrContract, previous.State, current.State)
-		}
-		if !current.Usage.MonotonicFrom(previous.Usage) {
-			return fmt.Errorf("%w: usage regressed", ErrContract)
-		}
-		if previous.Model.Valid() && current.Model != previous.Model {
-			return fmt.Errorf("%w: resolved model changed", ErrContract)
-		}
-	}
-	if current.State == StateDone {
-		if graded != nil && *graded && (current.Verdict == nil || !current.Verdict.Grade.Decided()) {
-			return fmt.Errorf("%w: graded session completed without a decided verdict", ErrContract)
-		}
-		if graded != nil && !*graded && current.Verdict != nil {
-			return fmt.Errorf("%w: ungraded session completed with a verdict", ErrContract)
-		}
-		if graded == nil && current.Verdict != nil && !current.Verdict.Grade.Decided() {
-			return fmt.Errorf("%w: completed session has an undecided verdict", ErrContract)
-		}
-	}
-	return nil
-}
-
-func stateRank(state State) int {
-	switch state {
-	case StatePending:
-		return 1
-	case StateRunning:
-		return 2
-	case StateDone, StateFailed:
-		return 3
-	default:
-		return 0
-	}
-}
-
-func sameObservation(a, b Status) bool {
+func sameObservation(a, b managed.Status) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-func (c *Controller) waitAfterCancel(ctx context.Context, runtime Runtime, ref SessionRef, fallback Status, hooks Hooks) (Status, error) {
+func (c *Controller) waitAfterCancel(ctx context.Context, runtime managed.Runtime, ref managed.SessionRef, fallback managed.Status, hooks Hooks) (managed.Status, error) {
 	started := c.clock.now()
 	temporaryErrors := 0
 	delay := c.policy.InitialDelay
@@ -454,7 +402,7 @@ func (c *Controller) waitAfterCancel(ctx context.Context, runtime Runtime, ref S
 		status, err := runtime.Poll(ctx, ref)
 		if err == nil {
 			temporaryErrors = 0
-			if validationErr := validateObservation(runtime, ref, Status{}, status, nil); validationErr != nil {
+			if validationErr := managed.ValidateObservation(ref, runtime.Name(), managed.Status{}, status, managed.GradingUnknown); validationErr != nil {
 				return fallback, validationErr
 			}
 			if status.Ref.Revision > ref.Revision && hooks.Checkpoint != nil {
@@ -467,9 +415,9 @@ func (c *Controller) waitAfterCancel(ctx context.Context, runtime Runtime, ref S
 			if status.State.Terminal() {
 				return status, nil
 			}
-		} else if errors.Is(err, ErrNotFound) && fallback.State.Terminal() {
+		} else if errors.Is(err, managed.ErrNotFound) && fallback.State.Terminal() {
 			return fallback, nil
-		} else if !IsTemporary(err) {
+		} else if !managed.IsTemporary(err) {
 			return fallback, err
 		} else {
 			temporaryErrors++
@@ -503,15 +451,15 @@ func retryDelay(err error, fallback time.Duration) time.Duration {
 // never reported a valid observation for. A session that stopped responding
 // is a timeout, not a fault the runtime reported, and operators investigate
 // the two in different places.
-func previousOrFailure(previous Status, ref SessionRef, timedOut bool) Status {
+func previousOrFailure(previous managed.Status, ref managed.SessionRef, timedOut bool) managed.Status {
 	if previous.State.Valid() {
 		return previous
 	}
-	reason := ReasonRuntimeFailed
+	reason := managed.ReasonRuntimeFailed
 	if timedOut {
-		reason = ReasonTimedOut
+		reason = managed.ReasonTimedOut
 	}
-	return Status{Ref: ref, State: StateFailed, TerminalReason: reason}
+	return managed.Status{Ref: ref, State: managed.StateFailed, TerminalReason: reason}
 }
 
 func nextDelay(current, maximum time.Duration) time.Duration {

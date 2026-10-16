@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 func testClient(t *testing.T, handler http.HandlerFunc) *Client {

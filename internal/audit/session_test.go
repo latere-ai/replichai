@@ -12,9 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
+	managedmemory "latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/managed/legacy"
-	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/method"
 	providermemory "github.com/latere-ai/replichai/internal/provider/memory"
 	"github.com/latere-ai/replichai/internal/runtimes"
@@ -29,7 +30,7 @@ func TestSessionAuditorRunsThroughControllerAndRetainsBeforeRelease(t *testing.T
 	})
 	controller := sessionController(t, runtime)
 	var started managed.SessionRef
-	auditor := NewSessionAuditor(controller, testMethod, WithSessionHooks(managed.Hooks{Started: func(_ context.Context, ref managed.SessionRef) error {
+	auditor := NewSessionAuditor(controller, testMethod, WithSessionHooks(runtimes.Hooks{Started: func(_ context.Context, ref managed.SessionRef) error {
 		started = ref
 		return nil
 	}}))
@@ -124,7 +125,7 @@ func TestSessionAuditorOptionsAndResultHelpers(t *testing.T) {
 	retained := false
 	auditor := NewSessionAuditor(sessionController(t, runtime), testMethod,
 		WithSessionModel("fast"), WithSessionMaxRevisions(5), WithoutSessionTimeout(),
-		WithSessionHooks(managed.Hooks{Retain: func(context.Context, managed.EvidenceReader) error {
+		WithSessionHooks(runtimes.Hooks{Retain: func(context.Context, runtimes.EvidenceReader) error {
 			retained = true
 			return nil
 		}}),
@@ -219,13 +220,13 @@ func TestSessionAuditorCapabilityAndRetentionFailures(t *testing.T) {
 	}
 }
 
-func sessionController(t *testing.T, runtime managed.Runtime) *managed.Controller {
+func sessionController(t *testing.T, runtime managed.Runtime) *runtimes.Controller {
 	t.Helper()
 	router, err := runtimes.NewRouter(runtime.Name(), runtime)
 	if err != nil {
 		t.Fatalf("NewRouter: %v", err)
 	}
-	return managed.NewController(router, managed.WithWaitPolicy(managed.WaitPolicy{
+	return runtimes.NewController(router, runtimes.WithWaitPolicy(runtimes.WaitPolicy{
 		InitialDelay: 0, MaxDelay: 0, MaxTemporaryErrors: 2, MaxSilence: time.Millisecond, CleanupTimeout: time.Second,
 	}))
 }
@@ -358,7 +359,7 @@ func TestThePromptDigestCoversWhatTheMethodDigestMisses(t *testing.T) {
 	digestOf := func(options ...SessionOption) string {
 		t.Helper()
 		var seen string
-		options = append(options, WithSessionHooks(managed.Hooks{Retain: func(ctx context.Context, _ managed.EvidenceReader) error {
+		options = append(options, WithSessionHooks(runtimes.Hooks{Retain: func(ctx context.Context, _ runtimes.EvidenceReader) error {
 			seen = PromptDigest(ctx)
 			return nil
 		}}))
@@ -407,8 +408,8 @@ func TestAResumedSessionHasNoPromptDigest(t *testing.T) {
 	}
 	seen := "unset"
 	second := managedmemory.NewWithStore(store, managedmemory.Config{PollsBeforeDone: 2})
-	result, err := NewSessionAuditor(sessionController(t, second), testMethod, WithSessionHooks(managed.Hooks{
-		Retain: func(ctx context.Context, _ managed.EvidenceReader) error {
+	result, err := NewSessionAuditor(sessionController(t, second), testMethod, WithSessionHooks(runtimes.Hooks{
+		Retain: func(ctx context.Context, _ runtimes.EvidenceReader) error {
 			seen = PromptDigest(ctx)
 			return nil
 		},

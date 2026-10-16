@@ -23,7 +23,7 @@ import (
 
 	"latere.ai/x/pkg/sanitize"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // Name identifies one harness, in the spelling an operator uses.

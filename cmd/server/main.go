@@ -39,13 +39,14 @@ import (
 	"latere.ai/x/pkg/hostsandbox"
 	xotel "latere.ai/x/pkg/otel"
 
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/draft"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/notify"
 	"github.com/latere-ai/replichai/internal/platform"
@@ -194,7 +195,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	controller := managed.NewController(runtimeRouter)
+	controller := runtimes.NewController(runtimeRouter)
 	modelResolver := runtimes.ModelResolver{Runtime: selectedRuntime}
 	logger.Info("managed runtime selected", "runtime", selectedRuntime.Name())
 

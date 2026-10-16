@@ -12,12 +12,13 @@ import (
 	"path/filepath"
 	"time"
 
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/fetch"
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/httpapi"
 	"github.com/latere-ai/replichai/internal/job"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/project"
@@ -40,11 +41,11 @@ import (
 // could be reached. Build one with newEngineRunner, which refuses to construct
 // a runner without its dependencies.
 type engineRunner struct {
-	controller *managed.Controller
+	controller *runtimes.Controller
 	// sessions finds the runtime behind a session reference, for the one read
 	// the controller does not expose: a settled legacy row's transcript, at
 	// publish time.
-	sessions managed.RuntimeRouter
+	sessions runtimes.RuntimeRouter
 	method   method.Method
 	fetch    paper.Fetcher
 	projects project.Store
@@ -67,7 +68,7 @@ type engineRunner struct {
 	// newController builds the controller over that binding. Without a
 	// router every session runs where the shared controller routes it.
 	router        *runtimes.Router
-	newController func(managed.RuntimeRouter) *managed.Controller
+	newController func(runtimes.RuntimeRouter) *runtimes.Controller
 	// signIn gives, for a person, the source of the bearer a runtime the
 	// person pays acts with on the Latere platform. Nil where the deployment
 	// keeps no sign-ins.
@@ -84,8 +85,8 @@ type jobStatusReader interface {
 // engineDeps is what an engineRunner is built from. Every field but the forge
 // is required; the forge is the only dependency a deployment may run without.
 type engineDeps struct {
-	controller *managed.Controller
-	sessions   managed.RuntimeRouter
+	controller *runtimes.Controller
+	sessions   runtimes.RuntimeRouter
 	method     method.Method
 	fetch      paper.Fetcher
 	projects   project.Store
@@ -123,7 +124,7 @@ func newEngineRunner(d engineDeps) (*engineRunner, error) {
 		projects: d.projects, jobs: d.jobs, workDir: d.workDir,
 		gh: d.gh, owner: d.owner, token: d.token, delay: d.delay,
 		router: d.router, signIn: d.signIn,
-		newController: func(router managed.RuntimeRouter) *managed.Controller { return managed.NewController(router) },
+		newController: func(router runtimes.RuntimeRouter) *runtimes.Controller { return runtimes.NewController(router) },
 	}, nil
 }
 
@@ -141,7 +142,7 @@ func (e *engineRunner) actAs(ctx context.Context, principal string) context.Cont
 // runtime the job chose, and whether that runtime takes a writable
 // repository: one that does not is not mounted, and its work is harvested
 // into the repository when it ends (044b).
-func (e *engineRunner) sessionFor(ctx context.Context, j *job.Job) (*managed.Controller, bool, error) {
+func (e *engineRunner) sessionFor(ctx context.Context, j *job.Job) (*runtimes.Controller, bool, error) {
 	if e.router == nil {
 		return e.controller, true, nil
 	}
@@ -350,7 +351,7 @@ func (e *engineRunner) Close(ctx context.Context, ref managed.SessionRef) error 
 	if ref.ID == "" {
 		return nil
 	}
-	_, err := e.controller.Cancel(e.actAs(ctx, job.SessionOwner(ctx)), ref, managed.Hooks{})
+	_, err := e.controller.Cancel(e.actAs(ctx, job.SessionOwner(ctx)), ref, runtimes.Hooks{})
 	return err
 }
 
@@ -358,7 +359,7 @@ type jobObserver interface {
 	Observe(context.Context, string, provider.RunStatus) error
 }
 
-func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)) managed.Hooks {
+func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)) runtimes.Hooks {
 	persistRef := func(ctx context.Context, ref managed.SessionRef) error {
 		raw, err := json.Marshal(ref)
 		if err != nil {
@@ -373,7 +374,7 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 		}
 		return store.Observe(ctx, j.ID, status)
 	}
-	return managed.Hooks{
+	return runtimes.Hooks{
 		Started:    func(ctx context.Context, ref managed.SessionRef) error { return persistRef(ctx, ref) },
 		Checkpoint: func(ctx context.Context, _, next managed.SessionRef) error { return persistRef(ctx, next) },
 		Status: func(ctx context.Context, status managed.Status) error {
@@ -389,7 +390,7 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 			observe(converted)
 			return nil
 		},
-		Retain: func(ctx context.Context, evidence managed.EvidenceReader) error {
+		Retain: func(ctx context.Context, evidence runtimes.EvidenceReader) error {
 			if e.gh == nil || j.RepoName == "" {
 				return nil
 			}
@@ -434,7 +435,7 @@ func providerStatus(status managed.Status) provider.RunStatus {
 	// observed reference immediately before that hook runs: SessionRef.Validate
 	// unmarshals the locator, so the one field here that could refuse to encode
 	// is already proven to be valid JSON.
-	//nolint:errchkjson // status.Ref.Locator is validated by managed.Controller before the Status hook fires, so Marshal cannot fail.
+	//nolint:errchkjson // status.Ref.Locator is validated by runtimes.Controller before the Status hook fires, so Marshal cannot fail.
 	raw, _ := json.Marshal(status.Ref)
 	result := provider.RunStatus{
 		State: providerState(status.State), RunID: status.Ref.ID, Runtime: string(status.Ref.Runtime), SessionRef: raw,
@@ -611,7 +612,7 @@ func (p paperResolver) Resolve(ctx context.Context, ref string) (httpapi.Resolve
 
 // liveTranscript routes a live evidence read by the durable session reference,
 // so changing the default runtime cannot redirect an in-flight session.
-type liveTranscript struct{ router managed.RuntimeRouter }
+type liveTranscript struct{ router runtimes.RuntimeRouter }
 
 // Events returns the backend's live trajectory for a run.
 func (l liveTranscript) Events(ctx context.Context, status provider.RunStatus) ([]provider.Event, error) {
@@ -777,7 +778,7 @@ func (e *engineRunner) isPlaceholderTitle(ctx context.Context, p project.Project
 // on top of them, and refusing to write the evidence because the recovery could
 // not be fetched would lose more than it saves. Instead it logs the failure,
 // which is the only place a failed recovery can be noticed.
-func harvestOutputs(ctx context.Context, gh forge, owner, name, jobID string, evidence managed.EvidenceReader) {
+func harvestOutputs(ctx context.Context, gh forge, owner, name, jobID string, evidence runtimes.EvidenceReader) {
 	files := map[string][]byte{}
 	for _, artifact := range evidence.Artifacts {
 		if artifact.IsCompiled() {

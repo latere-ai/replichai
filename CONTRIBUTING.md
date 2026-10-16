@@ -61,10 +61,10 @@ internal/audit/      the orchestrator
 internal/paper/      resolving a reference to a stable identity and a slug
 internal/fetch/      the one outbound fetcher for user-supplied URLs
 internal/method/     loading the method from disk
-internal/managed/    the vendor-neutral managed-session contract, its controller,
-                     the memory runtime, and contracttest, the checks every runtime passes
-internal/runtimes/   the runtime catalog and the durable router; builtin/ is the one
-                     place concrete runtimes are composed
+internal/managed/legacy/  the anthropic-managed runtime over the provider protocol
+internal/runtimes/   the runtime catalog, the durable router and the controller that
+                     drives a session; builtin/ is the one place concrete runtimes
+                     are composed
 internal/runtimes/local/  the same engine on your own machine: sandbox drivers,
                      harness adapters, the model catalog
 internal/provider/   the backend protocol adapter behind anthropic-managed, and an
@@ -265,14 +265,24 @@ enforces this.
 ## Adding a runtime
 
 A runtime is anything that can run one managed session: start it, report its
-status, hand back its events and artifacts, cancel it, and release it. Implement
-`managed.Runtime` (`internal/managed/types.go`) in a package of its own, which
-is then the one place that backend's SDK and vocabulary live. Hold it to
-`internal/managed/contracttest`, the black-box checks the memory and local
-runtimes already pass. Then add an entry for it to the catalog in
-`internal/runtimes/builtin`, the only package allowed to import a concrete
-runtime. There is no `init` registration: a runtime exists because the catalog
-names it, and nothing above the contract changes.
+status, hand back its events and artifacts, cancel it, and release it. The
+contract is the managed-session port, `latere.ai/x/managed-agents`, which
+ReplicHAI imports rather than keeps a copy of. Adding a runtime is two small
+jobs:
+
+1. **The adapter**, in the port's repository as a module of its own (as
+   `latere.ai/x/managed-agents/latere` is) or in a repository of its own. It
+   implements `managed.Runtime`, declares honestly what the backend can do,
+   and passes the port's conformance suite, `contracttest`. The port's adapter
+   guide has the checklist.
+2. **The entry**, in the catalog in `internal/runtimes/builtin`, the only
+   package allowed to import a concrete runtime: its name, how it is built
+   from configuration, and the variables `internal/runtimes/config.go` reads
+   for it. Document the variables in `example.env` and the runtime in
+   `docs/cli.md`.
+
+There is no `init` registration: a runtime exists because the catalog names
+it, and nothing above the contract changes.
 
 ## Changing the method
 

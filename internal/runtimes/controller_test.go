@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package managed
+package runtimes
 
 import (
 	"context"
@@ -11,15 +11,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	managed "latere.ai/x/managed-agents"
 )
 
 type controllerRuntime struct {
-	name        RuntimeName
-	ref         SessionRef
-	statuses    []Status
+	name        managed.RuntimeName
+	ref         managed.SessionRef
+	statuses    []managed.Status
 	pollErrors  []error
-	events      []Event
-	artifacts   []Artifact
+	events      []managed.Event
+	artifacts   []managed.Artifact
 	files       map[string][]byte
 	validate    error
 	startErr    error
@@ -33,40 +35,40 @@ type controllerRuntime struct {
 }
 
 func newControllerRuntime() *controllerRuntime {
-	ref := SessionRef{Runtime: "fake", ID: "session-1", Revision: 1, LocatorVersion: 1}
-	model := ModelRef{Provider: "fake", ID: "model"}
+	ref := managed.SessionRef{Runtime: "fake", ID: "session-1", Revision: 1, LocatorVersion: 1}
+	model := managed.ModelRef{Provider: "fake", ID: "model"}
 	return &controllerRuntime{
 		name: "fake",
 		ref:  ref,
-		statuses: []Status{
-			{Ref: SessionRef{Runtime: "fake", ID: "session-1", Revision: 2, LocatorVersion: 1}, Model: model, State: StateRunning, Usage: Usage{InputFresh: 1}},
-			{Ref: SessionRef{Runtime: "fake", ID: "session-1", Revision: 2, LocatorVersion: 1}, Model: model, State: StateDone, Usage: Usage{InputFresh: 2}},
+		statuses: []managed.Status{
+			{Ref: managed.SessionRef{Runtime: "fake", ID: "session-1", Revision: 2, LocatorVersion: 1}, Model: model, State: managed.StateRunning, Usage: managed.Usage{InputFresh: 1}},
+			{Ref: managed.SessionRef{Runtime: "fake", ID: "session-1", Revision: 2, LocatorVersion: 1}, Model: model, State: managed.StateDone, Usage: managed.Usage{InputFresh: 2}},
 		},
-		events:    []Event{{ID: "event-1", Kind: KindMessage, Content: "done"}},
-		artifacts: []Artifact{{ID: "artifact-1", Path: "result.txt"}},
+		events:    []managed.Event{{ID: "event-1", Kind: managed.KindMessage, Content: "done"}},
+		artifacts: []managed.Artifact{{ID: "artifact-1", Path: "result.txt"}},
 		files:     map[string][]byte{"result.txt": []byte("result")},
 	}
 }
 
-func (r *controllerRuntime) Name() RuntimeName { return r.name }
-func (r *controllerRuntime) Capabilities(context.Context) (Capabilities, error) {
-	return Capabilities{}, nil
+func (r *controllerRuntime) Name() managed.RuntimeName { return r.name }
+func (r *controllerRuntime) Capabilities(context.Context) (managed.Capabilities, error) {
+	return managed.Capabilities{}, nil
 }
-func (r *controllerRuntime) Models(context.Context) ([]Model, error) { return nil, nil }
-func (r *controllerRuntime) Validate(SessionSpec) error {
+func (r *controllerRuntime) Models(context.Context) ([]managed.Model, error) { return nil, nil }
+func (r *controllerRuntime) Validate(managed.SessionSpec) error {
 	r.calls = append(r.calls, "validate")
 	return r.validate
 }
-func (r *controllerRuntime) Start(context.Context, SessionSpec) (SessionRef, error) {
+func (r *controllerRuntime) Start(context.Context, managed.SessionSpec) (managed.SessionRef, error) {
 	r.calls = append(r.calls, "start")
 	return r.ref, r.startErr
 }
-func (r *controllerRuntime) Poll(context.Context, SessionRef) (Status, error) {
+func (r *controllerRuntime) Poll(context.Context, managed.SessionRef) (managed.Status, error) {
 	r.calls = append(r.calls, "poll")
 	if r.polls < len(r.pollErrors) && r.pollErrors[r.polls] != nil {
 		err := r.pollErrors[r.polls]
 		r.polls++
-		return Status{}, err
+		return managed.Status{}, err
 	}
 	r.polls++
 	index := r.statusPolls
@@ -76,45 +78,49 @@ func (r *controllerRuntime) Poll(context.Context, SessionRef) (Status, error) {
 	}
 	return r.statuses[index], nil
 }
-func (r *controllerRuntime) Events(context.Context, SessionRef) ([]Event, error) {
+func (r *controllerRuntime) Events(context.Context, managed.SessionRef) ([]managed.Event, error) {
 	r.calls = append(r.calls, "events")
 	return r.events, r.eventsErr
 }
-func (r *controllerRuntime) ListArtifacts(context.Context, SessionRef) ([]Artifact, error) {
+func (r *controllerRuntime) ListArtifacts(context.Context, managed.SessionRef) ([]managed.Artifact, error) {
 	r.calls = append(r.calls, "list")
 	return r.artifacts, r.listErr
 }
-func (r *controllerRuntime) FetchArtifact(_ context.Context, _ SessionRef, artifact Artifact) ([]byte, error) {
+func (r *controllerRuntime) FetchArtifact(_ context.Context, _ managed.SessionRef, artifact managed.Artifact) ([]byte, error) {
 	r.calls = append(r.calls, "fetch")
 	return r.files[artifact.Path], nil
 }
-func (r *controllerRuntime) Cancel(context.Context, SessionRef) error {
+func (r *controllerRuntime) Cancel(context.Context, managed.SessionRef) error {
 	r.calls = append(r.calls, "cancel")
 	return r.cancelErr
 }
-func (r *controllerRuntime) Release(context.Context, SessionRef) error {
+func (r *controllerRuntime) Release(context.Context, managed.SessionRef) error {
 	r.calls = append(r.calls, "release")
 	return r.releaseErr
 }
 
 type controllerRouter struct {
-	runtime Runtime
+	runtime managed.Runtime
 	newErr  error
 	refErr  error
 }
 
-func (r controllerRouter) ForNew(SessionSpec) (Runtime, error) { return r.runtime, r.newErr }
-func (r controllerRouter) ForRef(SessionRef) (Runtime, error)  { return r.runtime, r.refErr }
+func (r controllerRouter) ForNew(managed.SessionSpec) (managed.Runtime, error) {
+	return r.runtime, r.newErr
+}
+func (r controllerRouter) ForRef(managed.SessionRef) (managed.Runtime, error) {
+	return r.runtime, r.refErr
+}
 
-func controllerSpec(graded bool) SessionSpec {
-	spec := SessionSpec{Model: ModelSelector{Preference: "best"}, Instructions: "instructions", Task: "task"}
+func controllerSpec(graded bool) managed.SessionSpec {
+	spec := managed.SessionSpec{Model: managed.ModelSelector{Preference: "best"}, Instructions: "instructions", Task: "task"}
 	if graded {
-		spec.Evaluation = &EvaluationSpec{Rubric: "rubric", MaxRevisions: 1}
+		spec.Evaluation = &managed.EvaluationSpec{Rubric: "rubric", MaxRevisions: 1}
 	}
 	return spec
 }
 
-func instantController(runtime Runtime) *Controller {
+func instantController(runtime managed.Runtime) *Controller {
 	clock := time.Unix(100, 0)
 	return NewController(controllerRouter{runtime: runtime}, WithWaitPolicy(WaitPolicy{
 		InitialDelay: 1, MaxDelay: 4, MaxTemporaryErrors: 3, MaxSilence: time.Minute, CleanupTimeout: time.Second,
@@ -129,15 +135,15 @@ func TestControllerExecuteOrdersCheckpointEvidenceAndRelease(t *testing.T) {
 	var hooks []string
 	controller := instantController(runtime)
 	result, err := controller.Execute(context.Background(), controllerSpec(false), Hooks{
-		Started: func(_ context.Context, ref SessionRef) error {
+		Started: func(_ context.Context, ref managed.SessionRef) error {
 			hooks = append(hooks, fmt.Sprintf("started:%d", ref.Revision))
 			return nil
 		},
-		Checkpoint: func(_ context.Context, previous, next SessionRef) error {
+		Checkpoint: func(_ context.Context, previous, next managed.SessionRef) error {
 			hooks = append(hooks, fmt.Sprintf("checkpoint:%d:%d", previous.Revision, next.Revision))
 			return nil
 		},
-		Status: func(_ context.Context, status Status) error {
+		Status: func(_ context.Context, status managed.Status) error {
 			hooks = append(hooks, "status:"+status.State.String())
 			return nil
 		},
@@ -153,7 +159,7 @@ func TestControllerExecuteOrdersCheckpointEvidenceAndRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if !result.Released || result.Status.State != StateDone || result.Ref.Revision != 2 {
+	if !result.Released || result.Status.State != managed.StateDone || result.Ref.Revision != 2 {
 		t.Fatalf("result = %+v", result)
 	}
 	wantHooks := []string{"started:1", "status:pending", "checkpoint:1:2", "status:running", "status:done", "retain"}
@@ -169,8 +175,8 @@ func TestControllerExecuteOrdersCheckpointEvidenceAndRelease(t *testing.T) {
 func TestControllerDetachedStartPersistsBeforeReturning(t *testing.T) {
 	runtime := newControllerRuntime()
 	controller := instantController(runtime)
-	var persisted SessionRef
-	ref, err := controller.Start(context.Background(), controllerSpec(false), Hooks{Started: func(_ context.Context, ref SessionRef) error {
+	var persisted managed.SessionRef
+	ref, err := controller.Start(context.Background(), controllerSpec(false), Hooks{Started: func(_ context.Context, ref managed.SessionRef) error {
 		persisted = ref
 		return nil
 	}})
@@ -189,8 +195,8 @@ func TestControllerDetachedStartPersistsBeforeReturning(t *testing.T) {
 func TestControllerRetriesTemporaryPollErrors(t *testing.T) {
 	runtime := newControllerRuntime()
 	runtime.pollErrors = []error{
-		&TemporaryError{Err: errors.New("one")},
-		&TemporaryError{Err: errors.New("two"), After: 3 * time.Second},
+		&managed.TemporaryError{Err: errors.New("one")},
+		&managed.TemporaryError{Err: errors.New("two"), After: 3 * time.Second},
 	}
 	var sleeps []time.Duration
 	now := time.Unix(0, 0)
@@ -211,7 +217,7 @@ func TestControllerRetriesTemporaryPollErrors(t *testing.T) {
 
 func TestControllerExhaustedTemporaryErrorsCancelsThenRetainsThenReleases(t *testing.T) {
 	runtime := newControllerRuntime()
-	temporary := &TemporaryError{Err: errors.New("offline")}
+	temporary := &managed.TemporaryError{Err: errors.New("offline")}
 	runtime.pollErrors = []error{temporary, temporary, temporary}
 	controller := instantController(runtime)
 	_, err := controller.Execute(context.Background(), controllerSpec(false), Hooks{Retain: func(context.Context, EvidenceReader) error { return nil }})
@@ -244,8 +250,8 @@ func TestReleaseFailureReturnsResultAndCleanupError(t *testing.T) {
 	runtime := newControllerRuntime()
 	runtime.releaseErr = errors.New("archive failed")
 	result, err := instantController(runtime).Execute(context.Background(), controllerSpec(false), Hooks{})
-	var cleanup *CleanupError
-	if !errors.As(err, &cleanup) || result.Status.State != StateDone || result.Released {
+	var cleanup *managed.CleanupError
+	if !errors.As(err, &cleanup) || result.Status.State != managed.StateDone || result.Released {
 		t.Fatalf("result/error = %+v, %v", result, err)
 	}
 }
@@ -255,10 +261,10 @@ func TestStartedAndCheckpointFailuresAbort(t *testing.T) {
 		name  string
 		hooks Hooks
 	}{
-		{"started", Hooks{Started: func(context.Context, SessionRef) error { return errors.New("persist") }}},
-		{"checkpoint", Hooks{Checkpoint: func(context.Context, SessionRef, SessionRef) error { return errors.New("cas") }}},
-		{"status", Hooks{Status: func(_ context.Context, status Status) error {
-			if status.State == StateRunning {
+		{"started", Hooks{Started: func(context.Context, managed.SessionRef) error { return errors.New("persist") }}},
+		{"checkpoint", Hooks{Checkpoint: func(context.Context, managed.SessionRef, managed.SessionRef) error { return errors.New("cas") }}},
+		{"status", Hooks{Status: func(_ context.Context, status managed.Status) error {
+			if status.State == managed.StateRunning {
 				return errors.New("observe")
 			}
 			return nil
@@ -306,18 +312,21 @@ func TestControllerRejectsRuntimeAndStatusContractViolations(t *testing.T) {
 		{"locator without revision", func(r *controllerRuntime) {
 			r.statuses[1].Ref.Locator = []byte(`{"stage":2}`)
 		}},
-		{"invalid state", func(r *controllerRuntime) { r.statuses[0].State = StateUnknown }},
-		{"state regression", func(r *controllerRuntime) { r.statuses[0].State = StateRunning; r.statuses[1].State = StatePending }},
+		{"invalid state", func(r *controllerRuntime) { r.statuses[0].State = managed.StateUnknown }},
+		{"state regression", func(r *controllerRuntime) {
+			r.statuses[0].State = managed.StateRunning
+			r.statuses[1].State = managed.StatePending
+		}},
 		{"usage regression", func(r *controllerRuntime) { r.statuses[0].Usage.InputFresh = 3; r.statuses[1].Usage.InputFresh = 2 }},
 		{"model change", func(r *controllerRuntime) { r.statuses[1].Model.ID = "other" }},
-		{"ungraded verdict", func(r *controllerRuntime) { r.statuses[1].Verdict = &Verdict{Grade: GradePassed} }},
+		{"ungraded verdict", func(r *controllerRuntime) { r.statuses[1].Verdict = &managed.Verdict{Grade: managed.GradePassed} }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			runtime := newControllerRuntime()
 			test.alter(runtime)
 			_, err := instantController(runtime).Execute(context.Background(), controllerSpec(false), Hooks{})
-			if err == nil || (!errors.Is(err, ErrContract) && test.name != "start runtime") {
+			if err == nil || (!errors.Is(err, managed.ErrContract) && test.name != "start runtime") {
 				t.Fatalf("Execute = %v", err)
 			}
 		})
@@ -326,11 +335,11 @@ func TestControllerRejectsRuntimeAndStatusContractViolations(t *testing.T) {
 
 func TestGradedSessionRequiresDecidedVerdict(t *testing.T) {
 	runtime := newControllerRuntime()
-	if _, err := instantController(runtime).Execute(context.Background(), controllerSpec(true), Hooks{}); !errors.Is(err, ErrContract) {
+	if _, err := instantController(runtime).Execute(context.Background(), controllerSpec(true), Hooks{}); !errors.Is(err, managed.ErrContract) {
 		t.Fatalf("missing verdict = %v", err)
 	}
 	runtime = newControllerRuntime()
-	runtime.statuses[1].Verdict = &Verdict{Grade: GradePassed}
+	runtime.statuses[1].Verdict = &managed.Verdict{Grade: managed.GradePassed}
 	if _, err := instantController(runtime).Execute(context.Background(), controllerSpec(true), Hooks{}); err != nil {
 		t.Fatalf("decided verdict: %v", err)
 	}
@@ -343,11 +352,11 @@ func TestResumeAndCancelRouteByReference(t *testing.T) {
 		t.Fatalf("Resume: %v", err)
 	}
 	runtime = newControllerRuntime()
-	runtime.statuses[1].State = StateFailed
-	runtime.statuses[1].TerminalReason = ReasonCancelled
+	runtime.statuses[1].State = managed.StateFailed
+	runtime.statuses[1].TerminalReason = managed.ReasonCancelled
 	controller = instantController(runtime)
 	result, err := controller.Cancel(context.Background(), runtime.ref, Hooks{})
-	if err != nil || !result.Released || result.Status.TerminalReason != ReasonCancelled {
+	if err != nil || !result.Released || result.Status.TerminalReason != managed.ReasonCancelled {
 		t.Fatalf("Cancel = %+v, %v", result, err)
 	}
 	wantOrder := []string{"cancel", "poll", "poll", "events", "list", "release"}
@@ -389,7 +398,7 @@ func TestAbortJoinsCancelFailureAndToleratesNotFound(t *testing.T) {
 		wantText  string
 	}{
 		{"failure", errors.New("cancel failed"), "cancel failed"},
-		{"not found", &NotFoundError{Runtime: "fake", ID: "session-1"}, ""},
+		{"not found", &managed.NotFoundError{Runtime: "fake", ID: "session-1"}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			runtime := newControllerRuntime()
@@ -428,21 +437,21 @@ func sliceIndex(values []string, target string) int {
 // runtime_failed investigates a fault the runtime reported. Reporting both as
 // runtime_failed would send half of them to the wrong place.
 func TestControllerSeparatesSilenceFromRuntimeFailure(t *testing.T) {
-	temporary := &TemporaryError{Err: errors.New("offline")}
+	temporary := &managed.TemporaryError{Err: errors.New("offline")}
 	tests := []struct {
 		name   string
 		policy WaitPolicy
-		want   TerminalReason
+		want   managed.TerminalReason
 	}{
 		{
 			name:   "silence outlasts the budget before the fault count does",
 			policy: WaitPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxTemporaryErrors: 5, MaxSilence: 3 * time.Second, CleanupTimeout: time.Second},
-			want:   ReasonTimedOut,
+			want:   managed.ReasonTimedOut,
 		},
 		{
 			name:   "fault count runs out while the session is still within its silence budget",
 			policy: WaitPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxTemporaryErrors: 3, MaxSilence: time.Hour, CleanupTimeout: time.Second},
-			want:   ReasonRuntimeFailed,
+			want:   managed.ReasonRuntimeFailed,
 		},
 	}
 	for _, test := range tests {
@@ -463,7 +472,7 @@ func TestControllerSeparatesSilenceFromRuntimeFailure(t *testing.T) {
 			if !errors.Is(err, temporary) {
 				t.Fatalf("Execute error = %v, want %v", err, temporary)
 			}
-			if result.Status.State != StateFailed {
+			if result.Status.State != managed.StateFailed {
 				t.Fatalf("state = %s, want failed", result.Status.State)
 			}
 			if result.Status.TerminalReason != test.want {

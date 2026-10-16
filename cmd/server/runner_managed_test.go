@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
+	managed "latere.ai/x/managed-agents"
+	managedmemory "latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/audit"
 	"github.com/latere-ai/replichai/internal/job"
-	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/managed/legacy"
-	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/provider"
 	providermemory "github.com/latere-ai/replichai/internal/provider/memory"
 	"github.com/latere-ai/replichai/internal/runtimes"
@@ -51,14 +52,14 @@ func TestEngineResumeRoutesByPersistedRuntimeAfterDefaultFlip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := managed.NewController(router, managed.WithWaitPolicy(testWaitPolicy()))
+	first := runtimes.NewController(router, runtimes.WithWaitPolicy(testWaitPolicy()))
 	auditor := audit.NewSessionAuditor(first, runnerMethod)
 	ref, err := auditor.Start(context.Background(), "paper")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	flipped, _ := router.WithDefault("runtime-b")
-	controller := managed.NewController(flipped, managed.WithWaitPolicy(testWaitPolicy()))
+	controller := runtimes.NewController(flipped, runtimes.WithWaitPolicy(testWaitPolicy()))
 	store := job.NewMemStore()
 	j, _ := store.Enqueue(context.Background(), job.Submission{Principal: "p", Project: "project", Ref: "paper", Kind: job.KindAudit})
 	_, _, _ = store.Claim(context.Background(), "worker")
@@ -104,10 +105,10 @@ func TestLiveTranscriptRoutesByPersistedReference(t *testing.T) {
 	a := legacyRuntime(t, "runtime-a", aBackend)
 	b := legacyRuntime(t, "runtime-b", bBackend)
 	router, _ := runtimes.NewRouter("runtime-a", a, b)
-	ref, err := managed.NewController(router, managed.WithWaitPolicy(testWaitPolicy())).Start(context.Background(), managed.SessionSpec{
+	ref, err := runtimes.NewController(router, runtimes.WithWaitPolicy(testWaitPolicy())).Start(context.Background(), managed.SessionSpec{
 		Model: managed.ModelSelector{Preference: "best"}, Instructions: "instructions", Task: "task",
 		Sandbox: managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkOpen}},
-	}, managed.Hooks{})
+	}, runtimes.Hooks{})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestLiveTranscriptRoutesByPersistedReference(t *testing.T) {
 	}
 }
 
-func managedController(t *testing.T, defaultName managed.RuntimeName, installed ...managed.Runtime) *managed.Controller {
+func managedController(t *testing.T, defaultName managed.RuntimeName, installed ...managed.Runtime) *runtimes.Controller {
 	t.Helper()
 	controller, _ := managedStack(t, defaultName, installed...)
 	return controller
@@ -130,17 +131,17 @@ func managedController(t *testing.T, defaultName managed.RuntimeName, installed 
 // managedStack returns the controller and the router behind it, as main wires
 // them. The runner needs both: the controller to drive sessions and the router
 // to read a legacy row's transcript.
-func managedStack(t *testing.T, defaultName managed.RuntimeName, installed ...managed.Runtime) (*managed.Controller, *runtimes.Router) {
+func managedStack(t *testing.T, defaultName managed.RuntimeName, installed ...managed.Runtime) (*runtimes.Controller, *runtimes.Router) {
 	t.Helper()
 	router, err := runtimes.NewRouter(defaultName, installed...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return managed.NewController(router, managed.WithWaitPolicy(testWaitPolicy())), router
+	return runtimes.NewController(router, runtimes.WithWaitPolicy(testWaitPolicy())), router
 }
 
-func testWaitPolicy() managed.WaitPolicy {
-	return managed.WaitPolicy{MaxTemporaryErrors: 2, MaxSilence: time.Millisecond, CleanupTimeout: time.Second}
+func testWaitPolicy() runtimes.WaitPolicy {
+	return runtimes.WaitPolicy{MaxTemporaryErrors: 2, MaxSilence: time.Millisecond, CleanupTimeout: time.Second}
 }
 
 func legacyRuntime(t *testing.T, name managed.RuntimeName, backend provider.Provider) managed.Runtime {

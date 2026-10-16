@@ -10,9 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/runtimes"
+
+	managed "latere.ai/x/managed-agents"
+	managedmemory "latere.ai/x/managed-agents/memory"
+
 	"github.com/latere-ai/replichai/internal/managed/legacy"
-	managedmemory "github.com/latere-ai/replichai/internal/managed/memory"
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/provider/memory"
@@ -36,12 +39,12 @@ func (r singleRuntimeRouter) ForRef(managed.SessionRef) (managed.Runtime, error)
 	return r.runtime, nil
 }
 
-func newManagedController(t *testing.T, p provider.Provider) *managed.Controller {
+func newManagedController(t *testing.T, p provider.Provider) *runtimes.Controller {
 	t.Helper()
 	return managedController(p)
 }
 
-func managedController(p provider.Provider) *managed.Controller {
+func managedController(p provider.Provider) *runtimes.Controller {
 	runtime, err := legacy.New(legacy.Config{Name: "anthropic-managed", ModelProvider: "anthropic", Provider: p})
 	if err != nil {
 		panic(err)
@@ -49,10 +52,10 @@ func managedController(p provider.Provider) *managed.Controller {
 	return controllerForRuntime(runtime)
 }
 
-func controllerForRuntime(runtime managed.Runtime) *managed.Controller {
-	policy := managed.DefaultWaitPolicy()
+func controllerForRuntime(runtime managed.Runtime) *runtimes.Controller {
+	policy := runtimes.DefaultWaitPolicy()
 	policy.InitialDelay, policy.MaxDelay = 0, 0
-	return managed.NewController(singleRuntimeRouter{runtime: runtime}, managed.WithWaitPolicy(policy))
+	return runtimes.NewController(singleRuntimeRouter{runtime: runtime}, runtimes.WithWaitPolicy(policy))
 }
 
 type closeFailProvider struct {

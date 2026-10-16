@@ -6,7 +6,7 @@ package publish
 import (
 	"testing"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
 )
 
 // A run the platform moved between models records every model that served,

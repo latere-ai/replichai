@@ -12,7 +12,8 @@ import (
 
 	"latere.ai/x/pkg/hostsandbox"
 
-	"github.com/latere-ai/replichai/internal/managed"
+	managed "latere.ai/x/managed-agents"
+
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
 )
@@ -132,7 +133,7 @@ func runtimeCatalog(rawName string, options localOptions) (*runtimes.Catalog, ma
 	return catalog, name, err
 }
 
-func controllerFor(ctx context.Context, rawName string, interval time.Duration, options localOptions) (*managed.Controller, managed.Runtime, error) {
+func controllerFor(ctx context.Context, rawName string, interval time.Duration, options localOptions) (*runtimes.Controller, managed.Runtime, error) {
 	catalog, name, err := runtimeCatalog(rawName, options)
 	if err != nil {
 		return nil, nil, err
@@ -145,8 +146,8 @@ func controllerFor(ctx context.Context, rawName string, interval time.Duration, 
 	if err != nil {
 		return nil, nil, err
 	}
-	policy := managed.DefaultWaitPolicy()
+	policy := runtimes.DefaultWaitPolicy()
 	policy.InitialDelay = interval
 	policy.MaxDelay = interval
-	return managed.NewController(router, managed.WithWaitPolicy(policy)), runtime, nil
+	return runtimes.NewController(router, runtimes.WithWaitPolicy(policy)), runtime, nil
 }
