@@ -28,6 +28,15 @@
 // a fabrication, so it has to be marked as one and must never carry a paper key
 // that resolves.
 //
+// 047 set the page like a paper and guards what that changed: the hero is a
+// drawn figure rather than a WebGL scene, and it runs only when it should and
+// rests on its finished frame otherwise; the header's sign-in stands down while
+// the hero's or the close's is on screen, so a reader is offered the way in
+// once at a time; the example verdict's rate is a footnote under its table; the
+// page sets one face, Inter, which it ships, and no serif; every text tone reads
+// at 4.5:1 on its ground in both themes; every control shows its focus ring;
+// and the figure arriving shifts nothing.
+//
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
 import { DESKTOP, fail, json, settled, sleep, start, waitUntil } from './harness.mjs'
@@ -92,13 +101,11 @@ try {
         innerStroke: cs(inner).stroke,
         outerStroke: cs(outer).stroke,
         outerOpacity: +cs(outer).opacity,
-        // The outer loop is drawn open. Losing the dash array turns the mark
-        // into two concentric rings and the drawing loses its meaning.
-        dashed: (inner.getAttribute('stroke-dasharray') || '') === '' && (outer.getAttribute('stroke-dasharray') || '') !== '',
-        // The product's own wordmark stays font-independent. The app self-hosts
-        // Instrument Serif, so "the app does not ship it" is no longer the
-        // reason. The reason is that an identity that waits on a download can
-        // be missing.
+        // The outer loop is drawn open: one arc with one gap (047), so its
+        // length is short of the full circle it sits on. A closed outer ring
+        // claims the study is re-runnable and the drawing loses its meaning.
+        open: outer.tagName.toLowerCase() === 'path' && outer.getTotalLength() < 0.9 * 2 * Math.PI * 9.2 && inner.tagName.toLowerCase() === 'circle' && (inner.getAttribute('stroke-dasharray') || '') === '',
+        // The wordmark is set in Inter, which the app ships and preloads (047).
         font: cs(document.querySelector('.wordmark')).fontFamily,
         seam: !!document.querySelector('.wordmark .wordmark-seam'),
         word: document.querySelector('.wordmark').textContent.trim(),
@@ -110,8 +117,8 @@ try {
       if (mark.w < 20 || mark.h < 20) fail(`the landing mark is ${mark.w}×${mark.h}px, too small to be the identity`)
       if (mark.innerStroke === 'none' || /rgba\(.*, *0\)/.test(mark.innerStroke)) fail(`the mark's inner ring does not paint (stroke: ${mark.innerStroke})`)
       if (mark.outerStroke === 'none' || mark.outerOpacity < 0.2) fail(`the mark's outer ring does not paint (stroke: ${mark.outerStroke}, opacity: ${mark.outerOpacity})`)
-      if (!mark.dashed) fail('the outer loop is not drawn open; a closed outer ring claims the study is re-runnable')
-      if (/Instrument Serif/.test(mark.font)) fail(`the wordmark asks for ${mark.font}; the identity is drawn, not set`)
+      if (!mark.open) fail('the outer loop is not drawn open; a closed outer ring claims the study is re-runnable')
+      if (!/^"?Inter/.test(mark.font) || /serif/i.test(mark.font.replace(/sans-serif/gi, ''))) fail(`the wordmark asks for ${mark.font}; it is set in Inter, which the app ships`)
       if (mark.word !== 'ReplicHAI') fail(`the wordmark reads "${mark.word}"`)
       if (!mark.seam) fail('the wordmark lost its seam')
     }
@@ -132,27 +139,59 @@ try {
     await page.close()
   }
 
-  /* ── The way in is on screen at every scroll position ── */
+  /* ── The way in is on screen at every scroll position, once ── */
 
   for (const viewport of [DESKTOP, PHONE]) {
     const page = await open({ authenticated: false }, { viewport })
     await page.waitForSelector('.landing .lp-bar')
-    const seen = async (where) => {
-      const b = await box(page, '[data-test="lp-signin"]')
-      if (!b) return fail(`${where}: the header has no sign-in`)
-      if (b.top < 0 || b.bottom > viewport.height) fail(`at ${viewport.width}px, ${where}, the sign-in sits at ${b.top}–${b.bottom} outside the ${viewport.height}px viewport`)
-      if (b.width < 90) fail(`the sign-in is ${b.width}px wide at ${viewport.width}px`)
+    // The sign-in buttons a reader can see and press right now: inside the
+    // viewport, below the sticky header, and not hidden. 029 kept one on screen
+    // at every position with a sticky header; 047 keeps it to one at a time, so
+    // the header's stands down while the hero's or the close's is on screen.
+    const visible = () =>
+      page.evaluate((vh) => {
+        const header = document.querySelector('.lp-bar').getBoundingClientRect().bottom
+        const shown = (e) => {
+          const cs = getComputedStyle(e)
+          const r = e.getBoundingClientRect()
+          const inHeader = !!e.closest('.lp-bar')
+          return cs.visibility !== 'hidden' && +cs.opacity > 0.5 && r.width >= 90 && r.bottom <= vh && r.top >= (inHeader ? 0 : header)
+        }
+        return [...document.querySelectorAll('[data-test="lp-signin"], [data-signin-inline]')].filter(shown).map((e) => (e.closest('.lp-bar') ? 'header' : e.closest('.lp-close') ? 'close' : 'hero'))
+      }, viewport.height)
+    // The observer that decides reports a frame after the scroll, and the
+    // header's button then fades over a transition; the count is taken once
+    // both are done.
+    const rest = async () => {
+      await sleep(120)
+      await settled(page)
     }
-    await seen('at the top')
+    const once = async (where) => {
+      await rest()
+      const got = await visible()
+      if (got.length !== 1) fail(`at ${viewport.width}px, ${where}, ${got.length} sign-ins are on screen (${got.join(', ') || 'none'}); a reader is offered the way in once at a time`)
+      return got
+    }
+    const top = await once('at the top')
+    if (top[0] && top[0] !== 'hero') fail(`at ${viewport.width}px the first screen offers the ${top[0]}'s sign-in rather than the hero's`)
     // The page is long on purpose. The requirement is that the sign-in stays
     // reachable throughout.
     const scrolled = await page.evaluate(() => {
-      window.scrollTo(0, document.body.scrollHeight)
+      window.scrollTo(0, Math.round(document.body.scrollHeight / 3))
       return document.documentElement.scrollHeight > window.innerHeight
     })
     if (!scrolled) fail(`at ${viewport.width}px the landing does not scroll; it is meant to be a page, not a card`)
     await page.waitForFunction(() => window.scrollY > 0)
-    await seen('at the bottom')
+    const mid = await once('a third of the way down')
+    if (mid[0] && mid[0] !== 'header') fail(`at ${viewport.width}px mid-page the way in is the ${mid[0]}'s, want the header's`)
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    await once('at the bottom')
+    // Hidden means out of reach, not only out of sight: the standing-down
+    // header button is out of the tab order while it is hidden.
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await rest()
+    const tabbable = await page.evaluate(() => getComputedStyle(document.querySelector('[data-test="lp-signin"]')).visibility)
+    if (tabbable !== 'hidden') fail(`at the top the header's standing-down sign-in is ${tabbable}; a hidden button must leave the tab order too`)
 
     // Nothing runs off the side at either width.
     const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
@@ -168,29 +207,86 @@ try {
     await page.close()
   }
 
-  /* ── The three figures ── */
+  /* ── Figure 1, and the bands it sits above ── */
 
   {
     const page = await open({ authenticated: false })
-    await page.waitForSelector('.lp-loop-svg')
-    // Every figure is on the page, and the loop figure paints in both rings.
+    await page.waitForSelector('.hf-svg')
+    // A drawing, not a scene: one svg, no canvas anywhere on the page.
     const fig = await page.evaluate(() => {
-      const svg = document.querySelector('.lp-loop-svg')
       const cs = (s) => getComputedStyle(document.querySelector(s))
       return {
-        loop: svg?.tagName.toLowerCase(),
-        outer: cs('.lp-ring-outer').stroke,
-        inner: cs('.lp-ring-inner').stroke,
-        runnerAnim: cs('.lp-ring-runner').animationName,
+        svg: document.querySelector('.hf-svg')?.tagName.toLowerCase(),
+        canvases: document.querySelectorAll('.landing canvas').length,
+        outer: cs('.hf-outer').stroke,
+        inner: cs('.hf-inner').stroke,
+        stations: document.querySelectorAll('.hf-station').length,
+        caption: document.querySelector('.hf-caption')?.textContent.trim() ?? '',
         steps: document.querySelectorAll('.lp-step').length,
         parts: document.querySelectorAll('.lp-part').length,
       }
     })
-    if (fig.loop !== 'svg') fail('the loop figure is not an svg')
-    if (fig.outer === fig.inner) fail(`both loops are painted ${fig.outer}; the boundary is the color as much as the dash`)
-    if (fig.runnerAnim === 'none') fail('nothing on the closed loop moves; the figure claims a re-run and shows a still')
+    if (fig.svg !== 'svg') fail('Figure 1 is not an svg')
+    if (fig.canvases) fail(`the landing draws ${fig.canvases} canvases; Figure 1 is a drawing`)
+    if (fig.outer === fig.inner) fail(`both loops are painted ${fig.outer}; the boundary is the color as much as the gap`)
+    if (fig.stations !== 4) fail(`the inner loop shows ${fig.stations} stations, want implement, run, compare and record`)
+    if (!/^Figure 1\./.test(fig.caption)) fail(`Figure 1's caption reads "${fig.caption.slice(0, 40)}"; a figure is numbered under itself`)
     if (fig.steps !== 4) fail(`the pipeline figure shows ${fig.steps} steps, want four`)
     if (fig.parts !== 3) fail(`the anatomy figure shows ${fig.parts} parts, want claim, evidence, and verdict`)
+
+    // The marker travels the inner loop once the rings are drawn, and the pause
+    // control stops it where it is and says so.
+    const where = () => page.evaluate(() => document.querySelector('.hf-marker').getAttribute('transform'))
+    await sleep(1800)
+    const a = await where()
+    await sleep(400)
+    const b = await where()
+    if (!a || a === b) fail(`the marker does not travel the loop (${a} then ${b}); the figure claims a re-run and shows a still`)
+    await page.click('[data-test="hf-pause"]')
+    await sleep(100)
+    const c = await where()
+    await sleep(400)
+    const d = await where()
+    if (c !== d) fail('pausing the figure does not stop the marker')
+    const paused = await page.evaluate(() => {
+      const b = document.querySelector('[data-test="hf-pause"]')
+      return { pressed: b.getAttribute('aria-pressed'), label: b.getAttribute('aria-label') }
+    })
+    if (paused.pressed !== 'true' || !/play/i.test(paused.label || '')) fail(`paused, the control reads ${JSON.stringify(paused)}; it has to say it would play`)
+    await page.click('[data-test="hf-pause"]')
+    await sleep(400)
+    if ((await where()) === d) fail('playing the figure again does not move the marker')
+    await page.close()
+  }
+
+  /* ── Nothing shifts as the page arrives ── */
+
+  {
+    // Figure 1's box is the viewBox's ratio from the first frame, and the faces
+    // are preloaded with `block`, so the first screen moves nothing once
+    // painted. Layout shift is what a reader reads as imprecision.
+    const page = await h.page({ routes: [['/me', { authenticated: false }]] })
+    await page.evaluateOnNewDocument(() => {
+      window.__shift = 0
+      new PerformanceObserver((l) => {
+        for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value
+      }).observe({ type: 'layout-shift', buffered: true })
+    })
+    await page.open('/')
+    await page.waitForSelector('.hf-svg')
+    await sleep(1500)
+    const shift = await page.evaluate(() => window.__shift)
+    if (shift > 0.01) fail(`the first screen shifts by ${shift.toFixed(3)} as it arrives`)
+    const fonts = await page.evaluate(async () => {
+      await document.fonts.ready
+      const serifs = [...document.querySelectorAll('.landing *')].filter((e) => {
+        const f = getComputedStyle(e).fontFamily.replace(/sans-serif/gi, '')
+        return /serif|Georgia|Times/i.test(f) && e.textContent.trim()
+      }).length
+      return { inter: document.fonts.check('600 16px Inter') && document.fonts.check('400 16px Inter'), serifs }
+    })
+    if (!fonts.inter) fail('Inter did not load; the page falls back to the system face')
+    if (fonts.serifs) fail(`${fonts.serifs} elements on the landing set a serif; the page sets one face, Inter (047)`)
     await page.close()
   }
 
@@ -206,12 +302,22 @@ try {
       return {
         hidden: bands.filter((e) => +getComputedStyle(e).opacity < 0.99).length,
         animated: bands.filter((e) => getComputedStyle(e).animationName !== 'none').length,
-        runner: getComputedStyle(document.querySelector('.lp-ring-runner')).animationName,
+        figure: [...document.querySelectorAll('.hf *')].filter((e) => getComputedStyle(e).animationName !== 'none').length,
+        marker: document.querySelector('.hf-marker').getAttribute('transform'),
+        pause: getComputedStyle(document.querySelector('[data-test="hf-pause"]')).display,
       }
     })
     if (still.hidden) fail(`${still.hidden} parts of the landing are transparent under reduced motion; the resting state has to be the finished one`)
     if (still.animated) fail(`${still.animated} bands still animate under reduced motion`)
-    if (still.runner !== 'none') fail('the loop runner still spins under reduced motion')
+    if (still.figure) fail(`${still.figure} parts of Figure 1 still animate under reduced motion`)
+    if (still.pause !== 'none') fail('the figure offers a pause control under reduced motion, where it never runs')
+    // The finished frame: the marker parked on "record", the left of the loop,
+    // and staying there.
+    await sleep(500)
+    const parked = await page.evaluate(() => document.querySelector('.hf-marker').getAttribute('transform'))
+    if (parked !== still.marker) fail('the marker moves under reduced motion')
+    const x = Number((still.marker || '').match(/translate\(([\d.]+)/)?.[1])
+    if (!(x < 300)) fail(`under reduced motion the marker rests at ${still.marker}; the finished frame parks it on "record"`)
 
     // The walkthrough dims the steps it is not on and folds their artifacts down
     // to a header strip. Both are motion by this page's own definition, so under
@@ -240,34 +346,29 @@ try {
     await page.close()
   }
 
-  /* ── The hero slab carries its own copy, with or without the scene ── */
+  /* ── The hero carries its own copy beside the figure ── */
 
   for (const viewport of [DESKTOP, PHONE]) {
     const page = await open({ authenticated: false }, { viewport })
-    await page.waitForSelector('.lp-slab')
-    const slab = await page.evaluate(() => {
-      const el = document.querySelector('.lp-slab')
-      const r = el.getBoundingClientRect()
+    await page.waitForSelector('.lp-hero-copy')
+    const hero = await page.evaluate(() => {
+      const copy = document.querySelector('.lp-hero-copy')
       const inside = (sel) => {
         const c = document.querySelector(sel)
-        if (!c) return false
-        const b = c.getBoundingClientRect()
-        return b.width > 0 && b.left >= r.left - 1 && b.right <= r.right + 1 && b.bottom <= r.bottom + 1
+        return !!c && copy.contains(c) && c.getBoundingClientRect().width > 0
       }
+      const svg = document.querySelector('.hf-svg').getBoundingClientRect()
       return {
-        // The slab paints its own dark ground. The scene is lazy, optional, and
-        // allowed to fail; if the copy's legibility depended on it, a browser
-        // with no WebGL would get white text on white.
-        bg: getComputedStyle(el).backgroundColor,
-        h1: document.querySelector('.lp-slab h1')?.textContent.trim().length ?? 0,
+        h1: copy.querySelector('h1')?.textContent.trim().length ?? 0,
         signin: inside('[data-test="lp-hero-signin"]'),
         registry: inside('[data-test="lp-hero-registry"]'),
+        figure: svg.width > 0 && svg.height > 0,
       }
     })
-    if (!/^rgba?\((\d+), (\d+), (\d+)/.test(slab.bg) || slab.bg.includes(', 0)')) fail(`at ${viewport.width}px the hero slab has no ground of its own (${slab.bg}); the scene is allowed to fail and the copy is not`)
-    if (slab.h1 < 20) fail(`at ${viewport.width}px the hero slab carries no claim`)
-    if (!slab.signin) fail(`at ${viewport.width}px the hero's sign-in is not inside the slab`)
-    if (!slab.registry) fail(`at ${viewport.width}px the hero's registry link is not inside the slab`)
+    if (hero.h1 < 20) fail(`at ${viewport.width}px the hero carries no claim`)
+    if (!hero.signin) fail(`at ${viewport.width}px the hero's sign-in is not with its claim`)
+    if (!hero.registry) fail(`at ${viewport.width}px the hero's registry link is not with its claim`)
+    if (!hero.figure) fail(`at ${viewport.width}px Figure 1 has no box`)
     await page.close()
   }
 
@@ -337,49 +438,45 @@ try {
     await page.waitForSelector('[data-test="lp-strip"] .lp-card')
     // Every band, including the ones a reveal observer has not reached yet:
     // geometry is measured on the box, and a transparent box measures the same.
+    // 047 sets every band on the platform's container, min(1200px, 100% − 96px),
+    // so the measure is that each band shares the hero's two edges and sits
+    // centered: one column down the page, never a band of its own width.
     const bands = await page.evaluate(async () => {
       const out = []
       for (const band of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
         band.scrollIntoView()
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-        // The band's own box is full width by construction once the cap is
-        // gone; what a reader sees is where its contents start and stop.
-        const kids = [...band.children].map((c) => c.getBoundingClientRect()).filter((r) => r.width > 0)
-        if (!kids.length) continue
-        out.push({
-          name: band.dataset.test || band.className,
-          left: Math.min(...kids.map((r) => r.left)),
-          right: Math.max(...kids.map((r) => r.right)),
-        })
+        const r = band.getBoundingClientRect()
+        out.push({ name: band.dataset.test || band.className, left: r.left, right: r.right })
       }
-      // The page width a band can actually reach, which is the viewport less a
-      // classic scrollbar on a browser that draws one.
       return { bands: out, page: document.documentElement.clientWidth }
     })
     // Every band on the page: the hero, seven sections, the close. A band that
-    // rendered nothing is skipped above and would otherwise go uncovered here.
+    // rendered nothing would otherwise go uncovered here.
     if (bands.bands.length < 9) fail(`only ${bands.bands.length} bands were measured at ${WIDE.width}px; the page did not render`)
+    const hero = bands.bands[0]
+    const width = Math.min(1200, bands.page - 96)
+    if (hero && Math.abs(hero.right - hero.left - width) > 2) fail(`at ${WIDE.width}px the hero is ${Math.round(hero.right - hero.left)}px wide, want the ${width}px container`)
     for (const b of bands.bands) {
-      const rightGutter = bands.page - b.right
-      if (b.left > 96) fail(`at ${WIDE.width}px the band ${b.name} starts ${Math.round(b.left)}px in; the page has one edge and it is the hero's`)
-      if (Math.abs(b.left - rightGutter) > 2) fail(`at ${WIDE.width}px the band ${b.name} is off center: ${Math.round(b.left)}px left, ${Math.round(rightGutter)}px right`)
+      if (Math.abs(b.left - hero.left) > 2 || Math.abs(b.right - hero.right) > 2) fail(`at ${WIDE.width}px the band ${b.name} runs ${Math.round(b.left)}–${Math.round(b.right)}, off the hero's ${Math.round(hero.left)}–${Math.round(hero.right)}`)
+      if (Math.abs(b.left - (bands.page - b.right)) > 2) fail(`at ${WIDE.width}px the band ${b.name} is off center`)
     }
-    // The verdict table is the one element with four columns of real content,
-    // and it was the element that made the widening pointless: a 920px box in
-    // a 2560px frame.
-    const windowWidth = await page.evaluate(() => document.querySelector('.lp-window').getBoundingClientRect().width)
-    if (windowWidth < 1200) fail(`at ${WIDE.width}px the verdict window is ${Math.round(windowWidth)}px wide; the evidence does not take the room the page gives it`)
-    // Adding columns uses width well only up to a point. A grid that fills
-    // 2560px with seven narrow columns wastes the width in the other direction,
-    // so the measurement is the card, not the track.
+    // The verdict fills the column it is set in, and no grid shreds its cards
+    // into tracks too narrow to read.
+    const fill = await page.evaluate(() => {
+      const w = document.querySelector('.lp-window').getBoundingClientRect().width
+      const col = document.querySelector('[data-test="lp-anatomy"] .lp-showcase').getBoundingClientRect().width
+      return { w, col }
+    })
+    if (Math.abs(fill.w - fill.col) > 2) fail(`at ${WIDE.width}px the verdict window is ${Math.round(fill.w)}px in a ${Math.round(fill.col)}px column`)
     const cards = await page.evaluate(() => {
       const widths = (sel) => [...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().width))
       return { fields: widths('.lp-field'), costs: widths('.lp-cost'), anatomy: widths('.lp-part'), registry: widths('.lp-card') }
     })
     for (const [name, w] of Object.entries(cards)) {
       if (!w.length) fail(`at ${WIDE.width}px the ${name} grid rendered no cards`)
-      const thin = w.filter((n) => n < 340)
-      if (thin.length) fail(`at ${WIDE.width}px ${thin.length} of the ${name} cards are under 340px wide (${w.join(', ')}); the grid shredded rather than filled`)
+      const thin = w.filter((n) => n < 240)
+      if (thin.length) fail(`at ${WIDE.width}px ${thin.length} of the ${name} cards are under 240px wide (${w.join(', ')}); the grid shredded rather than filled`)
     }
     await page.close()
   }
@@ -394,7 +491,7 @@ try {
     // that, because a box at opacity 0 measures exactly like a box at opacity 1,
     // which is how a blank hero reached production.
     const page = await open({ authenticated: false }, { routes: [['/public', []]] })
-    await page.waitForSelector('.lp-slab')
+    await page.waitForSelector('.lp-hero')
     // The hero is above the fold and must be visible with no scrolling at all.
     // Its reveal is a transition, so it is waited for; one that never comes is
     // the failure the check reports.
@@ -451,14 +548,30 @@ try {
     const shown = await page.evaluate(() => ({
       files: [...document.querySelectorAll('.lp-file-name')].map((e) => e.textContent.trim()),
       example: !!document.querySelector('.lp-tag.example'),
+      // The example's rate is derived from its table and set as that table's
+      // footnote (047): under it, and no larger than its cells.
+      foot: (() => {
+        const f = document.querySelector('.lp-verdict-foot')
+        const t = document.querySelector('.lp-verdict-table')
+        const cell = document.querySelector('.lp-verdict-table td')
+        if (!f || !t || !cell) return null
+        return { below: f.getBoundingClientRect().top >= t.getBoundingClientRect().bottom, size: parseFloat(getComputedStyle(f).fontSize), cell: parseFloat(getComputedStyle(cell).fontSize), text: f.textContent }
+      })(),
       // Every DOI-shaped string on the page. The verdict this page shows is
       // invented, and an invented verdict attached to somebody's real DOI is the
       // exact failure this product exists to catch.
       dois: (document.body.innerText.match(/10\.\d{4,9}\/[^\s]+/g) || []),
     }))
-    // The five paths `internal/publish/gate.go` treats as worker-written.
-    const want = ['README.md', 'REPRODUCIBILITY.md', 'src/', 'UNVERIFIED.md', 'SOURCES.md']
-    if (JSON.stringify(shown.files) !== JSON.stringify(want)) fail(`the page says a session ships ${JSON.stringify(shown.files)}, and the publish gate ships ${JSON.stringify(want)}`)
+    // Every file the method asks a session to write (`method.Deliverables()` in
+    // internal/method, which the publication gate reads too), and src/.
+    const want = ['README.md', 'REPRODUCIBILITY.md', 'UNVERIFIED.md', 'SOURCES.md', 'verdict.json', 'instrument.json', 'src/']
+    if (JSON.stringify(shown.files) !== JSON.stringify(want)) fail(`the page says a session ships ${JSON.stringify(shown.files)}, and the method asks for ${JSON.stringify(want)}`)
+    if (!shown.foot) fail('the example verdict has no footnote for its rate')
+    else {
+      if (!shown.foot.below) fail('the example rate sits above the table it is derived from')
+      if (shown.foot.size > shown.foot.cell) fail(`the example rate is set at ${shown.foot.size}px over cells at ${shown.foot.cell}px; a rate is a footnote, never a headline`)
+      if (!/72%/.test(shown.foot.text) || !/verified/i.test(shown.foot.text)) fail(`the footnote does not carry the rate with its counts: ${shown.foot.text}`)
+    }
     if (!shown.example) fail('the demo verdict is not marked as an example; it is a fabrication and has to say so')
     // An empty match set would satisfy the filter below in the same way as "only
     // the illustrative key is there", and this guard must never pass because it
@@ -664,95 +777,87 @@ try {
     await page.close()
   }
 
-  /* ── The material has two states (040) ── */
+  /* ── Every word reads on its ground, in both themes (047) ── */
 
   {
-    // 033 built four blocks as a material rather than a theme and painted them
-    // near-black in both appearances. In the light theme that is four dark
-    // blocks down one page, so 040 gave the material a light half. This guards
-    // that each half is the half it claims: the grounds, and, since a color
-    // swap silently breaks it, that the ink on each ground is still readable.
-    const BLOCKS = {
-      hero: '.lp-slab',
-      boundary: '.lp-loops .lp-block',
-      artifacts: '.lp-walk-panel',
-      close: '.lp-close',
-    }
-    const probe = (page) =>
-      page.evaluate((blocks) => {
-        // Relative luminance, so light or dark is one number rather than three,
-        // and contrast is the WCAG ratio from the same value.
+    // 040 guarded four dark blocks; 047 removed them, and what is left to guard
+    // is the thing that block test was for: that no ink lands on a ground it
+    // cannot be read on. Every text element on the page is measured against
+    // the first opaque ground behind it, its ink composited over that ground
+    // first, and must reach WCAG's 4.5:1. Measured at rest, under reduced
+    // motion, because the walkthrough dims the steps it is not on by design.
+    for (const theme of ['light', 'dark']) {
+      const page = await h.page({ routes: [['/me', { authenticated: false }]] })
+      await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+      await page.evaluateOnNewDocument((t) => localStorage.setItem('theme', t), theme)
+      await page.open('/')
+      await page.waitForSelector('.lp-close')
+      const worst = await page.evaluate(() => {
         const rgba = (c) => {
           const n = c.match(/\d+(\.\d+)?/g).map(Number)
           return [n[0], n[1], n[2], n.length > 3 ? n[3] : 1]
         }
-        // Composite the ink over its own ground first. Half this page's quiet
-        // ink is an alpha over the block, and read as opaque it would report a
-        // contrast it does not have.
         const over = (fg, bg) => fg.slice(0, 3).map((v, i) => v * fg[3] + bg[i] * (1 - fg[3]))
-        const lum = (c) => {
-          const [r, g, b] = Array.isArray(c) ? c : rgba(c)
+        const lum = ([r, g, b]) => {
           const f = (v) => {
             const u = v / 255
             return u <= 0.03928 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4)
           }
           return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
         }
-        const out = {}
-        for (const [name, sel] of Object.entries(blocks)) {
-          const el = document.querySelector(sel)
-          if (!el) {
-            out[name] = null
-            continue
+        const ground = (e) => {
+          for (let n = e; n; n = n.parentElement) {
+            const c = rgba(getComputedStyle(n).backgroundColor)
+            if (c[3] > 0.9) return c
           }
-          const bg = getComputedStyle(el).backgroundColor
-          // The heading, the body and the quietest line each sit on this ground.
-          const inks = [...el.querySelectorAll('h1, h2, h3, p, .lp-eyebrow, .lp-plate-label')]
-            .slice(0, 12)
-            .map((e) => getComputedStyle(e).color)
-          const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
-          out[name] = {
-            bg,
-            lum: lum(bg),
-            worst: inks.length ? Math.min(...inks.map((c) => ratio(lum(bg), lum(over(rgba(c), rgba(bg)))))) : null,
-          }
+          return rgba(getComputedStyle(document.body).backgroundColor)
+        }
+        const out = []
+        const texts = [...document.querySelectorAll('.landing h1, .landing h2, .landing h3, .landing p, .landing li, .landing span, .landing a, .landing th, .landing td, .landing b')].filter(
+          (e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && e.getBoundingClientRect().width > 0 && !e.closest('footer.lu-footer'),
+        )
+        for (const e of texts) {
+          const bg = ground(e)
+          const fg = over(rgba(getComputedStyle(e).color), bg)
+          const a = lum(fg)
+          const b = lum(bg)
+          const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+          if (ratio < 4.5) out.push(`${e.className || e.tagName} "${e.textContent.trim().slice(0, 30)}" ${ratio.toFixed(2)}:1`)
+        }
+        // The figure's labels are svg text, painted by fill.
+        const board = ground(document.querySelector('.hf-board'))
+        for (const t of document.querySelectorAll('.hf-svg text')) {
+          const fg = over(rgba(getComputedStyle(t).fill), board)
+          const a = lum(fg)
+          const b = lum(board)
+          const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+          if (ratio < 4.5) out.push(`figure text "${t.textContent.trim()}" ${ratio.toFixed(2)}:1`)
         }
         return out
-      }, BLOCKS)
-
-    for (const [theme, want] of [
-      ['light', { min: 0.72, max: 1 }],
-      ['dark', { min: 0, max: 0.06 }],
-    ]) {
-      const page = await open({ authenticated: false }, { theme })
-      await page.waitForSelector('.lp-close')
-      // Every band starts at the pre-reveal opacity; the grounds are painted
-      // regardless, but scrolling through is what the reader actually does.
-      await scrollThrough(page)
-      const got = await probe(page)
-      for (const [name, v] of Object.entries(got)) {
-        if (!v) {
-          fail(`${theme}: the landing has no ${name} block`)
-          continue
-        }
-        if (v.lum < want.min || v.lum > want.max) {
-          fail(`in ${theme} mode the ${name} block is ${v.bg} (luminance ${v.lum.toFixed(3)}), outside ${want.min}–${want.max} — the block is painted for the other appearance`)
-        }
-        // 3:1 is the bar the product's quiet tier is written to; the heading
-        // and body tiers sit far above it. The failure being caught is a ground
-        // that flipped without its ink flipping, which lands near 1:1 and passes
-        // every geometry assertion on this page.
-        if (v.worst !== null && v.worst < 3) {
-          fail(`in ${theme} mode the ${name} block's quietest ink is ${v.worst.toFixed(2)}:1 against ${v.bg}`)
-        }
-      }
-      // The artifacts panel restated the boundary panel's ground as a literal
-      // and won over it, which is why it stayed dark whatever the tokens said.
-      if (got.artifacts && got.boundary && got.artifacts.bg !== got.boundary.bg) {
-        fail(`in ${theme} mode the artifacts panel is ${got.artifacts.bg} and the boundary panel is ${got.boundary.bg}; both are the same material`)
-      }
+      })
+      if (worst.length) fail(`in ${theme} mode ${worst.length} texts read under 4.5:1: ${JSON.stringify(worst.slice(0, 8))}`)
       await page.close()
     }
+  }
+
+  /* ── Every control shows where the keyboard is (047) ── */
+
+  {
+    const page = await open({ authenticated: false })
+    await page.waitForSelector('.lp-hero')
+    const missing = []
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press('Tab')
+      const ring = await page.evaluate(() => {
+        const e = document.activeElement
+        if (!e || e === document.body) return null
+        const cs = getComputedStyle(e)
+        return { name: (e.textContent || e.getAttribute('aria-label') || e.tagName).trim().slice(0, 30), shown: cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2 }
+      })
+      if (ring && !ring.shown) missing.push(ring.name)
+    }
+    if (missing.length) fail(`${missing.length} controls show no focus ring: ${JSON.stringify(missing)}`)
+    await page.close()
   }
 
   /* ── The footer opens with the product's own lockup ── */

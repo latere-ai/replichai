@@ -142,7 +142,8 @@ try {
         claim: txt(tds[0]),
         loop: txt(tds[1]),
         outcome: txt(tds[2]),
-        outcomeColor: getComputedStyle(tds[2]).color,
+        // The tone is on the outcome's word and dot, inside the cell (047).
+        outcomeColor: getComputedStyle(tds[2].querySelector('.outcome-tag') ?? tds[2]).color,
         outer: tr.classList.contains('row-outer'),
         claimColor: getComputedStyle(tds[0].querySelector('.claim-text')).color,
         mismatches: [...tr.querySelectorAll('.mismatch')].map(txt),
@@ -152,6 +153,11 @@ try {
       summary: txt(document.querySelector('.findings-summary')),
       word: txt(document.querySelector('.findings-word')),
       rate: txt(document.querySelector('.findings-rate')),
+      // 047: the rate is the boundary table's footnote. It sits under the
+      // table, and it is set no larger than the table's own cells.
+      rateSize: parseFloat(getComputedStyle(document.querySelector('.findings-rate')).fontSize),
+      cellSize: parseFloat(getComputedStyle(document.querySelector('.grid-table .claim-text')).fontSize),
+      rateBelow: document.querySelector('.findings-decomp').getBoundingClientRect().top >= document.querySelector('.grid-table').getBoundingClientRect().bottom,
       decomp: txt(document.querySelector('.findings-decomp')),
       bars: [...document.querySelectorAll('.decomp-bar > span')].length,
       rows,
@@ -167,12 +173,14 @@ try {
 
   // The rate never appears alone: its decomposition is in the same block.
   if (!read.rate) fail('the rate did not render')
+  if (read.rateSize > read.cellSize) fail(`the rate is set at ${read.rateSize}px over cells at ${read.cellSize}px; a derived rate is a footnote, never a headline`)
+  if (!read.rateBelow) fail('the rate sits above the table it is derived from; it is that table\'s footnote')
   if (!/verified/i.test(read.decomp || '') || !/blocked/i.test(read.decomp || '')) {
     fail(`the rate is not accompanied by its decomposition: ${read.decomp}`)
   }
   if (read.bars < 1) fail('the decomposition bar did not render')
 
-  const outer = read.rows.find((r) => /OUTER/.test(r.loop || ''))
+  const outer = read.rows.find((r) => /outer/i.test(r.loop || ''))
   if (!outer) fail('no outer-loop row rendered')
   else {
     if (!/NOT SCORED/i.test(outer.outcome || '')) fail(`the outer row reads "${outer.outcome}"; the human study is never scored`)
@@ -186,7 +194,7 @@ try {
   // The case a table of outcomes hides. A claim can disagree with the paper on
   // more than one quantity, and every one of them is printed, each naming what
   // it compares.
-  const verified = read.rows.find((r) => /VERIFIED/.test(r.outcome || ''))
+  const verified = read.rows.find((r) => /verified/i.test(r.outcome || ''))
   if (!verified?.mismatches.length) fail('a verified claim that disagrees with the paper shows no mismatch')
   else if (verified.mismatches.length !== 2) fail(`the claim shows ${verified.mismatches.length} mismatches, want both`)
   else {
@@ -276,7 +284,8 @@ try {
     const rows = [...document.querySelectorAll('.release-row')].map((r) => ({
       where: txt(r.querySelector('.release-where')),
       text: txt(r),
-      dot: getComputedStyle(r.querySelector('.release-dot')).backgroundColor,
+      // The result's tone: the word and its dot are both drawn in it (047).
+      dot: getComputedStyle(r.querySelector('.release-result')).color,
     }))
     const released = document.querySelector('.release-row')
     const repo = document.querySelector('.detail-grid .card .rows')
@@ -305,7 +314,7 @@ try {
   const unfetched = art.rows.find((r) => /Zenodo/.test(r.where || ''))
   if (!unfetched) fail('the not-fetched row did not render')
   else {
-    if (!/NOT FETCHED/.test(unfetched.text || '')) fail(`the not-fetched row reads ${unfetched.text}`)
+    if (!/not fetched/i.test(unfetched.text || '')) fail(`the not-fetched row reads ${unfetched.text}`)
     if (none && unfetched.dot === none.dot) fail(`a page the run could not fetch shares the tone of nothing published (${none.dot})`)
   }
 
@@ -348,7 +357,7 @@ try {
   if (rail.cards.length !== 1) fail(`the rail rendered ${rail.cards.length} cards, want one per graded paper`)
   else {
     const c = rail.cards[0]
-    for (const want of ['0.50', 'of 2 components', 'VERIFIED', 'BLOCKED']) {
+    for (const want of ['0.50', 'of 2 components', 'Verified', 'Blocked']) {
       if (!c.includes(want)) fail(`the rail card is missing ${want}: ${c}`)
     }
     if (!/Code|Data/.test(c)) fail(`the rail card carries no scorecard: ${c}`)

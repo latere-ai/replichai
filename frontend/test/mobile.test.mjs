@@ -273,6 +273,35 @@ try {
         check(!w.railInFlow, `${label}: the rail is still on screen with the drawer closed`)
       }
 
+      // 047: no label is set in capitals or in the monospace face, and nothing
+      // draws a colored edge down its left side. Monospace is for what is
+      // literally code or an identifier, which these classes name; a label in
+      // it reads as a developer tool. Measured on every screen, because a
+      // label style is shared and one stray rule reaches all of them.
+      const type = await page.evaluate(() => {
+        const IDS = '.mono, .row-mono, code, pre, kbd, .lp-file-name, .paper-ref, .member-email, .tx-head-ref, .release-where-id, input, textarea, .event-io, .ev-detail-body, .markdown-body *, .hljs, .hljs *'
+        const caps = []
+        const mono = []
+        const edges = []
+        for (const e of document.querySelectorAll('body *')) {
+          if (!e.getBoundingClientRect().width) continue
+          const cs = getComputedStyle(e)
+          const own = [...e.childNodes].some((n) => n.nodeType === 3 && /[a-z]/i.test(n.textContent))
+          if (own && cs.textTransform === 'uppercase') caps.push(e.className || e.tagName)
+          if (own && /mono|Menlo|Consolas|SF Mono/i.test(cs.fontFamily) && !e.closest(IDS)) mono.push(`${e.className || e.tagName} "${e.textContent.trim().slice(0, 24)}"`)
+          const w = parseFloat(cs.borderLeftWidth)
+          if (w >= 2 && cs.borderLeftStyle !== 'none') {
+            const [r, g, b] = cs.borderLeftColor.match(/\d+/g).map(Number)
+            // A neutral gray divider is a rule; a hued one is an accent.
+            if (Math.max(r, g, b) - Math.min(r, g, b) > 24) edges.push(e.className || e.tagName)
+          }
+        }
+        return { caps: [...new Set(caps)], mono: [...new Set(mono)].slice(0, 6), edges: [...new Set(edges)] }
+      })
+      for (const c of type.caps) fail(`${label}: ${c} sets a label in capitals`)
+      for (const m of type.mono) fail(`${label}: ${m} sets a label in the monospace face`)
+      for (const e of type.edges) fail(`${label}: ${e} draws a colored edge down its left side`)
+
       const sp = await spill(page, viewport.width)
       check(sp.doc <= 1, `${label}: the document scrolls ${sp.doc}px sideways`)
       for (const q of sp.panes) fail(`${label}: ${q} scrolls sideways — a pane hiding its own overflow is what made this invisible`)
