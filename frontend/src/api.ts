@@ -762,6 +762,11 @@ export type PlatformSettings = {
   // draft is which model writes a project's description when somebody asks for
   // one (039). No credential: that is the deployment's, from its environment.
   draft?: DraftConfig
+  // latere_environments are the environments a session on the Latere
+  // platform may name (051); known_latere_environments the ones the runtime
+  // knows, which the console offers. base is always among the first.
+  latere_environments?: string[]
+  known_latere_environments?: string[]
   updated_by?: string
   updated_at?: string
 }
@@ -817,7 +822,7 @@ export const topUp = (email: string, amount: number) =>
 
 export const getPlatformSettings = () => fetch('/admin/settings').then(json<PlatformSettings>)
 
-export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates' | 'draft'>) =>
+export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates' | 'draft' | 'latere_environments'>) =>
   fetch('/admin/settings', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },

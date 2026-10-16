@@ -165,8 +165,8 @@ func TestStartRefusesWhatThePlatformCannotDo(t *testing.T) {
 		"a repository": func(s *managed.SessionSpec) {
 			s.Resources = []managed.Resource{{Kind: managed.ResourceRepository, Repository: &managed.RepositoryResource{URL: "https://github.com/o/r", Destination: "repo", Access: managed.AccessReadWrite, CredentialRef: "forge"}}}
 		},
-		"a findings file": func(s *managed.SessionSpec) { s.Evaluation.Findings = "verdict.json" },
-		"an environment the deployment does not offer": func(s *managed.SessionSpec) { s.Sandbox.Environment = "science" },
+		"a findings file":                          func(s *managed.SessionSpec) { s.Evaluation.Findings = "verdict.json" },
+		"an environment the runtime does not know": func(s *managed.SessionSpec) { s.Sandbox.Environment = "fortran" },
 	}
 	for name, edit := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -231,7 +231,7 @@ func TestCapabilitiesDeclareThePreferencesNetwork(t *testing.T) {
 // science image and not in the base one.
 func TestASessionRunsOnTheEnvironmentItNames(t *testing.T) {
 	f := newFakePlatform(t)
-	r, err := New(Config{BaseURL: f.server.URL, HTTP: f.server.Client(), Environments: []string{"base", "science"},
+	r, err := New(Config{BaseURL: f.server.URL, HTTP: f.server.Client(), Environments: func(context.Context) ([]string, error) { return []string{"base", "science"}, nil },
 		Tokens: TokenFunc(func(ctx context.Context) (string, error) { return "bearer-1", nil })})
 	if err != nil {
 		t.Fatal(err)
@@ -271,16 +271,53 @@ func TestASessionRunsOnTheEnvironmentItNames(t *testing.T) {
 	}
 }
 
-// TestNewRefusesEnvironmentsItCannotOffer checks that a deployment cannot offer
-// an environment this runtime does not know, nor leave out the one a session
-// that names none runs on.
-func TestNewRefusesEnvironmentsItCannotOffer(t *testing.T) {
-	for name, environments := range map[string][]string{
-		"an unknown environment": {"base", "fortran"},
-		"no default environment": {"science"},
-	} {
-		if _, err := New(Config{Environments: environments}); err == nil {
-			t.Errorf("%s: New accepted %v", name, environments)
+// TestTheEnvironmentsOfferedAreReadEachTime checks that the environments a
+// deployment offers are read when a session asks, so an admin's change applies
+// to the next one; that a failed read offers the base environment alone; that
+// a name the runtime does not know is ignored and the base one is always
+// offered; and that a runtime with nothing to read offers every environment it
+// knows, as an operator's own machine does.
+func TestTheEnvironmentsOfferedAreReadEachTime(t *testing.T) {
+	f := newFakePlatform(t)
+	list, failure := []string{"base"}, error(nil)
+	r, err := New(Config{BaseURL: f.server.URL, HTTP: f.server.Client(),
+		Environments: func(context.Context) ([]string, error) { return list, failure },
+		Tokens:       TokenFunc(func(ctx context.Context) (string, error) { return "bearer-1", nil })})
+	if err != nil {
+		t.Fatal(err)
+	}
+	offered := func() map[string]bool {
+		t.Helper()
+		capabilities, err := r.Capabilities(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return capabilities.Environments
+	}
+	if got := offered(); got["science"] || !got["base"] {
+		t.Fatalf("offered %v, want base alone", got)
+	}
+	list = []string{"science", "fortran"}
+	if got := offered(); !got["science"] || !got["base"] || got["fortran"] {
+		t.Fatalf("after the admin's change, offered %v, want base and science", got)
+	}
+	failure = errors.New("settings unavailable")
+	if got := offered(); got["science"] || !got["base"] {
+		t.Fatalf("on a failed read, offered %v, want base alone", got)
+	}
+
+	all, err := New(Config{BaseURL: f.server.URL, HTTP: f.server.Client(),
+		Tokens: TokenFunc(func(ctx context.Context) (string, error) { return "bearer-1", nil })})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := all.Capabilities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range KnownEnvironments {
+		if !capabilities.Environments[name] {
+			t.Errorf("a runtime with nothing to read does not offer %s", name)
 		}
 	}
 }

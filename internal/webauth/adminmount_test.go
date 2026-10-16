@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -38,7 +39,7 @@ func mountedAdmin(t *testing.T) (*http.ServeMux, []httpapi.Route, access.Princip
 	}
 
 	mux := http.NewServeMux()
-	routes := MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, platform.NewMemStore(acc), credit.NewMemStore(acc, nil)))
+	routes := MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, platform.NewMemStore(acc), credit.NewMemStore(acc, nil), WithLatereEnvironments([]string{"base", "gui", "science"})))
 	return mux, routes, admin, user
 }
 
@@ -305,5 +306,56 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	}
 	if found.Wallet != 5*credit.Dollar || found.Tier != "user" || found.Bound {
 		t.Errorf("newcomer = %+v, want a five-dollar wallet on an unbound user grant", *found)
+	}
+}
+
+// TestAnAdminChoosesTheLatereEnvironments checks the console's half of 051:
+// the settings show the Latere environments in force and the ones the runtime
+// knows, an edit of something else keeps the list, a list naming an
+// environment the runtime does not know is refused, and a list without the
+// base environment is refused too.
+func TestAnAdminChoosesTheLatereEnvironments(t *testing.T) {
+	mux, _, admin, _ := mountedAdmin(t)
+	do := func(method, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "/admin/settings", strings.NewReader(body))
+		r = r.WithContext(identityCtx(r, admin))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	var view struct {
+		Offered []string `json:"latere_environments"`
+		Known   []string `json:"known_latere_environments"`
+	}
+	read := func() {
+		t.Helper()
+		w := do("GET", "")
+		if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil {
+			t.Fatalf("settings: %v (%s)", err, w.Body)
+		}
+	}
+	read()
+	if !slices.Equal(view.Offered, platform.DefaultLatereEnvironments) || !slices.Equal(view.Known, []string{"base", "gui", "science"}) {
+		t.Fatalf("offered %v and known %v, want the defaults and the runtime's three", view.Offered, view.Known)
+	}
+	if w := do("PUT", `{"start_reserve":9000000}`); w.Code != http.StatusOK {
+		t.Fatalf("an edit of the reserve = %d", w.Code)
+	}
+	if read(); !slices.Equal(view.Offered, platform.DefaultLatereEnvironments) {
+		t.Fatalf("an edit of the reserve changed the environments to %v", view.Offered)
+	}
+	if w := do("PUT", `{"start_reserve":9000000,"latere_environments":["base","gui"]}`); w.Code != http.StatusOK {
+		t.Fatalf("choosing base and gui = %d %s", w.Code, w.Body)
+	}
+	if read(); !slices.Equal(view.Offered, []string{"base", "gui"}) {
+		t.Fatalf("offered %v, want base and gui", view.Offered)
+	}
+	for name, body := range map[string]string{
+		"an unknown environment": `{"start_reserve":9000000,"latere_environments":["base","fortran"]}`,
+		"no base environment":    `{"start_reserve":9000000,"latere_environments":["science"]}`,
+	} {
+		if w := do("PUT", body); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "bad_environments") {
+			t.Errorf("%s = %d %s, want 400 bad_environments", name, w.Code, w.Body)
+		}
 	}
 }

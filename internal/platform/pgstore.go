@@ -37,12 +37,13 @@ func (s *PGStore) Settings(ctx context.Context) (Settings, error) {
 	fallback := Settings{
 		StartReserve: DefaultStartReserve, OverdraftCap: DefaultOverdraftCap, Rates: credit.DefaultCard(),
 		SpreadBps: DefaultSpreadBps, SpreadFixedMicro: DefaultSpreadFixedMicro, MinTopupMicro: DefaultMinTopupMicro,
+		LatereEnvironments: []string{BaseLatereEnvironment},
 	}
 	var out Settings
-	var card, drafting []byte
+	var card, drafting, environments []byte
 	err := s.pool.QueryRow(ctx,
-		`SELECT start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, draft, updated_by, updated_at FROM platform_settings WHERE id = 1`,
-	).Scan(&out.StartReserve, &out.OverdraftCap, &card, &out.SpreadBps, &out.SpreadFixedMicro, &out.MinTopupMicro, &drafting, &out.UpdatedBy, &out.UpdatedAt)
+		`SELECT start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, draft, latere_environments, updated_by, updated_at FROM platform_settings WHERE id = 1`,
+	).Scan(&out.StartReserve, &out.OverdraftCap, &card, &out.SpreadBps, &out.SpreadFixedMicro, &out.MinTopupMicro, &drafting, &environments, &out.UpdatedBy, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fallback, nil
 	}
@@ -53,6 +54,11 @@ func (s *PGStore) Settings(ctx context.Context) (Settings, error) {
 	// is a state everything downstream already handles.
 	if err := json.Unmarshal(drafting, &out.Draft); err != nil {
 		out.Draft = draft.Config{}
+	}
+	// An unreadable list offers the base environment alone, which every
+	// deployment can rely on.
+	if err := json.Unmarshal(environments, &out.LatereEnvironments); err != nil || len(out.LatereEnvironments) == 0 {
+		out.LatereEnvironments = []string{BaseLatereEnvironment}
 	}
 	if err := json.Unmarshal(card, &out.Rates); err != nil || len(out.Rates.Models) == 0 {
 		// An unreadable or empty card would price a session at nothing.
@@ -129,9 +135,17 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 		return err
 	}
 	drafting := string(encodedDraft)
+	if len(next.LatereEnvironments) == 0 {
+		next.LatereEnvironments = []string{BaseLatereEnvironment}
+	}
+	encodedEnvironments, err := json.Marshal(next.LatereEnvironments)
+	if err != nil {
+		return err
+	}
+	offered := string(encodedEnvironments)
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO platform_settings (id, start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, draft, updated_by, updated_at)
-		VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO platform_settings (id, start_reserve, overdraft_cap, rate_card, spread_bps, spread_fixed_micro, min_topup_micro, draft, latere_environments, updated_by, updated_at)
+		VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (id) DO UPDATE
 		SET start_reserve      = EXCLUDED.start_reserve,
 		    overdraft_cap      = EXCLUDED.overdraft_cap,
@@ -140,8 +154,9 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 		    spread_fixed_micro = EXCLUDED.spread_fixed_micro,
 		    min_topup_micro    = EXCLUDED.min_topup_micro,
 		    draft              = EXCLUDED.draft,
+		    latere_environments = EXCLUDED.latere_environments,
 		    updated_by         = EXCLUDED.updated_by,
 		    updated_at         = EXCLUDED.updated_at`,
-		next.StartReserve, next.OverdraftCap, card, next.SpreadBps, next.SpreadFixedMicro, next.MinTopupMicro, drafting, byAdmin.Email, s.clock().UTC())
+		next.StartReserve, next.OverdraftCap, card, next.SpreadBps, next.SpreadFixedMicro, next.MinTopupMicro, drafting, offered, byAdmin.Email, s.clock().UTC())
 	return err
 }

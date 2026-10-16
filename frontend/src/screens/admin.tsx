@@ -24,7 +24,7 @@ import {
 import { type I18n } from '../i18n'
 import { formatUSD, parseUSD, toDollars } from '../money'
 import { Ico } from '../icons'
-import { NumberField, Pill, PromptDialog, Seams, Select, Tip } from '../ui'
+import { Check, NumberField, Pill, PromptDialog, Seams, Select, Tip } from '../ui'
 import { CardHead, Empty, Initials, TierPill } from './shared'
 
 // AdminScreen is the console: who may sign in, at what tier, with how much
@@ -97,6 +97,22 @@ export function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsC
   )
 }
 
+// environmentLabel names an environment for a person: what it holds, not the
+// catalog's word for it. One this console does not know yet is shown by its
+// name.
+function environmentLabel(t: I18n['t'], name: string): string {
+  switch (name) {
+    case 'base':
+      return t('environmentBase')
+    case 'science':
+      return t('environmentScience')
+    case 'gui':
+      return t('environmentGui')
+    default:
+      return name
+  }
+}
+
 // PlatformPolicy edits what this deployment charges and what it will risk: two
 // numbers and a price list, all micro-USD, all typed in dollars because that is
 // the resolution an admin works at.
@@ -111,7 +127,7 @@ function PlatformPolicy({
 }: {
   i18n: I18n
   settings: PlatformSettings | null
-  onSave: (next: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates' | 'draft'>) => void
+  onSave: (next: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates' | 'draft' | 'latere_environments'>) => void
 }) {
   const { t } = i18n
   const [reserve, setReserve] = useState('')
@@ -124,6 +140,9 @@ function PlatformPolicy({
   const [model, setModel] = useState('')
   // The price list, as the rows the admin is editing (rateDrafts below).
   const [rates, setRates] = useState<RateDraft[]>([])
+  // The environments a Latere session may name (051). base is always offered,
+  // because a session that names none runs on it.
+  const [environments, setEnvironments] = useState<string[]>([])
   useEffect(() => {
     if (!settings) return
     setReserve(toDollars(settings.start_reserve))
@@ -132,6 +151,7 @@ function PlatformPolicy({
     setBaseURL(settings.draft?.base_url ?? '')
     setModel(settings.draft?.model ?? '')
     setRates((settings.rates?.models ?? []).map((m) => draftOf(m)))
+    setEnvironments(settings.latere_environments ?? ['base'])
   }, [settings])
 
   const nextReserve = parseUSD(reserve)
@@ -150,10 +170,26 @@ function PlatformPolicy({
   const edited = !!settings && JSON.stringify(rates.map(shownOf)) !== JSON.stringify(serverCard.models.map((m) => shownOf(draftOf(m, -1))))
   const card = edited ? cardOf(rates, t) : { card: serverCard, problem: '' }
   const cardChanged = edited && !!card.card && JSON.stringify(card.card) !== JSON.stringify(serverCard)
+  const known = settings?.known_latere_environments ?? []
+  const environmentsChanged = !!settings && [...environments].sort().join(',') !== [...(settings.latere_environments ?? ['base'])].sort().join(',')
+  const toggleEnvironment = (name: string, on: boolean) =>
+    setEnvironments((current) => (on ? [...current.filter((n) => n !== name), name] : current.filter((n) => n !== name)))
   const dirty =
-    !!settings && valid && !card.problem && (nextReserve !== settings.start_reserve || nextFloor !== settings.overdraft_cap || draftChanged || cardChanged)
+    !!settings &&
+    valid &&
+    !card.problem &&
+    (nextReserve !== settings.start_reserve || nextFloor !== settings.overdraft_cap || draftChanged || cardChanged || environmentsChanged)
   const save = () => {
-    if (settings && valid && card.card) onSave({ start_reserve: nextReserve, overdraft_cap: nextFloor, rates: card.card, draft: draftCfg })
+    if (settings && valid && card.card)
+      onSave({
+        start_reserve: nextReserve,
+        overdraft_cap: nextFloor,
+        rates: card.card,
+        draft: draftCfg,
+        // Sent only when changed, so a console that predates a known
+        // environment never narrows the list in force.
+        ...(environmentsChanged ? { latere_environments: environments } : {}),
+      })
   }
 
   return (
@@ -246,6 +282,25 @@ function PlatformPolicy({
             </div>
           )}
         </>
+      )}
+      {/* Which of the Latere platform's images a session may name (051). An
+          admin turns one on once the platform holds it, and may hold back one
+          it has. base cannot be turned off: a session that names none runs
+          on it. */}
+      {known.length > 0 && (
+        <div className="policy-row">
+          <div className="policy-copy">
+            <span className="admin-label">{t('latereEnvironments')}</span>
+            <p className="policy-hint">{t('latereEnvironmentsHint')}</p>
+          </div>
+          <div className="policy-checks" data-test="latere-environments">
+            {known.map((name) => (
+              <Check key={name} on={name === 'base' || environments.includes(name)} disabled={name === 'base'} onChange={(on) => toggleEnvironment(name, on)}>
+                {environmentLabel(t, name)}
+              </Check>
+            ))}
+          </div>
+        </div>
       )}
       {settings && <RateCardEditor i18n={i18n} rows={rates} onChange={setRates} problem={card.problem} />}
       {/* One Save, at the foot of the card it saves. Beside the overdraft floor

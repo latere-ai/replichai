@@ -126,7 +126,6 @@ func runtimeCatalog(rawName string, options localOptions) (*runtimes.Catalog, ma
 		Latere: builtin.LatereConfig{
 			BaseURL: credentials.LatereAPIURL, AuthURL: credentials.LatereAuthURL,
 			APIKey: credentials.LatereAPIKey, TokenCommand: credentials.LatereTokenCommand,
-			Environments: credentials.LatereEnvironments,
 		},
 		Local: options.config(),
 	})

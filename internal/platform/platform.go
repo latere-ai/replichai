@@ -23,12 +23,27 @@ package platform
 import (
 	"context"
 	"errors"
+	"regexp"
+	"slices"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/draft"
 )
+
+// BaseLatereEnvironment is the Latere environment a session that names none
+// runs on, which is always offered.
+const BaseLatereEnvironment = "base"
+
+// DefaultLatereEnvironments are the Latere environments a deployment offers
+// until an admin changes them: the base image and the statistics stack, both
+// of which the Latere platform's catalog holds.
+var DefaultLatereEnvironments = []string{BaseLatereEnvironment, "science"}
+
+// environmentName is the shape of an environment's name. Which names exist is
+// the runtime's to say, and the console checks a list against it.
+var environmentName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
 // DefaultStartReserve is how much a project must have available before a
 // session may start there. It is both the value the settings row is seeded
@@ -81,6 +96,9 @@ var (
 	ErrNotAdmin = errors.New("only a platform admin may change platform settings")
 	// ErrNegative reports a negative setting, which cannot mean anything.
 	ErrNegative = errors.New("a platform setting may not be negative")
+	// ErrEnvironments reports a list of Latere environments with a name that
+	// is not one, one the runtime does not know, or no base environment.
+	ErrEnvironments = errors.New("the Latere environments must be known ones and include base")
 )
 
 // Settings is the platform policy row. It is a typed struct rather than a
@@ -116,9 +134,15 @@ type Settings struct {
 	// environment. An empty value means this deployment does not draft. The
 	// app renders that state in any case, because a project's description can
 	// always be typed.
-	Draft     draft.Config `json:"draft,omitzero"`
-	UpdatedBy string       `json:"updated_by,omitempty"`
-	UpdatedAt time.Time    `json:"updated_at,omitzero"`
+	Draft draft.Config `json:"draft,omitzero"`
+	// LatereEnvironments are the environments a session on the Latere
+	// platform may name (051): which of the platform's images this
+	// deployment offers. An admin enables one once the platform's catalog
+	// holds its image, and may hold back one the platform has. The base
+	// environment is always offered.
+	LatereEnvironments []string  `json:"latere_environments"`
+	UpdatedBy          string    `json:"updated_by,omitempty"`
+	UpdatedAt          time.Time `json:"updated_at,omitzero"`
 }
 
 // Credited returns the amount a gross top-up of grossMicro micro-USD adds to
@@ -194,6 +218,14 @@ func (s Settings) validate() error {
 	if s.StartReserve < 0 || s.OverdraftCap < 0 ||
 		s.SpreadBps < 0 || s.SpreadFixedMicro < 0 || s.MinTopupMicro < 0 {
 		return ErrNegative
+	}
+	for _, name := range s.LatereEnvironments {
+		if !environmentName.MatchString(name) {
+			return ErrEnvironments
+		}
+	}
+	if len(s.LatereEnvironments) > 0 && !slices.Contains(s.LatereEnvironments, BaseLatereEnvironment) {
+		return ErrEnvironments
 	}
 	// The price list is written by hand in the console, so it is checked the
 	// same way before it replaces the one in force.

@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -311,4 +313,48 @@ func swapDBName(t *testing.T, raw, name string) string {
 	}
 	u.Path = "/" + name
 	return u.String()
+}
+
+// TestTheLatereEnvironmentsAreASetting checks 051's setting on both stores: a
+// new deployment offers base and science, an admin's list is kept, a list
+// without base or with a malformed name is refused, and an empty one offers
+// base alone.
+func TestTheLatereEnvironmentsAreASetting(t *testing.T) {
+	stores := map[string]func(t *testing.T) Store{
+		"memory": func(*testing.T) Store { return NewMemStore(newAuthority(t)) },
+		"postgres": func(t *testing.T) Store {
+			pool := testPool(t)
+			t.Cleanup(pool.Close)
+			return NewPGStore(pool, newAuthority(t))
+		},
+	}
+	for name, open := range stores {
+		t.Run(name, func(t *testing.T) {
+			s := open(t)
+			got, err := s.Settings(ctx)
+			if err != nil {
+				t.Fatalf("Settings: %v", err)
+			}
+			if !slices.Equal(got.LatereEnvironments, DefaultLatereEnvironments) {
+				t.Fatalf("a new deployment offers %v, want %v", got.LatereEnvironments, DefaultLatereEnvironments)
+			}
+			for list, want := range map[string]error{"base,gui": nil, "science": ErrEnvironments, "base,Not A Name": ErrEnvironments} {
+				next := got
+				next.LatereEnvironments = strings.Split(list, ",")
+				if err := s.SetSettings(ctx, admin, next); !errors.Is(err, want) {
+					t.Errorf("%s: SetSettings = %v, want %v", list, err, want)
+				}
+			}
+			if after, _ := s.Settings(ctx); !slices.Equal(after.LatereEnvironments, []string{"base", "gui"}) {
+				t.Errorf("after the admin's list, offered %v", after.LatereEnvironments)
+			}
+			got.LatereEnvironments = nil
+			if err := s.SetSettings(ctx, admin, got); err != nil {
+				t.Fatalf("an empty list: %v", err)
+			}
+			if after, _ := s.Settings(ctx); !slices.Equal(after.LatereEnvironments, []string{"base"}) {
+				t.Errorf("an empty list offered %v, want base alone", after.LatereEnvironments)
+			}
+		})
+	}
 }

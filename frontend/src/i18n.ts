@@ -579,6 +579,14 @@ const en = {
     draftIt: 'Write a draft',
     draftModelHint: 'Which model writes project descriptions when somebody asks for a draft. The model id must also appear in the price list below, or drafting is refused because it cannot be priced.',
     draftUsesAgentKey: 'Uses the Anthropic key this deployment already uses for sessions. Nothing else to set.',
+    // The environments a Latere session may name (051). Each is described by
+    // what it holds, since an admin turns one on for the work it serves.
+    latereEnvironments: 'Environments on Latere',
+    latereEnvironmentsHint:
+      'Which machines a session on the Latere platform may run. Turn one on once the platform holds its image. Base is always on: a session that names none runs on it.',
+    environmentBase: 'Base: Python with its data and document libraries',
+    environmentScience: 'Science: adds the statistics stack in Python and R',
+    environmentGui: 'GUI: adds a display and a browser',
     draftNeedsOwnKey: 'Needs its own key in this deployment’s environment (DRAFT_API_KEY), because the platform holds no other credential for this vendor.',
     draftProvider: 'Drafting model',
     draftProviderNone: 'None: descriptions are written by hand',

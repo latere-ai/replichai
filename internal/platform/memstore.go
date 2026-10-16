@@ -31,6 +31,7 @@ func NewMemStore(auth Authority) *MemStore {
 		settings: Settings{
 			StartReserve: DefaultStartReserve, OverdraftCap: DefaultOverdraftCap, Rates: credit.DefaultCard(),
 			SpreadBps: DefaultSpreadBps, SpreadFixedMicro: DefaultSpreadFixedMicro, MinTopupMicro: DefaultMinTopupMicro,
+			LatereEnvironments: DefaultLatereEnvironments,
 		},
 		auth:  auth,
 		clock: time.Now,
@@ -87,6 +88,9 @@ func (s *MemStore) SetSettings(ctx context.Context, byAdmin access.Principal, ne
 	defer s.mu.Unlock()
 	if len(next.Rates.Models) == 0 {
 		next.Rates = credit.DefaultCard()
+	}
+	if len(next.LatereEnvironments) == 0 {
+		next.LatereEnvironments = []string{BaseLatereEnvironment}
 	}
 	next.UpdatedBy, next.UpdatedAt = byAdmin.Email, s.clock().UTC()
 	s.settings = next
