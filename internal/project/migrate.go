@@ -188,6 +188,16 @@ ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';
 -- than a summary somebody wrote for it.
 ALTER TABLE project_papers ADD COLUMN abstract TEXT NOT NULL DEFAULT '';
 `},
+	{13, `
+-- Crossref and publisher pages carry HTML entities in plain-text fields, and
+-- records stored before they were decoded show "Computers &amp; Graphics". The
+-- reader decodes them now; this decodes the common ones already stored.
+UPDATE project_papers SET
+	title     = replace(replace(replace(replace(replace(title,     '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&'),
+	venue     = replace(replace(replace(replace(replace(venue,     '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&'),
+	publisher = replace(replace(replace(replace(replace(publisher, '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&')
+WHERE title ~ '&(lt|gt|quot|#39|amp);' OR venue ~ '&(lt|gt|quot|#39|amp);' OR publisher ~ '&(lt|gt|quot|#39|amp);';
+`},
 }
 
 // migrationLock is this migrator's advisory lock id. A rolling deploy runs the

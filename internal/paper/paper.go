@@ -29,6 +29,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"net/url"
 	"regexp"
 	"strings"
@@ -346,7 +347,7 @@ func extractArXiv(ref string) (string, bool) {
 // or "" if none. re must capture the content attribute in group 1.
 func metaContent(body []byte, re *regexp.Regexp) string {
 	if m := re.FindSubmatch(body); m != nil {
-		return collapseWS(captured(m))
+		return plainText(captured(m))
 	}
 	return ""
 }
@@ -393,7 +394,7 @@ func firstNonEmpty(a, b string) string {
 
 func htmlTitle(body []byte) string {
 	if m := htmlTitleRe.FindSubmatch(body); m != nil {
-		return collapseWS(string(m[1]))
+		return plainText(string(m[1]))
 	}
 	return ""
 }
@@ -403,3 +404,8 @@ func looksLikeURL(ref string) bool {
 }
 
 func collapseWS(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// plainText is a value read from HTML or from Crossref as a reader sees it.
+// Both carry entities in plain-text fields, such as "Computers &amp; Graphics",
+// so they are decoded before the whitespace is collapsed.
+func plainText(s string) string { return collapseWS(html.UnescapeString(s)) }
