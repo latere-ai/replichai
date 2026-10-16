@@ -5,6 +5,8 @@ status: built
 
 # 029 — The landing is a place
 
+**Restyled by [047](047-set-like-the-work-it-audits.md).** The guarantees below hold, with one change: the header's sign-in stands down while the hero's or the close's is on screen, so exactly one is visible at every scroll position.
+
 **Rebuilt by [033](033-the-landing-rebuilt-from-the-design.md) and restyled by [040](040-the-landing-in-light.md).** The guarantees below still hold and are still tested: the sticky header, the reduced-motion resting state, the registry link, the landing as its own module. The page around them does not: its structure was rebuilt from a design, its third figure became a concrete example verdict rather than an abstract triple, and its one-line closing strip is now the shared Latere footer.
 
 **Status:** built. Every acceptance criterion holds. The landing lives in its own `frontend/src/landing.tsx`; a page this long does not belong inside `App.tsx`, which now imports it and renders it for a signed-out reader at any address 028 does not open. `frontend/test/landing.test.mjs` was rewritten against the sticky-header guarantee and drives it at 1440×900 and 390×844, at the top of the page *and* scrolled to the bottom, plus the three figures, the reduced-motion resting state, and the registry link; it was verified to fail against the old landing.

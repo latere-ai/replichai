@@ -1,11 +1,11 @@
 ---
 title: "Set like the work it audits"
-status: drafted
+status: built
 ---
 
 # 047 — Set like the work it audits
 
-**Status:** drafted. A prototype covers the landing, the hero figure, the mark, the projects list, a session with its verdict, and the registry. The remaining screens follow once the direction is approved.
+**Status:** built. Every screen is set in the design below, in both themes and at phone width. The criteria hold except where the Outcome says otherwise, and they are guarded by the browser suite and the unit tests named there.
 
 **Scope:** the look of the whole website, as one visual system built on latere-ui. Type, color, layout, motion, the mark and the wordmark. Frontend only: no route, no API, no schema, no copy that changes what the product claims. Every surface is in scope:
 
@@ -205,3 +205,49 @@ These are recorded here rather than edited into the older files. When this spec 
 11b. With the console mounted, `html` and `body` compute `overscroll-behavior: none`, and the rail and the main pane compute `contain`. In Chromium a pixel wheel pull at the top of the main pane, of the rail, and of the landing stretches that pane and springs back to no translate. The top bar, the rail's head and the landing's header do not move.
 11c. With `SOURCE.published` false, no source link is rendered. With it true, the footer and the rail each link to the repository.
 12. The whole browser suite, the unit tests and the repository's full check (`make check`, which runs `go tool lateregate`) pass.
+
+## Outcome
+
+**What was built.** Every surface listed under Scope:
+- the landing;
+- the registry, a public project and session, and a researcher's page;
+- the projects list, a project and its papers;
+- a session's transcript, verdict and artifacts;
+- settings, the wallet and the admin console;
+- sign-in, the failure screens and the 404.
+
+All of them read the ink ladder, set Inter alone, and draw labels in sentence case with no monospace. Figure 1 replaced the WebGL scene, and three.js left the bundle. The mark is one open arc with optical sizes, and the favicon, the touch icon and the social card are rendered from the component by `scripts/brand.mjs`.
+
+**How the review changed the draft.** Three reviews of a running prototype moved it.
+
+- The first draft set headings in Instrument Serif, the platform's display face, with italics for emphasis, and drew the wordmark as outlines of it. It read too tall and too decorative. Headings went back to Inter semibold, the serif was removed outright, and the wordmark is text in Inter again.
+- The draft also replaced 034's shell with the platform's flat one. 034's rounded inset card and raised rail row were preferred and kept, with the platform's primitives inside.
+- Two things were added after the reviews: elastic scrolling inside the pane, and one sign-in on screen at a time.
+
+**Where it is guarded.**
+
+- `test/landing.test.mjs` is rewritten against this page. It checks:
+  - exactly one sign-in on screen at the top, a third of the way down, and at the bottom, on both viewports;
+  - Figure 1 as an svg with no canvas, a marker that travels, a pause control that stops it and says so, and a reduced-motion frame that parks it on "record";
+  - no layout shift, Inter loaded, and no serif anywhere;
+  - every text tone at 4.5:1 on its ground in both themes, including the figure's labels;
+  - a focus ring on each control the keyboard reaches;
+  - the example's rate as a footnote under its table;
+  - the seven files a session commits.
+- `test/findings.test.mjs` checks that a verdict's rate sits under its table, no larger than its cells.
+- `test/mobile.test.mjs` walks the 15 app screens and fails on any label in capitals or monospace, and on any colored left edge.
+- `test/elastic.test.mjs` checks the root's overscroll, the stretch in the main pane, the rail and the landing, the frame and header staying still, and no stretch under reduced motion.
+- `src/brand.test.tsx` checks the mark's one gap at 16, 24, 48 and 160px, the wordmark, and the favicon's dark ink.
+- `src/elastic.test.ts` checks the rubber band's curve.
+- `src/source.test.tsx` checks the source link, off and on.
+
+The three upper-case expectations in the findings test moved to sentence case with the copy. The stacked-card test counts a captioned section as a block.
+
+**Short of the criteria, and why.**
+
+- Criterion 1 holds for grounds, text and borders. `styles.css` still writes three neutral shadows for elevation and the per-person avatar hues, which are colors derived from data rather than a palette.
+- Criterion 5 is measured on the landing in both themes. The console's tones are the ink ladder's, which latere-ui holds to 4.5:1 in its own contrast test, and were not measured again screen by screen.
+- The source link (criterion 11c) is built and switched off until the repository is public.
+
+**Found on the way.** A switch's knob was white on dark mode's light ink track and nearly invisible; it now takes the accent's own ink. And a phone lost the main pane's inset reset when the drawer's shadow moved, which the phone sweep caught.
+

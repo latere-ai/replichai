@@ -5,6 +5,8 @@ status: built
 
 # 033 — The landing, rebuilt from the design
 
+**Superseded in part by [047](047-set-like-the-work-it-audits.md).** The WebGL scene, its chunk and the hero slab are gone, replaced by Figure 1, a drawn svg; criteria 3 and 4 retire with the scene.
+
 **Superseded in part by [040](040-the-landing-in-light.md).** The hero scene, the walkthrough and the artifact stack stand. Three things below were reversed: the slabs are no longer dark in both themes, `.lp-dark`/`.lp-on-dark` became `.lp-block`/`.lp-on-slab`, and this page's own footer strip is now the shared Latere `SiteFooter`.
 
 **Status:** built. Every acceptance criterion holds. The page is `frontend/src/landing.tsx` and the scene is `frontend/src/hero-scene.ts`, the only module in the app that imports three, so the split is one file's concern and Vite puts it in a 734 kB chunk (188 kB gzipped) that the 455 kB entry never touches. `frontend/test/landing.test.mjs` keeps all of 029's assertions and adds four: the slab holds its own copy and its own ground at both viewports, the walkthrough lights exactly one step and opens exactly one artifact when it drives, it dims and folds *nothing* under reduced motion, and the file list matches `internal/publish/gate.go`'s five worker-written paths while no DOI-shaped string on the page resolves to a real registrant.

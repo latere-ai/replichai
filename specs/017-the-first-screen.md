@@ -5,6 +5,8 @@ status: built
 
 # 017 — The first screen
 
+**Restyled by [047](047-set-like-the-work-it-audits.md).** The mark's outer loop is one open arc rather than six dashes, the crimson left the favicon, and the wordmark is text in Inter, which the app now ships.
+
 **Superseded by [029](029-the-landing-is-a-place.md), [033](033-the-landing-rebuilt-from-the-design.md) and [040](040-the-landing-in-light.md).** The mark and `index.html`'s description, icon and social card stand. The two-column landing below does not: it moved into its own module, was rebuilt from a design, and was restyled for light mode. `SignIn` is now `Landing`, the page links to the registry, which a signed-out reader can now read ([028](028-the-registry-opens.md)), and the webfont this spec put out of scope is self-hosted.
 
 **Status:** built. Every acceptance criterion holds. `frontend/src/brand.tsx` owns `Mark`, `Wordmark`, and `Lockup`; the letter-`r` `Logo` and its two tile rules are gone; `SignIn` is the two-column landing, and the three failure cards keep the centered one. `frontend/test/landing.test.mjs` drives criteria 1 and 3 to 6 in Chrome (the geometry at 1440×900 and 390×844, the area reorder, the fold, the `/login?next=` round trip, and the mark painting in both themes) and was verified to fail with the change stashed. The browser suite is green (8 files) and the 83 unit tests still pass.

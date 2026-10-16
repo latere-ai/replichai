@@ -34,7 +34,7 @@ committed. The commit log already holds that.
   one: each names the quantity it compares, the paper's value and the run's,
   and a note on the size or cause of the gap.
 - "What the authors released" marks a place the run could not look at, because
-  the sandbox refused the address or the fetch failed, as NOT FETCHED. It used
+  the sandbox refused the address or the fetch failed, as "Not fetched". It used
   to have no way to say so, apart from reporting that nothing was found.
 - Every run of a paper in `replichai run` reads the same copy of it. Before any
   run starts, each paper is fetched once (arXiv's PDF, the PDF the paper's page
@@ -66,6 +66,17 @@ committed. The commit log already holds that.
 
 ### Changed
 
+- The site has a new design, in the same ink and type as the rest of Latere.
+  Every label is set in plain sentence case rather than monospace capitals, and
+  Inter is shipped rather than assumed. The landing is set like a paper:
+  numbered sections, captioned tables with plain rules, and published
+  reproductions as a list of references. The particle animation on the first
+  screen is replaced by a drawn figure of the two loops, which runs only while
+  it is on screen and can be paused. A verdict leads with its outcome and its
+  per-component table, and its overall rate is a footnote under that table. The
+  logo's outer loop is a single open arc. The sign-in button appears once on
+  screen at a time. A trackpad pull stretches only the pane under it, never the
+  whole frame.
 - `verdict.json` is at schema 2. A claim carries a `mismatches` list in place
   of one `mismatch` object. Each entry holds the two values as text and, when
   each is a single number, as numbers in `reported_value` and `observed_value`,
