@@ -305,9 +305,11 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 		if err != nil {
 			return err
 		}
-		// This is best-effort: publish falls back to re-resolving if this write
-		// did not succeed.
-		_ = publish.RecordIdentity(ctx, e.gh, e.owner, name, id)
+		// This is best-effort: GitHub refuses it on a repository with no commit
+		// yet, and retaining and publishing both re-resolve when it is absent.
+		if err := publish.RecordIdentity(ctx, e.gh, e.owner, name, id); err != nil {
+			slog.WarnContext(ctx, "resolve: recording the paper identity", "session", j.ID, "error", err)
+		}
 		j.RepoName = e.owner + "/" + name
 	}
 	return nil
@@ -423,7 +425,19 @@ func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)
 				return fmt.Errorf("read recorded paper identity: %w", err)
 			}
 			if !ok {
-				return errors.New("managed retention requires the recorded paper identity")
+				// Resolving records the identity before the session starts, but
+				// GitHub refuses that commit on a repository with no commit yet.
+				// The paper is resolved again here, and the identity recorded
+				// now that the repository has the agent's commits.
+				if id, err = paper.Resolve(ctx, j.Ref, paper.WithFetcher(e.fetch)); err != nil {
+					return fmt.Errorf("resolve paper identity: %w", err)
+				}
+				if err := publish.RecordIdentity(ctx, e.gh, owner, name, id); err != nil {
+					slog.WarnContext(ctx, "retain: recording the paper identity", "session", j.ID, "error", err)
+				}
+			}
+			if id.Key == "" {
+				return errors.New("managed retention requires a non-empty paper identity")
 			}
 			grade := provider.GradeUnknown
 			if evidence.Status.Verdict != nil {
