@@ -638,7 +638,15 @@ func replay(events []wireEvent, loc locator) progress {
 // advance is the grading loop's one step.
 func (r *Runtime) advance(ctx context.Context, bearer, id string, session wireSession, events []wireEvent, loc locator) (outcome, error) {
 	if session.metadataCancelled() {
-		return ended(managed.ReasonCancelled, "", cancelledAt(events, loc)), nil
+		// The interrupted turn saves the session's files as it ends, so the
+		// session is reported ended once it has stopped, or once the wait
+		// for it is over, and not at the cancel mark: a caller reading the
+		// folder then would miss the work the turn did.
+		at := cancelledAt(events, loc)
+		if session.Status != "running" || r.now().Sub(at) >= cancelSettle {
+			return ended(managed.ReasonCancelled, "", at), nil
+		}
+		return outcome{state: managed.StateRunning}, nil
 	}
 	p := replay(events, loc)
 	stop, at, idle := idleAfter(events, p.since)
@@ -688,6 +696,11 @@ func (r *Runtime) advance(ctx context.Context, bearer, id string, session wireSe
 		return result, nil
 	}
 }
+
+// cancelSettle bounds how long a cancelled session is reported running while
+// its interrupted turn stops. It is shorter than the caller's cleanup budget,
+// so the caller still has time to read what the turn saved.
+const cancelSettle = 20 * time.Second
 
 // cancelledAt is when a cancelled session stopped: its interruption, or,
 // before the platform has recorded one, its last event.

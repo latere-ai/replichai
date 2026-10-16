@@ -265,6 +265,62 @@ func TestASessionThatChangedNothingHasNoArtifacts(t *testing.T) {
 	}
 }
 
+// A cancelled session is reported ended only once its interrupted turn has
+// stopped, which is when the platform saves the turn's files. Reporting it at
+// the cancel mark had the caller read the session's folder before that save
+// and keep nothing of the work.
+func TestACancelledTurnEndsOnlyOnceItsWorkIsSaved(t *testing.T) {
+	f := newFakePlatform(t)
+	f.hold, f.slowStop = true, 2
+	f.files = map[string]string{"outputs/partial.txt": "half done\n"}
+	r := f.runtime(t)
+	r.now = func() time.Time { return time.Unix(1_700_000_000, 0) } // the fake's clock
+	ctx := context.Background()
+	ref, err := r.Start(ctx, gradedSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Cancel(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.Poll(ctx, ref)
+	if err != nil || status.State != managed.StateRunning {
+		t.Fatalf("a cancelled turn that has not stopped polls %+v, %v", status, err)
+	}
+	if status, err = r.Poll(ctx, ref); err != nil || status.State != managed.StateFailed || status.TerminalReason != managed.ReasonCancelled {
+		t.Fatalf("the stopped turn polls %+v, %v", status, err)
+	}
+	artifacts, err := r.ListArtifacts(ctx, ref)
+	if err != nil || len(artifacts) != 1 || artifacts[0].Path != "outputs/partial.txt" {
+		t.Fatalf("the cancelled session's work = %+v, %v", artifacts, err)
+	}
+}
+
+// A turn that never stops after a cancel is still reported ended once the
+// wait is over, so a cancel cannot hang the caller.
+func TestACancelledTurnThatNeverStopsEndsAfterTheWait(t *testing.T) {
+	f := newFakePlatform(t)
+	f.hold, f.slowStop = true, 1000
+	r := f.runtime(t)
+	r.now = func() time.Time { return time.Unix(1_700_000_000, 0) } // the fake's clock
+	ctx := context.Background()
+	ref, err := r.Start(ctx, gradedSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Cancel(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := r.Poll(ctx, ref); status.State != managed.StateRunning {
+		t.Fatalf("polled %+v before the wait was over", status)
+	}
+	later := time.Unix(1_700_000_000, 0).Add(time.Hour + cancelSettle)
+	r.now = func() time.Time { return later }
+	if status, err := r.Poll(ctx, ref); err != nil || status.TerminalReason != managed.ReasonCancelled {
+		t.Fatalf("after the wait the session polls %+v, %v", status, err)
+	}
+}
+
 func TestReleaseWaitsForAnInterruptedTurn(t *testing.T) {
 	f := newFakePlatform(t)
 	f.hold = true

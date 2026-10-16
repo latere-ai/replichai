@@ -42,6 +42,10 @@ type fakePlatform struct {
 	graded   int
 	// hold leaves a turn running until it is interrupted.
 	hold bool
+	// slowStop makes an interrupt take effect that many session reads
+	// later, as the platform's does: the turn then ends, saving what the
+	// worker wrote so far, in the batch of the status that ends it.
+	slowStop int
 	// stop is the stop reason a worker turn ends with.
 	stop string
 	// spawn edits the task the worker spawns the grader with.
@@ -56,6 +60,9 @@ type fakeSession struct {
 	session wireSession
 	agent   string
 	events  []wireEvent
+	// stopIn counts the session reads left before an interrupt stops the
+	// running turn; zero is no interrupt pending.
+	stopIn  int
 	deleted bool
 	files   map[string]string
 }
@@ -239,6 +246,14 @@ func (f *fakePlatform) session(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case r.Method == http.MethodGet && tail == "":
+		if s.stopIn > 0 {
+			if s.stopIn--; s.stopIn == 0 {
+				maps.Copy(s.files, f.files)
+				f.append(s, "work.saved", "", map[string]any{"covers": len(s.events)})
+				f.append(s, "session.status", "", wireStatus{Status: "idle", StopReason: "interrupted"})
+				s.session.Status = "idle"
+			}
+		}
 		writeFake(w, http.StatusOK, s.session)
 	case r.Method == http.MethodPatch && tail == "":
 		var body struct {
@@ -320,7 +335,9 @@ func (f *fakePlatform) send(w http.ResponseWriter, r *http.Request, s *fakeSessi
 	}
 	if body.Type == "user.interrupt" {
 		event := f.append(s, "user.interrupt", "", map[string]any{})
-		if s.session.Status == "running" {
+		if s.session.Status == "running" && f.slowStop > 0 {
+			s.stopIn = f.slowStop
+		} else if s.session.Status == "running" {
 			f.append(s, "session.status", "", wireStatus{Status: "idle", StopReason: "interrupted"})
 			s.session.Status = "idle"
 		}
