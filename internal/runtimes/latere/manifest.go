@@ -26,16 +26,16 @@ type agentMetadata struct {
 }
 
 type agentSpec struct {
-	Model        agentModel   `json:"model"`
-	Instructions string       `json:"instructions"`
-	Tools        []string     `json:"tools"`
-	Subagents    []subagent   `json:"subagents,omitempty"`
-	Permissions  []permission `json:"permissions,omitempty"`
-	Approvals    approvals    `json:"approvals"`
-	Threads      threads      `json:"threads"`
-	Machine      machine      `json:"machine"`
-	Limits       limits       `json:"limits"`
-	Context      struct{}     `json:"context"`
+	Model        agentModel          `json:"model"`
+	Instructions string              `json:"instructions"`
+	Tools        []string            `json:"tools"`
+	Subagents    []subagent          `json:"subagents,omitempty"`
+	Permissions  []map[string]string `json:"permissions,omitempty"`
+	Approvals    approvals           `json:"approvals"`
+	Threads      threads             `json:"threads"`
+	Machine      machine             `json:"machine"`
+	Limits       limits              `json:"limits"`
+	Context      struct{}            `json:"context"`
 }
 
 type agentModel struct {
@@ -45,11 +45,6 @@ type agentModel struct {
 type subagent struct {
 	Name string    `json:"name"`
 	Spec agentSpec `json:"spec"`
-}
-
-type permission struct {
-	Action   string `json:"action"`
-	Resource string `json:"resource"`
 }
 
 type approvals struct {
@@ -77,13 +72,21 @@ type limits struct {
 // confirmation and wait forever.
 var workerTools = []string{"read", "write", "edit", "bash", "grep", "glob", "web_fetch", "todo"}
 
-// cellaPermissions are what the agent's identity needs for its first tool
-// call to open a machine.
-var cellaPermissions = []permission{
-	{"cella:sandbox.create", "*"}, {"cella:sandbox.read", "*"}, {"cella:sandbox.update", "*"},
-	{"cella:sandbox.exec", "*"}, {"cella:sandbox.delete", "*"}, {"cella:secret.create", "*"},
-	{"cella:secret.read", "*"}, {"cella:secret.update", "*"}, {"cella:secret.mount", "*"},
-	{"cella:environment.use", "*"},
+// cellaActions are what the agent's identity needs for its first tool call to
+// open a machine, each on every resource. The manifest spells each as an
+// action and resource pair.
+var cellaActions = []string{
+	"cella:sandbox.create", "cella:sandbox.read", "cella:sandbox.update", "cella:sandbox.exec",
+	"cella:sandbox.delete", "cella:secret.create", "cella:secret.read", "cella:secret.update",
+	"cella:secret.mount", "cella:environment.use",
+}
+
+func cellaPermissions() []map[string]string {
+	out := make([]map[string]string, len(cellaActions))
+	for i, action := range cellaActions {
+		out[i] = map[string]string{"action": action, "resource": "*"}
+	}
+	return out
 }
 
 // The session's limits. A reproduction's one turn can run for hours, past
@@ -104,7 +107,7 @@ func workerManifest(instructions, image, model, graderModel, rubric string) (age
 		Model:        agentModel{Name: model},
 		Instructions: instructions,
 		Tools:        append([]string(nil), workerTools...),
-		Permissions:  cellaPermissions,
+		Permissions:  cellaPermissions(),
 		Approvals:    approvals{Mode: "progressive", AlwaysAllow: append([]string(nil), workerTools...)},
 		Machine:      machine{Kind: "cella", Image: image},
 		Limits:       limits{TurnTimeout: turnTimeout, MaxAge: maxAge},

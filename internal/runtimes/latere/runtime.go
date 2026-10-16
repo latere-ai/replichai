@@ -442,7 +442,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 // level, and cannot name a free one, so on a level it runs on the level's
 // first paid model.
 func (r *Runtime) sessionModels(ctx context.Context, bearer string, spec managed.SessionSpec) (string, string, error) {
-	model := ""
+	var model string
 	if spec.Model.Exact != nil {
 		model = modelName(*spec.Model.Exact)
 	} else {
@@ -498,7 +498,7 @@ func decode(ref managed.SessionRef) (locator, error) {
 	}
 	var loc locator
 	if err := json.Unmarshal(ref.Locator, &loc); err != nil {
-		return locator{}, fmt.Errorf("%w: decode the locator: %v", managed.ErrContract, err)
+		return locator{}, fmt.Errorf("%w: decode the locator: %w", managed.ErrContract, err)
 	}
 	return loc, nil
 }

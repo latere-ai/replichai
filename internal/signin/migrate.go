@@ -22,7 +22,7 @@ var migrations = []struct {
 -- them with on the Latere platform while a session they started runs. The
 -- token is encrypted with a key the database does not hold, and bound to the
 -- subject, so a copied row does not open as another person's.
-CREATE TABLE platform_signins (
+CREATE TABLE platform_sign_ins (
 	subject    TEXT PRIMARY KEY,
 	sealed     BYTEA NOT NULL,
 	updated_at TIMESTAMPTZ NOT NULL

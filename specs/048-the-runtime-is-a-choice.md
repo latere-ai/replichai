@@ -1,11 +1,11 @@
 ---
 title: "The runtime is a choice"
-status: designed
+status: built
 ---
 
 # 048 — The runtime is a choice
 
-**Status:** designed. Who pays for a Latere session is decided (the person's own Latere wallet); the app's half waits on two Auth changes described under Price and charge.
+**Status:** built, except where the platform comes first. The command line takes `--runtime latere` and `--model` as a level or one model, and `replichai models` lists both; the server offers the runtimes `REPLICHAI_RUNTIMES` names, records each job's runtime, model and payer, and runs a person-paid job as the person through their kept sign-in. The app's picker is built on the 047 redesign and lands with it. Who pays is decided (the person's own Latere wallet); the app offers Latere once the two platform changes under Price and charge are live.
 
 **Scope:** the person who starts a session picks where it runs and on what model, in the app and on the command line. Which runtimes a deployment offers, the model list each runtime answers with, how a session records the runtime and model it ran on, and how a session run on the Latere platform is priced and charged. The Latere runtime itself is [041g](041g-latere-runs-a-session.md); this spec is the choice in front of it.
 

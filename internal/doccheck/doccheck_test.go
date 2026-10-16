@@ -22,10 +22,14 @@ import (
 // with the reason each is read another way. Every other variable example.env
 // names must be read by the code, or the line is stale.
 var readElsewhere = map[string]string{
-	"ANTHROPIC_API_KEY":  "read through the runtimes.LookupEnv seam, so a test can hand it a fixed map",
-	"ANTHROPIC_BASE_URL": "read through the runtimes.LookupEnv seam",
-	"TEST_DATABASE_URL":  "read only by the Postgres store contracts, which are tests",
-	"REPLICHAI_E2E":      "read only by the opt-in end-to-end tests",
+	"ANTHROPIC_API_KEY":    "read through the runtimes.LookupEnv seam, so a test can hand it a fixed map",
+	"ANTHROPIC_BASE_URL":   "read through the runtimes.LookupEnv seam",
+	"LATERE_API_URL":       "read through the runtimes.LookupEnv seam",
+	"LATERE_AUTH_URL":      "read through the runtimes.LookupEnv seam",
+	"LATERE_API_KEY":       "read through the runtimes.LookupEnv seam",
+	"LATERE_TOKEN_COMMAND": "read through the runtimes.LookupEnv seam",
+	"TEST_DATABASE_URL":    "read only by the Postgres store contracts, which are tests",
+	"REPLICHAI_E2E":        "read only by the opt-in end-to-end tests",
 }
 
 // TestEveryEnvironmentVariableIsInExampleEnv checks example.env against the

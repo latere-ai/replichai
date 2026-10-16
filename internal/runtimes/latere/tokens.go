@@ -62,6 +62,8 @@ type cache struct {
 	mint   func(ctx context.Context) (string, time.Time, error)
 }
 
+// Token gives the kept bearer while it is fresh, and mints a new one when it
+// is due.
 func (c *cache) Token(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
