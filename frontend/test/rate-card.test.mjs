@@ -13,7 +13,13 @@
 // card the request carries, in micro-USD per million tokens, with a renamed
 // row's ref renamed with it and every field the console does not edit carried
 // through untouched; a card that cannot be priced from is never sent; and the
-// table fits a phone. Run it with `bun run test:browser`.
+// table fits a phone.
+//
+// Since the server follows a price list, the rows for the models the list
+// prices are the list's: the server rewrites them every hour, so the console
+// shows them as text under the list's name, says when the list was last
+// applied, and keeps the admin's other rows editable. Run it with
+// `bun run test:browser`.
 import { fail, settled, start, waitUntil } from './harness.mjs'
 
 const EMAIL = 'admin@example.com'
@@ -180,6 +186,92 @@ try {
     await p.close()
   }
 
+  /* ── The rows a price list sets are the list's; the rest stay the admin's ── */
+
+  // The server writes the list's prices into the rows for the models it lists
+  // every hour, so a field there would take an edit the next sync undoes. Those
+  // rows are text under the list's name and cannot be removed; the admin's own
+  // rows are fields as before, and Save still sends the card in the server's
+  // order with the list's rows exactly as the server gave them.
+  {
+    const appliedAt = new Date(Date.now() - 12 * 60_000).toISOString()
+    const priceList = {
+      url: 'https://openrouter.ai/api/v1/models',
+      applied_at: appliedAt,
+      models: [
+        { provider: 'anthropic', id: 'claude-opus-5' },
+        { provider: 'anthropic', id: 'claude-haiku-4-5' },
+      ],
+    }
+    const listedRoutes = [['GET /admin/settings', { start_reserve: 5 * M, overdraft_cap: 20 * M, rates: card, price_list: priceList }], ...routes]
+    saved = null
+    const p = await h.page({ routes: listedRoutes })
+    await p.open('/console')
+    await p.waitForSelector('[data-test="rate-row"]', { timeout: 15000 })
+    await settled(p)
+    const shown = await p.evaluate(() =>
+      [...document.querySelectorAll('[data-test="rate-row"]')].map((r) => ({
+        source: r.dataset.source,
+        model: r.querySelector('input[data-field="model"]')?.value ?? r.querySelector('.rate-model .rate-value')?.textContent.trim(),
+        fields: r.querySelectorAll('input').length,
+        remove: !!r.querySelector('[data-test="rate-remove"]'),
+      })),
+    )
+    const want = [
+      { source: 'list', model: 'claude-opus-5', fields: 0, remove: false },
+      { source: 'list', model: 'claude-haiku-4-5', fields: 0, remove: false },
+      { source: 'admin', model: 'claude-sonnet-5', fields: 6, remove: true },
+    ]
+    if (JSON.stringify(shown) !== JSON.stringify(want)) fail(`with a price list the card shows ${JSON.stringify(shown)}, want ${JSON.stringify(want)}`)
+    const listedPrices = await p.evaluate(() => [...document.querySelectorAll('[data-source="list"]')[0].querySelectorAll('.rate-cell:not(.rate-model) .rate-value')].map((v) => v.textContent.trim()))
+    if (listedPrices.join() !== '5,25,0.5,6.25,10') fail(`the list's row for claude-opus-5 reads ${listedPrices.join(', ')}, want its prices in dollars`)
+    const group = await p.evaluate(() => document.querySelector('[data-test="rate-group-list"]')?.textContent ?? '')
+    if (!/OpenRouter/.test(group)) fail(`the list's rows are not marked as OpenRouter's: "${group}"`)
+    if (!/12 minutes ago/.test(group)) fail(`the list's rows do not say when the list was applied: "${group}"`)
+    if (!(await p.$('[data-test="rate-group-own"]'))) fail("the admin's own rows have no heading of their own")
+
+    // Edit the admin's row; the list's rows go back untouched, in the server's order.
+    const sonnet = await p.$('[data-source="admin"] input[data-field="output"]')
+    await sonnet.focus()
+    await sonnet.evaluate((el) => el.select())
+    await p.keyboard.press('Backspace')
+    await sonnet.type('16')
+    await p.click('[data-test="save-policy"]')
+    await waitUntil(() => saved, { what: 'the policy save to be sent' }).catch(() => {})
+    if (!saved) fail('Save sent nothing with a price list')
+    else {
+      const sent = saved.rates?.models ?? []
+      const expected = [card.models[0], { ...card.models[1], output: 16 * M }, card.models[2]]
+      if (JSON.stringify(sent) !== JSON.stringify(expected)) fail(`with a price list Save sent ${JSON.stringify(sent)}, want ${JSON.stringify(expected)}`)
+    }
+    await p.close()
+
+    // On a phone the list's rows restack too, and nothing spills.
+    const phone = await h.page({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true }, routes: listedRoutes })
+    await phone.open('/console')
+    await phone.waitForSelector('[data-source="list"]', { timeout: 15000 })
+    await settled(phone)
+    const spill = await phone.evaluate(() => {
+      const card = document.querySelector('.rate-card')
+      const out = [...card.querySelectorAll('.rate-value, input')].filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1).length
+      return { doc: document.documentElement.scrollWidth - window.innerWidth, card: card.scrollWidth - card.clientWidth, out }
+    })
+    if (spill.doc > 1 || spill.card > 1 || spill.out) fail(`on a phone the card with a price list spills: ${JSON.stringify(spill)}`)
+    await phone.close()
+
+    // Before the server has read the list, every row is the admin's, and the
+    // console says the list has not been read yet.
+    const pending = await h.page({ routes: [['GET /admin/settings', { start_reserve: 5 * M, overdraft_cap: 20 * M, rates: card, price_list: { url: priceList.url } }], ...routes] })
+    await pending.open('/console')
+    await pending.waitForSelector('[data-test="rate-row"]', { timeout: 15000 })
+    await settled(pending)
+    const sources = await pending.evaluate(() => [...document.querySelectorAll('[data-test="rate-row"]')].map((r) => r.dataset.source).join())
+    if (sources !== 'admin,admin,admin') fail(`before the list is read the rows are ${sources}, want every one the admin's`)
+    const note = await pending.evaluate(() => document.querySelector('[data-test="rate-list-pending"]')?.textContent ?? '')
+    if (!/OpenRouter.*not been read/.test(note)) fail(`before the list is read the console says "${note}"`)
+    await pending.close()
+  }
+
   /* ── The card fits a phone ── */
 
   const phone = await h.page({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true }, routes })
@@ -194,7 +286,7 @@ try {
   if (spill.doc > 1 || spill.card > 1 || spill.inputs) fail(`on a phone the card spills: ${JSON.stringify(spill)}`)
   await phone.close()
 
-  h.ok('an admin adds, edits and removes a model on the card, and Save sends a card that can be priced from')
+  h.ok("an admin adds, edits and removes a model on the card, the price list's rows are its own, and Save sends a card that can be priced from")
 } catch (e) {
   fail(e)
 } finally {

@@ -3424,6 +3424,43 @@ input.submit-input {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+/* The rows a price list sets, under a subhead naming the list, then the
+   admin's own under theirs. A subhead is a quiet line across the table, with a
+   rule above it where it follows a row. */
+.rate-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 12px 0 4px;
+}
+.rate-row + .rate-group {
+  border-top: 1px solid var(--border);
+}
+.rate-group + .rate-row {
+  border-top: none;
+}
+.rate-group-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.rate-group-note {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+/* A price the list sets reads as a value, not a field: the same type and the
+   same left edge as the text in a field, with no box to type into. */
+.rate-value {
+  display: block;
+  padding: 0 9px;
+  font-size: 13px;
+  line-height: 30px;
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .rate-foot {
   display: flex;
   align-items: center;
@@ -3465,6 +3502,38 @@ input.submit-input {
     margin-bottom: 3px;
     font-size: 12px;
     color: var(--fg-2);
+  }
+  /* A row the list sets is read, not typed into: its model id heads it and
+     each price sits on one line with its name, so a row takes three lines
+     instead of the eight a row of fields needs. */
+  .rate-listed {
+    row-gap: 2px;
+    column-gap: 20px;
+  }
+  /* The model id heads the row without its name over it, which stays for a
+     screen reader as it does on a wide screen. */
+  .rate-listed .rate-model .rate-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .rate-listed > :last-child {
+    display: none;
+  }
+  .rate-listed .rate-cell:not(.rate-model) {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .rate-listed .rate-cell .rate-label {
+    margin-bottom: 0;
+  }
+  .rate-listed .rate-value {
+    padding: 0;
+    line-height: 22px;
   }
 }
 

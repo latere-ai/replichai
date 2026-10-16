@@ -767,9 +767,19 @@ export type PlatformSettings = {
   // knows, which the console offers. base is always among the first.
   latere_environments?: string[]
   known_latere_environments?: string[]
+  // price_list is the list the card's prices follow, absent when this
+  // deployment prices every model by hand.
+  price_list?: PriceList
   updated_by?: string
   updated_at?: string
 }
+
+// PriceList is the list the server reads every hour and writes into the card:
+// where it reads it, when this server last applied it, and the models it
+// priced then. A row for one of those models is the list's; an admin's edit to
+// it would last until the next read. Before the first read there is no time
+// and no models.
+export type PriceList = { url: string; applied_at?: string; models?: { provider: string; id: string; billing_variant?: string }[] }
 
 // The drafting model: which protocol to speak, where, and which model. An empty
 // provider is a deployment that does not draft.

@@ -13,6 +13,7 @@ import {
   type GrantView,
   listGrants,
   type PlatformSettings,
+  type PriceList,
   type ModelRates,
   type RateCard,
   refreezeAccount,
@@ -24,6 +25,8 @@ import {
 import { type I18n } from '../i18n'
 import { formatUSD, parseUSD, toDollars } from '../money'
 import { Ico } from '../icons'
+import { followsList, listName, listedKeys } from '../price-list'
+import { absoluteTime, relativeTime } from '../when'
 import { Check, NumberField, Pill, PromptDialog, Seams, Select, Tip } from '../ui'
 import { CardHead, Empty, Initials, TierPill } from './shared'
 
@@ -302,7 +305,7 @@ function PlatformPolicy({
           </div>
         </div>
       )}
-      {settings && <RateCardEditor i18n={i18n} rows={rates} onChange={setRates} problem={card.problem} />}
+      {settings && <RateCardEditor i18n={i18n} rows={rates} onChange={setRates} problem={card.problem} priceList={settings.price_list} />}
       {/* One Save, at the foot of the card it saves. Beside the overdraft floor
           it read as that field's control, and an admin who edited the start
           reserve had no reason to believe the button below it applied. One
@@ -389,8 +392,26 @@ function cardOf(rows: RateDraft[], t: I18n['t']): { card: RateCard | null; probl
 // mean nothing without the prices they bound, and because a vendor's new model
 // id is charged the card's dearest rates until somebody adds its row. The
 // card's Save writes it with the rest of the policy.
-function RateCardEditor({ i18n, rows, onChange, problem }: { i18n: I18n; rows: RateDraft[]; onChange: (next: RateDraft[]) => void; problem: string }) {
-  const { t } = i18n
+//
+// When the server follows a price list, the rows for the models the list
+// prices are the list's: it writes its prices into them every hour, so an edit
+// would last until then. Those rows come first, as text under the list's name,
+// and the admin's own rows follow as fields. The grouping is only how the rows
+// are shown; Save sends them in the order the server holds them.
+function RateCardEditor({
+  i18n,
+  rows,
+  onChange,
+  problem,
+  priceList,
+}: {
+  i18n: I18n
+  rows: RateDraft[]
+  onChange: (next: RateDraft[]) => void
+  problem: string
+  priceList?: PriceList
+}) {
+  const { t, lang } = i18n
   const added = useRef<number | null>(null)
   const grid = useRef<HTMLDivElement | null>(null)
   // The new row's model id takes the cursor, since naming the model is the
@@ -408,9 +429,18 @@ function RateCardEditor({ i18n, rows, onChange, problem }: { i18n: I18n; rows: R
     cache_write_5m: t('rateCacheWrite5m'),
     cache_write_1h: t('rateCacheWrite1h'),
   }
+  const listed = listedKeys(priceList)
+  const theirs = rows.filter((r) => followsList(r.base, listed))
+  const own = theirs.length > 0 ? rows.filter((r) => !followsList(r.base, listed)) : rows
+  const list = listName(priceList?.url)
   return (
     <div className="stack" style={{ gap: 8 }}>
       <span className="muted small">{t('rateCardHint')}</span>
+      {priceList && !priceList.applied_at && (
+        <span className="muted small" data-test="rate-list-pending">
+          {t('rateListPending', { list })}
+        </span>
+      )}
       <div className="rate-card" ref={grid}>
         <div className="rate-row rate-head" aria-hidden="true">
           <span>{t('rateModel')}</span>
@@ -419,8 +449,39 @@ function RateCardEditor({ i18n, rows, onChange, problem }: { i18n: I18n; rows: R
           ))}
           <span />
         </div>
-        {rows.map((r) => (
-          <div className="rate-row" key={r.key} data-key={r.key} data-test="rate-row">
+        {theirs.length > 0 && (
+          <>
+            <div className="rate-group" data-test="rate-group-list">
+              <span className="rate-group-name">{t('rateFromList', { list })}</span>
+              <span className="rate-group-note" data-tip={absoluteTime(lang, priceList?.applied_at)} data-test="rate-list-applied">
+                {t('rateFromListNote', { list, when: relativeTime(t, lang, priceList?.applied_at) })}
+              </span>
+            </div>
+            {theirs.map((r) => (
+              <div className="rate-row rate-listed" key={r.key} data-key={r.key} data-test="rate-row" data-source="list">
+                <span className="rate-cell rate-model">
+                  <span className="rate-label">{t('rateModel')}</span>
+                  <span className="rate-value mono">{r.model}</span>
+                </span>
+                {PRICES.map((f) => (
+                  <span className="rate-cell" key={f}>
+                    <span className="rate-label">{label[f]}</span>
+                    <span className="rate-value tabular">{r[f]}</span>
+                  </span>
+                ))}
+                <span />
+              </div>
+            ))}
+            {own.length > 0 && (
+              <div className="rate-group" data-test="rate-group-own">
+                <span className="rate-group-name">{t('rateOwn')}</span>
+                <span className="rate-group-note">{t('rateOwnNote', { list })}</span>
+              </div>
+            )}
+          </>
+        )}
+        {own.map((r) => (
+          <div className="rate-row" key={r.key} data-key={r.key} data-test="rate-row" data-source="admin">
             <label className="rate-cell rate-model">
               <span className="rate-label">{t('rateModel')}</span>
               <input
