@@ -70,9 +70,6 @@ func personSignIns(st stores, offered []managed.RuntimeName, actsAsOperator bool
 	if err != nil {
 		return nil, nil, fmt.Errorf("a runtime the person pays is offered, so REPLICHAI_SIGNIN_KEY must seal their sign-ins: %w", err)
 	}
-	if os.Getenv("AUTH_CLIENT_SECRET") == "" {
-		return nil, nil, errors.New("a runtime the person pays is offered, so AUTH_CLIENT_SECRET must let the server refresh their sign-ins")
-	}
 	var store signin.Store = signin.NewMemStore(sealer)
 	if st.pool != nil {
 		store = signin.NewPGStore(st.pool, sealer)

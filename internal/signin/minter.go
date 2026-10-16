@@ -35,7 +35,8 @@ type Config struct {
 	// Issuer is Latere Auth's origin, whose /token and /actor-tokens the
 	// minter calls.
 	Issuer string
-	// ClientID and ClientSecret are the server's own sign-in client.
+	// ClientID and ClientSecret are the server's own sign-in client. An
+	// empty secret is a public client, which Auth takes by its id alone.
 	ClientID     string
 	ClientSecret string
 	// HTTP is the client every call goes through.
@@ -117,6 +118,9 @@ func (m *Minter) refresh(ctx context.Context, subject string, p *person) error {
 	var refused bool
 	err := m.store.Rotate(ctx, subject, func(current string) (string, error) {
 		form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {current}}
+		if m.config.ClientSecret == "" {
+			form.Set("client_id", m.config.ClientID)
+		}
 		var body struct {
 			AccessToken  string `json:"access_token"`
 			RefreshToken string `json:"refresh_token"`
@@ -172,16 +176,18 @@ func (m *Minter) mintActor(ctx context.Context, access string) (string, error) {
 
 // post sends one request to Auth and decodes its answer. bearer is the
 // person's access token for a mint; asClient authenticates as the server's
-// sign-in client instead.
+// sign-in client instead, with its secret when it has one. A public client
+// sends no credentials here: its id is in the form.
 func (m *Minter) post(ctx context.Context, path string, body io.Reader, contentType, bearer string, asClient bool, out any) (int, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, m.config.Issuer+path, body)
 	if err != nil {
 		return 0, err
 	}
 	request.Header.Set("Content-Type", contentType)
-	if asClient {
+	switch {
+	case asClient && m.config.ClientSecret != "":
 		request.SetBasicAuth(url.QueryEscape(m.config.ClientID), url.QueryEscape(m.config.ClientSecret))
-	} else {
+	case !asClient:
 		request.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	response, err := m.config.HTTP.Do(request)

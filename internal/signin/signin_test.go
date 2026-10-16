@@ -165,6 +165,9 @@ type fakeAuth struct {
 	mints     int
 	refuse    bool
 	audience  string
+	// public makes /token take the client the way Auth takes a public one:
+	// its id in the form and no secret, and no Basic credentials at all.
+	public bool
 }
 
 func (a *fakeAuth) serve(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +175,13 @@ func (a *fakeAuth) serve(w http.ResponseWriter, r *http.Request) {
 	defer a.mu.Unlock()
 	switch r.URL.Path {
 	case "/token":
-		id, secret, _ := r.BasicAuth()
+		id, secret, basic := r.BasicAuth()
+		if a.public {
+			id, secret = r.FormValue("client_id"), "client-secret"
+			if basic {
+				id = ""
+			}
+		}
 		token := r.FormValue("refresh_token")
 		if id != "replichai" || secret != "client-secret" || a.refuse || a.spent[token] || r.FormValue("grant_type") != "refresh_token" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -237,6 +246,24 @@ func TestAPlatformTokenIsMintedFromTheKeptSignIn(t *testing.T) {
 
 // Two servers refreshing one person's sign-in at once must never present a
 // spent refresh token, which would end the person's sign-in at Auth.
+// The server's sign-in client is public in production: it holds no secret,
+// and Auth takes a public client's refresh by its id in the form. Sending
+// Basic credentials with an empty secret is refused.
+func TestAPublicClientRefreshesWithItsIDAlone(t *testing.T) {
+	store := NewMemStore(sealer(t))
+	if err := store.Put(context.Background(), "alice", "initial"); err != nil {
+		t.Fatal(err)
+	}
+	auth := &fakeAuth{spent: map[string]bool{}, public: true}
+	server := httptest.NewServer(http.HandlerFunc(auth.serve))
+	t.Cleanup(server.Close)
+	minter := NewMinter(store, Config{Issuer: server.URL, ClientID: "replichai", HTTP: server.Client()})
+	bearer, err := minter.Token(context.Background(), "alice")
+	if err != nil || bearer != "actor-for-access-1" || auth.refreshes != 1 {
+		t.Fatalf("a public client's refresh = %q, %v, %d refreshes", bearer, err, auth.refreshes)
+	}
+}
+
 func TestTwoServersNeverSpendOneRefreshTokenTwice(t *testing.T) {
 	store := NewMemStore(sealer(t))
 	if err := store.Put(context.Background(), "alice", "initial"); err != nil {
