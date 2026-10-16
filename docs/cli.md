@@ -35,7 +35,7 @@ A **runtime** is where the agent session runs. Four ship:
 |---|---|---|
 | `memory` | in the process, with no model behind it; it produces a fake audit | nothing. Use it to try a command without spending anything |
 | `anthropic-managed` | on Anthropic's Managed Agents backend | `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` for a non-default endpoint |
-| `latere` | on the Latere platform, as a hosted agent session, on any model the platform serves you; your own Latere wallet pays for it | `LATERE_API_KEY`, a personal access token from the Latere console (Keys, for Agents), or `LATERE_TOKEN_COMMAND`, a command that prints a bearer for `api.latere.ai`. Your Latere network preference must be open for an audit |
+| `latere` | on the Latere platform, as a hosted agent session, on any model the platform serves you; your own Latere wallet pays for it | `LATERE_API_KEY`, a personal access token from the Latere console (Keys, for Agents). `LATERE_TOKEN_COMMAND` can stand in for it: a command you supply that prints a bearer addressed to `api.latere.ai`. `latere print-token` is not one: it prints the Latere CLI's login token, which only Latere Auth accepts, so the platform answers 401. Your Latere network preference must be open for an audit |
 | `local` | on this machine: a coding agent (Claude Code or Codex) inside a sandbox | the agent installed and logged in, and the sandbox. [`local-runs.md`](local-runs.md) is the guide |
 
 The model is chosen with `--model`, as an **Effort** level or as one exact model:

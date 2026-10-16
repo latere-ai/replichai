@@ -130,7 +130,10 @@ const commandLifetime = 4 * time.Minute
 // Command runs an operator's command that prints a bearer for api.latere.ai
 // on its standard output, in the manner of a git credential helper, and
 // keeps what it printed for a few minutes. It is how a person who is signed
-// in with another Latere program lends that sign-in to this one.
+// in with another Latere program lends that sign-in to this one. The bearer
+// must be addressed to api.latere.ai: `latere print-token` prints the Latere
+// CLI's login token, which only Latere Auth accepts, and the platform
+// refuses it with 401.
 func Command(command string) TokenSource {
 	c := &cache{now: time.Now}
 	c.mint = func(ctx context.Context) (string, time.Time, error) {

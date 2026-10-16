@@ -421,7 +421,11 @@ func TestPlatformFailuresAreClassified(t *testing.T) {
 		case "/gone":
 			writeFake(w, http.StatusNotFound, map[string]any{"error": map[string]string{"code": "not_found", "message": "gone"}})
 		case "/refused":
-			writeFake(w, http.StatusForbidden, map[string]any{"error": map[string]string{"code": "forbidden", "message": "no"}})
+			writeFake(w, http.StatusForbidden, map[string]any{"error": map[string]any{"code": "forbidden", "message": "no",
+				"details": map[string]string{"detail": "the request named private.csv"}}})
+		case "/unsigned":
+			writeFake(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "unauthorized", "message": "A valid bearer token is required.",
+				"details": map[string]string{"detail": "send a bearer issued by https://auth.example for the audience api.example"}}})
 		case "/big":
 			_, _ = w.Write([]byte(strings.Repeat("x", maxResponseBytes+1)))
 		case "/garbled":
@@ -442,8 +446,13 @@ func TestPlatformFailuresAreClassified(t *testing.T) {
 	if err := c.call(ctx, "b", http.MethodGet, "/gone?path=private", nil, "", nil); !errors.Is(err, managed.ErrNotFound) || strings.Contains(err.Error(), "private") {
 		t.Fatalf("gone = %v", err)
 	}
-	if err := c.call(ctx, "b", http.MethodGet, "/refused", nil, "", nil); code(err) != "forbidden" || managed.IsTemporary(err) {
+	if err := c.call(ctx, "b", http.MethodGet, "/refused", nil, "", nil); code(err) != "forbidden" || managed.IsTemporary(err) || strings.Contains(err.Error(), "private.csv") {
 		t.Fatalf("refused = %v", err)
+	}
+	// A 401 keeps the platform's detail, which names the audience a bearer
+	// must carry, so a credential addressed elsewhere says so.
+	if err := c.call(ctx, "b", http.MethodGet, "/unsigned", nil, "", nil); code(err) != "unauthorized" || !strings.Contains(err.Error(), "for the audience api.example") {
+		t.Fatalf("unsigned = %v", err)
 	}
 	if err := c.call(ctx, "b", http.MethodGet, "/big", nil, "", nil); err == nil {
 		t.Fatal("an oversized answer was accepted")
