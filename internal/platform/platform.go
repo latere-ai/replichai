@@ -195,7 +195,9 @@ func (s Settings) validate() error {
 		s.SpreadBps < 0 || s.SpreadFixedMicro < 0 || s.MinTopupMicro < 0 {
 		return ErrNegative
 	}
-	return nil
+	// The price list is written by hand in the console, so it is checked the
+	// same way before it replaces the one in force.
+	return s.Rates.Validate()
 }
 
 // OverdraftCap adapts a Store to the number the spend watchdog compares a

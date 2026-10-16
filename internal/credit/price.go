@@ -5,6 +5,7 @@ package credit
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -147,6 +148,44 @@ func (r Rates) modelRef() managed.ModelRef {
 		return r.Ref
 	}
 	return managed.ModelRef{Provider: "anthropic", ID: strings.TrimSpace(r.Model)}
+}
+
+// ErrBadCard reports a price list that cannot be priced from: a row with no
+// model, a negative price, one model listed twice, or a row whose
+// provider-qualified ref names a different model from the one it is labeled.
+var ErrBadCard = errors.New("the rate card has a row that cannot be priced from")
+
+// Validate checks a card an admin wrote before it is stored. Pricing reads every
+// row on every session, so a negative price would credit a project for using a
+// model, a row with no model can never be matched, and two rows for one model
+// would leave which price applies to the order they were typed in. A row whose
+// ref names another model is a rename that left the ref behind: the ref is
+// what pricing matches, so the row would be charged under its old name.
+func (c Card) Validate() error {
+	seen := make(map[managed.ModelRef]bool, len(c.Models))
+	for i, r := range c.Models {
+		model := strings.TrimSpace(r.Model)
+		if model == "" && !r.Ref.Valid() {
+			return fmt.Errorf("%w: row %d names no model", ErrBadCard, i+1)
+		}
+		if r.Ref.Valid() && model != "" && r.Ref.ID != model {
+			return fmt.Errorf("%w: row %d is labeled %q and priced as %q", ErrBadCard, i+1, model, r.Ref.ID)
+		}
+		if r.Input < 0 || r.Output < 0 || r.CacheRead < 0 || r.CacheWrite5m < 0 || r.CacheWrite1h < 0 || r.CacheWrite < 0 {
+			return fmt.Errorf("%w: %s has a negative price", ErrBadCard, model)
+		}
+		for _, m := range r.Extra {
+			if m.Rate < 0 {
+				return fmt.Errorf("%w: %s prices %s below zero", ErrBadCard, model, m.Meter)
+			}
+		}
+		ref := r.modelRef()
+		if seen[ref] {
+			return fmt.Errorf("%w: %s is listed twice", ErrBadCard, ref.ID)
+		}
+		seen[ref] = true
+	}
+	return nil
 }
 
 // Card is the platform's price list: what each model costs. An admin edits it,
