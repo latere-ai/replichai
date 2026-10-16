@@ -43,6 +43,14 @@ patches:
                     value: replichai
                   - name: AUTH_REDIRECT_URL
                     value: https://replichai.latere.ai/callback
+                  # The runtimes a person may choose when they start a
+                  # session, beside the base's REPLICHAI_RUNTIME. A latere
+                  # session runs as the person who started it and their own
+                  # Latere wallet pays. REPLICHAI_SIGNIN_KEY, which seals the
+                  # sign-in it keeps for them, comes from replichai-config;
+                  # without it the server refuses to start.
+                  - name: REPLICHAI_RUNTIMES
+                    value: latere
                   # The admin list is policy, not a secret, so it lives here,
                   # version-controlled and reviewable, rather than in the .env
                   # secret. Runtime changes go through an admin via

@@ -64,6 +64,8 @@ MAILGUN_API_KEY=...            # outbound mail; omit and invitations are logged,
 DRAFT_API_KEY=...              # only for drafting on a *non*-Anthropic endpoint; Anthropic reuses ANTHROPIC_API_KEY
 STRIPE_SECRET_KEY=...          # card payments; omit and checkout answers payments_unconfigured
 STRIPE_WEBHOOK_SECRET=...
+REPLICHAI_SIGNIN_KEY=...       # openssl rand -hex 32; seals each person's kept Latere sign-in,
+                               # required while the overlay offers the latere runtime
 ```
 
 The comments above explain each line; keep them out of the real file, or on
@@ -76,7 +78,7 @@ policy value put in the secret is not an override; it is ignored. The base
 sets what every environment shares: `DATABASE_URL` and `DATABASE_POOL_URL`
 (from the separately provisioned `replichai-db` secret), `ADDR`, `REPLICHAI_RUNTIME`,
 `AUTH_ISSUER`, `AUTH_AUDIENCE`, `MAILGUN_DOMAIN`, `MAILGUN_REGION`. Each overlay sets what is its own:
-`BASE_URL`, `AUTH_CLIENT_ID`, `AUTH_REDIRECT_URL`, `ADMIN_EMAILS`. Change those
+`BASE_URL`, `AUTH_CLIENT_ID`, `AUTH_REDIRECT_URL`, `REPLICHAI_RUNTIMES`, `ADMIN_EMAILS`. Change those
 in the overlay, where the change is reviewed, not in `.env`.
 
 ### Which model drafts a description
