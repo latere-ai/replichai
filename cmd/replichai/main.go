@@ -149,6 +149,20 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 		} else if keepsWorkspace {
 			opts = append(opts, audit.WithLocalWorkspace())
 		}
+		if !mounts && !keepsWorkspace {
+			// A hosted session's work is pushed as it runs (049). A mounted
+			// repository needs none of this, since the agent pushes into it
+			// itself, and a local session's workspace is on this machine
+			// whatever happens to the run.
+			hooks.Snapshot = func(ctx context.Context, evidence managed.EvidenceReader) error {
+				dir := filepath.Join(*out, slugify(paper)+"-workspace-"+evidence.Status.Ref.ID)
+				pushed, err := snapshotWorkspace(ctx, runtime, evidence, dir, publish.LocalPush{RemoteURL: pub.mount.URL, Token: pub.mount.Token})
+				if pushed {
+					_, _ = fmt.Fprintf(stderr, "  saved the work so far to %s\n", pub.repoFullName())
+				}
+				return err
+			}
+		}
 		hooks.Retain = func(ctx context.Context, evidence managed.EvidenceReader) error {
 			// The order is capture, verify, push, finalize, and only then
 			// release. The workspace holds the only copy of the work until
@@ -517,19 +531,58 @@ func hostWorkspace(ctx context.Context, rt managed.Runtime, evidence managed.Evi
 	if _, ok := rt.(workspaceReader); ok {
 		return workspaceOf(rt, evidence.Status.Ref)
 	}
-	files := make(map[string][]byte, len(evidence.Artifacts))
-	for _, artifact := range evidence.Artifacts {
-		body, err := evidence.Fetch(ctx, artifact)
-		if err != nil {
-			return "", fmt.Errorf("fetch %s: %w", artifact.Path, err)
-		}
-		files[artifact.Path] = body
+	files, err := sessionFiles(ctx, evidence)
+	if err != nil {
+		return "", err
 	}
 	message := fmt.Sprintf("the work of %s session %s, as it left its working directory", rt.Name(), evidence.Status.Ref.ID)
+	// Snapshots pushed during the run built this workspace already (049), so
+	// the final work is committed on top of their history, which keeps the
+	// final push a fast-forward of the last snapshot's.
+	if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr == nil {
+		if _, err := publish.SyncWorkspace(ctx, dir, files, message); err != nil {
+			return "", err
+		}
+		return dir, nil
+	}
 	if err := publish.Materialize(ctx, dir, files, message); err != nil {
 		return "", err
 	}
 	return dir, nil
+}
+
+// snapshotWorkspace keeps a hosted session's work so far in its workspace
+// and pushes it when it changed, so the reproduction's repository shows the
+// work as the session makes it and a run that dies keeps what it had done
+// (049). It reports whether it pushed.
+func snapshotWorkspace(ctx context.Context, rt managed.Runtime, evidence managed.EvidenceReader, dir string, push publish.LocalPush) (bool, error) {
+	files, err := sessionFiles(ctx, evidence)
+	if err != nil {
+		return false, err
+	}
+	message := fmt.Sprintf("the work of %s session %s so far, as it stood at %s", rt.Name(), evidence.Status.Ref.ID, time.Now().UTC().Format("15:04 UTC"))
+	changed, err := publish.SyncWorkspace(ctx, dir, files, message)
+	if err != nil || !changed {
+		return false, err
+	}
+	push.Workspace = dir
+	if _, err := push.Run(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// sessionFiles reads every file the session produced, by its path.
+func sessionFiles(ctx context.Context, evidence managed.EvidenceReader) (map[string][]byte, error) {
+	files := make(map[string][]byte, len(evidence.Artifacts))
+	for _, artifact := range evidence.Artifacts {
+		body, err := evidence.Fetch(ctx, artifact)
+		if err != nil {
+			return nil, fmt.Errorf("fetch %s: %w", artifact.Path, err)
+		}
+		files[artifact.Path] = body
+	}
+	return files, nil
 }
 
 // pushWorkspace publishes what the agent committed into a local repository

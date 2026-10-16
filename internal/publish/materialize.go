@@ -68,3 +68,94 @@ func Materialize(ctx context.Context, dir string, files map[string][]byte, messa
 	}
 	return nil
 }
+
+// SyncWorkspace brings a run's workspace in dir to exactly files and commits
+// what changed, creating the repository on the first call. It is how a hosted
+// session's work is pushed snapshot by snapshot while it runs (049): each call
+// commits on top of the last, so each push is a fast-forward, and a snapshot
+// that changed nothing commits nothing. It reports whether it committed.
+// Every path is checked to stay inside dir.
+func SyncWorkspace(ctx context.Context, dir string, files map[string][]byte, message string) (bool, error) {
+	for name := range files {
+		clean := path.Clean(name)
+		if clean != name || clean == "." || path.IsAbs(clean) || strings.HasPrefix(clean, "../") || clean == ".git" || strings.HasPrefix(clean, ".git/") {
+			return false, fmt.Errorf("refusing to write %q outside the workspace", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return false, err
+		}
+		for _, args := range [][]string{
+			{"init", "--initial-branch=main"},
+			{"config", "user.name", "replichai"},
+			{"config", "user.email", "reproduction@replichai.invalid"},
+			{"config", "commit.gpgsign", "false"},
+		} {
+			if _, err := workspaceGit(ctx, dir, args...); err != nil {
+				return false, err
+			}
+		}
+	} else if err != nil {
+		return false, err
+	}
+	// The tree becomes exactly the snapshot: what the session no longer has
+	// is removed, so the history records the removal.
+	err := filepath.WalkDir(dir, func(target string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(dir, target)
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if relative == ".git" {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if _, kept := files[relative]; !kept {
+			return os.Remove(target)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	for name, body := range files {
+		target := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			return false, err
+		}
+		if err := os.WriteFile(target, body, 0o600); err != nil {
+			return false, err
+		}
+	}
+	if _, err := workspaceGit(ctx, dir, "add", "--all"); err != nil {
+		return false, err
+	}
+	status, err := workspaceGit(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(status) == "" {
+		return false, nil
+	}
+	if _, err := workspaceGit(ctx, dir, "commit", "--message", message); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func workspaceGit(ctx context.Context, dir string, args ...string) (string, error) {
+	//nolint:gosec // a fixed git verb over this package's own arguments
+	command := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_TERMINAL_PROMPT=0")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(output)))
+	}
+	return string(output), nil
+}

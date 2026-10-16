@@ -52,3 +52,40 @@ func TestMaterializeRefusesAPathOutside(t *testing.T) {
 		t.Fatal("a workspace under a file was made")
 	}
 }
+
+// A run's workspace is synced snapshot by snapshot: the first creates the
+// repository, an unchanged snapshot commits nothing, and a changed one
+// commits on top, removing what the session removed, so each push of it is a
+// fast-forward of the last.
+func TestSyncWorkspaceCommitsOnlyWhatChanged(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "workspace")
+	log := func() string {
+		out, err := exec.Command("git", "-C", dir, "log", "--format=%s").CombinedOutput()
+		if err != nil {
+			t.Fatalf("log: %v: %s", err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if changed, err := SyncWorkspace(ctx, dir, map[string][]byte{}, "empty"); err != nil || changed {
+		t.Fatalf("an empty first snapshot = %v, %v; it should commit nothing", changed, err)
+	}
+	first := map[string][]byte{"notes.md": []byte("one\n"), "src/a.py": []byte("a\n")}
+	if changed, err := SyncWorkspace(ctx, dir, first, "first"); err != nil || !changed || log() != "first" {
+		t.Fatalf("the first snapshot = %v, %v, log %q", changed, err, log())
+	}
+	if changed, err := SyncWorkspace(ctx, dir, first, "again"); err != nil || changed || log() != "first" {
+		t.Fatalf("an unchanged snapshot = %v, %v, log %q", changed, err, log())
+	}
+	second := map[string][]byte{"notes.md": []byte("two\n")}
+	if changed, err := SyncWorkspace(ctx, dir, second, "second"); err != nil || !changed || log() != "second\nfirst" {
+		t.Fatalf("a changed snapshot = %v, %v, log %q", changed, err, log())
+	}
+	tree, _ := exec.Command("git", "-C", dir, "ls-files").CombinedOutput()
+	if strings.TrimSpace(string(tree)) != "notes.md" {
+		t.Fatalf("the tree after src/a.py was removed is %q", tree)
+	}
+	if _, err := SyncWorkspace(ctx, dir, map[string][]byte{"../escape": []byte("x")}, "m"); err == nil {
+		t.Fatal("a path outside the workspace was written")
+	}
+}

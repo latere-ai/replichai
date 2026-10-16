@@ -70,9 +70,16 @@ A flag given on the command line wins over its variable.
 
 ### `replichai audit <paper-ref> [flags]`
 
-Audits one paper and writes its reproduction into `<out>/<paper>/`. With
+Audits one paper and writes its reproduction into `<out>/<paper>/`, and the
+transcript into `<out>/<paper>-transcript.jsonl`, one event per line. With
 `--publish` the reproduction also gets its own GitHub repository (see
 [Publishing](#publishing)).
+
+The work is kept as the run goes, not only at its end. On the `local` and
+`latere` runtimes, every five minutes the files the session has made so far
+are written into `<out>/<paper>/` and the transcript so far beside it, so a run
+that fails, times out or is stopped still leaves what it had done. On `latere`
+the files advance as each of the agent's turns ends.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -160,6 +167,13 @@ replichai audit <paper-ref> --publish --invite <github-login>
 
 `REPLICHAI_GITHUB_API_URL` points the CLI at another GitHub API root, such as a
 GitHub Enterprise server; it is unset for github.com.
+
+On the `latere` runtime, where the agent does not push into the repository
+itself, replichai pushes the session's work as it goes: every five minutes,
+when something changed, the files so far are committed and pushed, after the
+same check the final push makes. The repository shows the work arriving, and a
+run that dies keeps everything up to its last push. The final push lands on
+top of that history.
 
 `audit --publish --project <id>` is the alternative to holding a token: the app
 the project lives in creates the repository and hands the run a credential for

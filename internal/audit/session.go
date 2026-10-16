@@ -4,9 +4,11 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -330,12 +332,31 @@ func networkFor(capabilities managed.Capabilities) managed.NetworkPolicy {
 func (a *SessionAuditor) retentionHooks(result *SessionResult, destination string) managed.Hooks {
 	hooks := a.hooks
 	externalRetain := hooks.Retain
+	externalSnapshot := hooks.Snapshot
+	// A snapshot keeps the work so far where the final handover keeps all of
+	// it (049): the files in the output directory and the transcript beside
+	// it, so a run that dies before its end still leaves what it had done.
+	hooks.Snapshot = func(ctx context.Context, evidence managed.EvidenceReader) error {
+		if _, err := collectManagedArtifacts(ctx, evidence, destination); err != nil {
+			return err
+		}
+		if err := writeTranscript(TranscriptPath(destination), evidence.Events); err != nil {
+			return err
+		}
+		if externalSnapshot != nil {
+			return externalSnapshot(context.WithValue(ctx, promptDigestKey{}, result.PromptDigest), evidence)
+		}
+		return nil
+	}
 	hooks.Retain = func(ctx context.Context, evidence managed.EvidenceReader) error {
 		result.Ref = evidence.Status.Ref
 		result.Status = evidence.Status
 		result.Events = append([]managed.Event(nil), evidence.Events...)
 		artifacts, err := collectManagedArtifacts(ctx, evidence, destination)
 		if err != nil {
+			return err
+		}
+		if err := writeTranscript(TranscriptPath(destination), evidence.Events); err != nil {
 			return err
 		}
 		result.Artifacts = artifacts
@@ -388,6 +409,36 @@ func promptDigest(spec managed.SessionSpec) string {
 		h.Write([]byte(part.text))
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+// TranscriptPath is where a run's transcript is kept beside its output
+// directory: a sibling file, so the transcript is never mistaken for one of
+// the files the session produced.
+func TranscriptPath(destination string) string {
+	return filepath.Clean(destination) + "-transcript.jsonl"
+}
+
+// writeTranscript writes the transcript as one JSON event per line, through a
+// temporary file, so a reader never sees half of a snapshot's transcript.
+func writeTranscript(path string, events []managed.Event) error {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	for _, event := range events {
+		if err := encoder.Encode(event); err != nil {
+			return fmt.Errorf("encode the transcript: %w", err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
+	}
+	temporary := path + ".partial"
+	if err := os.WriteFile(temporary, buffer.Bytes(), 0o644); err != nil {
+		return fmt.Errorf("write the transcript: %w", err)
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		return fmt.Errorf("keep the transcript: %w", err)
+	}
+	return nil
 }
 
 func collectManagedArtifacts(ctx context.Context, evidence managed.EvidenceReader, destination string) ([]managed.Artifact, error) {
