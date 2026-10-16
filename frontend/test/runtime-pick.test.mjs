@@ -288,8 +288,54 @@ try {
   });
   if (clipped) fail("the picker is clipped at the card edge");
 
+  /* ── Scrolling the model list keeps the panel open ── */
+
+  // The panel used to close on any scroll the window saw, the list's own
+  // included, so the list of models could not be scrolled at all: the first
+  // wheel tick over it dismissed the panel. A scroll inside the panel is the
+  // reader using it; a scroll of the page behind it still closes it, because
+  // that moves the trigger out from under the panel. As many models as
+  // production lists (226), so the list overflows its box.
+  {
+    const many = runtimes.map((r) =>
+      r.name === "latere"
+        ? { ...r, models: Array.from({ length: 226 }, (_, i) => `vendor/model-${String(i).padStart(3, "0")}`) }
+        : r,
+    );
+    const long = await h.page({ routes: [["/models", { tiers: [], runtimes: many }], ...routes] });
+    await long.open(`/p/${PROJECT}`);
+    await long.waitForSelector(".rp-btn", { timeout: 15000 });
+    await long.click(".rp-btn");
+    await long.waitForSelector(".rp-pop");
+    await long.evaluate(() =>
+      [...document.querySelectorAll(".rp-pop .seg-btn")].find((b) => /latere/i.test(b.textContent))?.click(),
+    );
+    await long.waitForSelector(".rp-pop .rp-models");
+    const list = await long.evaluate(() => {
+      const l = document.querySelector(".rp-models");
+      const r = l.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2, overflows: l.scrollHeight > l.clientHeight };
+    });
+    if (!list.overflows) fail("the model list does not overflow; the scroll below would prove nothing");
+    await long.mouse.move(list.x, list.y);
+    for (let i = 0; i < 4; i++) await long.mouse.wheel({ deltaY: 120 });
+    await settled(long);
+    const scrolled = await long.evaluate(() => ({
+      open: !!document.querySelector(".rp-pop"),
+      top: document.querySelector(".rp-models")?.scrollTop ?? 0,
+    }));
+    if (!scrolled.open) fail("scrolling the model list closed the panel");
+    else if (!(scrolled.top > 0)) fail("the model list did not scroll under the wheel");
+    // The page behind it scrolling is the anchor moving: that closes the panel.
+    await long.evaluate(() => document.querySelector(".screen").dispatchEvent(new Event("scroll")));
+    await long
+      .waitForFunction(() => !document.querySelector(".rp-pop"), { timeout: 2000 })
+      .catch(() => fail("a scroll of the page behind the panel did not close it"));
+    await long.close();
+  }
+
   h.ok(
-    "the picker offers each runtime and level at the server's prices, and Start sends the runtime and model chosen",
+    "the picker offers each runtime and level at the server's prices, Start sends the runtime and model chosen, and its model list scrolls",
   );
 } catch (e) {
   fail(e);

@@ -156,9 +156,18 @@ export function RuntimePick({
       setAt({ left, top, maxHeight });
     };
     place();
-    const dismiss = () => close(false);
+    // A scroll of the page behind the panel moves the trigger out from under
+    // it, so it closes. A scroll inside the panel is the reader using it: the
+    // list of models scrolls, and so does the cursor's row coming into view.
+    // The listener is in the capture phase so it hears every scroller, which
+    // is why it has to ask where the scroll began; it used to close on all of
+    // them, so the first wheel tick over the list of models shut the panel.
+    const dismiss = (e: Event) => {
+      if (e.target instanceof Node && pop.current?.contains(e.target)) return;
+      close(false);
+    };
     window.addEventListener("resize", place);
-    window.addEventListener("scroll", dismiss, { capture: true, once: true });
+    window.addEventListener("scroll", dismiss, { capture: true });
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", dismiss, { capture: true });
