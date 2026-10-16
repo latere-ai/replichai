@@ -13,6 +13,15 @@ type LookupEnv func(string) (string, bool)
 type ProviderCredentials struct {
 	AnthropicKey  string
 	AnthropicBase string
+	// LatereAPIURL and LatereAuthURL are the Latere platform's API origin
+	// and its Auth, empty for the production defaults. LatereAPIKey is a
+	// person's personal access token, and LatereTokenCommand a command that
+	// prints a bearer for the platform's API; either lets a command-line run
+	// act as that person.
+	LatereAPIURL       string
+	LatereAuthURL      string
+	LatereAPIKey       string
+	LatereTokenCommand string
 }
 
 // ResolveCredentials reads each runtime's own configuration out of the
@@ -23,5 +32,9 @@ func ResolveCredentials(lookup LookupEnv) ProviderCredentials {
 	credentials := ProviderCredentials{}
 	credentials.AnthropicKey, _ = lookup("ANTHROPIC_API_KEY")
 	credentials.AnthropicBase, _ = lookup("ANTHROPIC_BASE_URL")
+	credentials.LatereAPIURL, _ = lookup("LATERE_API_URL")
+	credentials.LatereAuthURL, _ = lookup("LATERE_AUTH_URL")
+	credentials.LatereAPIKey, _ = lookup("LATERE_API_KEY")
+	credentials.LatereTokenCommand, _ = lookup("LATERE_TOKEN_COMMAND")
 	return credentials
 }

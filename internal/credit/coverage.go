@@ -6,6 +6,7 @@ package credit
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -78,6 +79,27 @@ func (p Preference) OrDefault() Preference {
 		return DefaultPreference
 	}
 	return p
+}
+
+// efforts are the Latere family's words for the three preferences: Effort,
+// with the levels Quick, Thorough and Sustained, as every Latere product's
+// picker says them. The stored values keep their older names, so no row is
+// rewritten and an old record still reads as it was written.
+var efforts = map[Preference]string{PrefFast: "quick", PrefBalanced: "thorough", PrefBest: "sustained"}
+
+// Effort is the preference's Effort level, in lower case.
+func (p Preference) Effort() string { return efforts[p] }
+
+// ParsePreference reads a preference from either spelling, its stored name
+// or its Effort level, in any case. An unknown word reports false.
+func ParsePreference(word string) (Preference, bool) {
+	word = strings.ToLower(strings.TrimSpace(word))
+	for _, p := range Preferences {
+		if string(p) == word || efforts[p] == word {
+			return p, true
+		}
+	}
+	return "", false
 }
 
 // String returns the preference as a string. At the boundaries that still use

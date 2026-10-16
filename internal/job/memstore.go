@@ -77,7 +77,7 @@ func WithRates(c credit.CardSnapshot) MemOption {
 // terminal and unsettled, and the ledger refuses a second settlement, so there
 // is no check here.
 func (s *MemStore) settleLocked(ctx context.Context, j Job) {
-	if s.credits == nil || j.ProjectID == "" {
+	if s.credits == nil || j.ProjectID == "" || !j.Payer.PaysProject() {
 		return
 	}
 	if _, err := s.credits.Settle(ctx, credit.Pot(j.ProjectID), j.ID, j.cost()); err != nil {
@@ -200,7 +200,7 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	now := s.clock()
 	j := Job{
 		ID: id, Kind: sub.Kind, Principal: sub.Principal, ProjectID: sub.Project, Ref: sub.Ref,
-		PaperKey: sub.PaperKey, Tier: sub.Tier,
+		PaperKey: sub.PaperKey, Tier: sub.Tier, Runtime: sub.Runtime, Model: sub.Model, Payer: sub.Payer,
 		Phase: PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
 		PhaseAt: map[Phase]time.Time{PhaseSubmitted: now},
 	}
@@ -224,16 +224,20 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	// Pricing is resolved before the reserve is held, not after: the in-memory
 	// store has no transaction to roll back, so a hold taken and then abandoned
 	// by a refusal would remain against the project forever.
-	rates, err := s.snapshot(ctx)
-	if err != nil {
-		return Job{}, err
-	}
-	j.Rates = rates
-	// The credit gate (011): the project must be able to commit the start
-	// reserve, and committing it stops a burst of submits from all reading the
-	// same balance.
-	if err := s.takeReserve(ctx, sub.Project, id); err != nil {
-		return Job{}, err
+	// A person-paid session is priced and charged by the platform that runs
+	// it, so it snapshots no card and holds no reserve (048).
+	if sub.Payer.PaysProject() {
+		rates, err := s.snapshot(ctx)
+		if err != nil {
+			return Job{}, err
+		}
+		j.Rates = rates
+		// The credit gate (011): the project must be able to commit the
+		// start reserve, and committing it stops a burst of submits from
+		// all reading the same balance.
+		if err := s.takeReserve(ctx, sub.Project, id); err != nil {
+			return Job{}, err
+		}
 	}
 	s.jobs[id] = j
 	s.order = append(s.order, id)

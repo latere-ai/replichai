@@ -136,6 +136,15 @@ DROP INDEX IF EXISTS jobs_imported_session;
 CREATE UNIQUE INDEX jobs_imported_session ON jobs (origin, principal, external_id)
 	WHERE external_id <> '';
 `},
+	{11, `
+-- The runtime and model a person chose for a session, and who pays for it
+-- (048). Every existing row ran on the deployment's runtime, chose no exact
+-- model, and was paid by its project, which is what the empty defaults read
+-- as: an empty runtime is the default, an empty payer the project.
+ALTER TABLE jobs ADD COLUMN runtime TEXT NOT NULL DEFAULT '';
+ALTER TABLE jobs ADD COLUMN model TEXT NOT NULL DEFAULT '';
+ALTER TABLE jobs ADD COLUMN payer TEXT NOT NULL DEFAULT '';
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own

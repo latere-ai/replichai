@@ -58,6 +58,7 @@ func TestEveryCommandPrintsItsOwnFlags(t *testing.T) {
 		"project":   nil,
 		"push":      {"-project"},
 		"providers": nil,
+		"models":    {"-runtime", "-sandbox", "-harness", "-engine", "-image", "-models", "-session-root", "-retention"},
 		"rates":     {"-runtime", "-database-url", "-json"},
 	}
 	for _, c := range commands() {
@@ -99,5 +100,25 @@ func TestCommandsWithoutArgumentsRefuseThem(t *testing.T) {
 		if err == nil || !strings.Contains(stderr, "takes no arguments") {
 			t.Errorf("%s stray = %v, %q; want a refusal", name, err, stderr)
 		}
+	}
+}
+
+// models lists each Effort level beside the preference it is stored as and
+// the model it runs, so a person can see what --model accepts.
+func TestModelsListsTheEffortLevels(t *testing.T) {
+	stdout, _, err := capture(t, "models", "--runtime", "memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"sustained  (best)", "thorough   (balanced)", "quick      (fast)"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("models output lacks %q:\n%s", want, stdout)
+		}
+	}
+	if _, _, err := capture(t, "models", "--runtime", "nonesuch"); err == nil {
+		t.Error("an unknown runtime listed models")
+	}
+	if _, _, err := capture(t, "models", "extra"); err == nil {
+		t.Error("a positional argument was accepted")
 	}
 }
