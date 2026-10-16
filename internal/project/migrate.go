@@ -198,12 +198,24 @@ ALTER TABLE project_papers ADD COLUMN abstract TEXT NOT NULL DEFAULT '';
 	{version: 13, sql: `
 -- Crossref and publisher pages carry HTML entities in plain-text fields, and
 -- records stored before they were decoded show "Computers &amp; Graphics". The
--- reader decodes them now; this decodes the common ones already stored.
+-- reader decodes them now; this decodes the common ones already stored. &amp;
+-- goes last, so an escaped entity is decoded once, not twice.
+CREATE OR REPLACE FUNCTION replichai_decode_entities(s TEXT) RETURNS TEXT LANGUAGE SQL IMMUTABLE AS $$
+	SELECT replace(replace(replace(replace(replace(replace(s,
+		'&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&#x27;', ''''), '&amp;', '&')
+$$;
 UPDATE project_papers SET
-	title     = replace(replace(replace(replace(replace(title,     '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&'),
-	venue     = replace(replace(replace(replace(replace(venue,     '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&'),
-	publisher = replace(replace(replace(replace(replace(publisher, '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&')
-WHERE title ~ '&(lt|gt|quot|#39|amp);' OR venue ~ '&(lt|gt|quot|#39|amp);' OR publisher ~ '&(lt|gt|quot|#39|amp);';
+	title     = replichai_decode_entities(title),
+	venue     = replichai_decode_entities(venue),
+	publisher = replichai_decode_entities(publisher),
+	volume    = replichai_decode_entities(volume),
+	issue     = replichai_decode_entities(issue),
+	pages     = replichai_decode_entities(pages),
+	abstract  = replichai_decode_entities(abstract),
+	authors   = ARRAY(SELECT replichai_decode_entities(a) FROM unnest(authors) WITH ORDINALITY AS u(a, i) ORDER BY i)
+WHERE concat_ws(' ', title, venue, publisher, volume, issue, pages, abstract, array_to_string(authors, ' '))
+	~ '&(lt|gt|quot|#39|#x27|amp);';
+DROP FUNCTION replichai_decode_entities(TEXT);
 `},
 	{version: 14, run: keyUnkeyedSessions},
 }

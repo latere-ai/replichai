@@ -1090,7 +1090,8 @@ func TestMigrationDecodesStoredEntities(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	stored := Paper{Key: "doi:10.1016/x", Ref: "r", Title: "Context &amp; &lt;Location&gt;", AddedBy: "owner",
-		Record: paper.Record{Venue: "Computers &amp; Graphics", Publisher: "O&#39;Reilly &amp;amp; Co"}}
+		Record: paper.Record{Venue: "Computers &amp; Graphics", Publisher: "O&#39;Reilly &amp;amp; Co",
+			Authors: []string{"Ada Lovelace", "R&amp;D Group"}, Pages: "1&#x27;2", Abstract: "a &lt; b"}}
 	if err := s.AddPaper(ctx, p.ID, stored); err != nil {
 		t.Fatalf("AddPaper: %v", err)
 	}
@@ -1109,5 +1110,8 @@ func TestMigrationDecodesStoredEntities(t *testing.T) {
 	// &amp; goes last, so an escaped entity decodes once, not twice.
 	if got.Title != "Context & <Location>" || got.Record.Venue != "Computers & Graphics" || got.Record.Publisher != "O'Reilly &amp; Co" {
 		t.Errorf("title=%q venue=%q publisher=%q", got.Title, got.Record.Venue, got.Record.Publisher)
+	}
+	if want := []string{"Ada Lovelace", "R&D Group"}; !reflect.DeepEqual(got.Record.Authors, want) || got.Record.Pages != "1'2" || got.Record.Abstract != "a < b" {
+		t.Errorf("authors=%q pages=%q abstract=%q", got.Record.Authors, got.Record.Pages, got.Record.Abstract)
 	}
 }
