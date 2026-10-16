@@ -5,6 +5,8 @@ status: built
 
 # 040 — The landing in light, and the footer it shares with the rest of Latere
 
+**Restyled by [047](047-set-like-the-work-it-audits.md).** The slabs and their two-state material are gone, the self-hosted serif is removed, and Inter loads with `block`. The shared footer and its wrapper stay.
+
 **Status:** built. All nine criteria hold.
 
 **Scope:** frontend only. The landing's four slabs stop being dark in light mode, and the page ends with the shared Latere footer instead of a one-line strip of its own.

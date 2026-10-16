@@ -5,6 +5,8 @@ status: built
 
 # 034 — The console, rebuilt from the design
 
+**Restyled by [047](047-set-like-the-work-it-audits.md).** The inset card and the deep-ground rail stay; the primitives inside the card, and every label, take the platform's ink and type.
+
 **Status:** built. Every acceptance criterion holds; the whole browser suite passed at both viewports (17 files then; 21 today, the rest added by 040 and 043), and the wallet, settings, registry and trash screens were screenshotted by hand to check what the shared primitives did to screens the design does not show.
 
 Four things came out of the build. `.legend-swatch.empty` also matched the app's own `.empty` no-content block and inherited its padding, which drew a 35×70px box where a 7px swatch belonged; a class name is an interface, and `empty` was already taken. The old `.row-owner`/`.row-modified` rules were fixed column widths with a hide-below-760px, which is wrong once they ride the title's meta line; they are gone rather than overridden. `matches` collided with the transcript module's own import and silently rebound the transcript's event filter, which typechecking caught and nothing else would have. And three tests encoded values the design changed (the folded rail's 56px, the topbar's 52px, and the spend tile's container), each updated with the reason, and in every case the guarantee was kept rather than the number.

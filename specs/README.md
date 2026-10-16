@@ -197,7 +197,7 @@ This has been run, which is the reason to believe any of it. A session driven by
 
 Three tables, by how finished the work is rather than by number. A spec's number tells you when it was written; this tells you what you can rely on. Within each table the order is numeric.
 
-### Done (90)
+### Done (91)
 
 Built, and every acceptance criterion it set itself holds.
 
@@ -293,6 +293,7 @@ Built, and every acceptance criterion it set itself holds.
 | 045j | [A bearer the API accepts](045j-a-bearer-the-api-accepts.md) | built | 045i, 006a, 006c |
 | 045k | [A local session reaches the cloud](045k-a-local-session-reaches-the-cloud.md) | built | 045j, 045g, 006b, 012, 015, 011, 005 |
 | 045l | [The repository comes from the platform](045l-the-repository-comes-from-the-platform.md) | built | 045g, 045j, 045k, 009, 006f, 003 |
+| 047 | [Set like the work it audits](047-set-like-the-work-it-audits.md) | built | 017, 029, 030, 033, 034, 040 |
 
 ### Half done (9)
 
@@ -310,7 +311,7 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 041e | [Anthropic conforms to the session contract](041e-anthropic-conforms-to-the-session-contract.md) | implemented; removal half done | 041a–041d |
 | 046 | [One run is one draw](046-one-run-is-one-draw.md) | runs per paper, findings schema 2, the run record, the first graded attempt kept, one paper copy, artifact snapshots and network profile per study, and the in-loop schema check built; system-decided matches and the study view designed | 045h, 021a, 003, 045f, 044, 005 |
 
-### Not built (15)
+### Not built (14)
 
 Designed, deferred, or still an argument. Nothing here is in the product; [What is left](#what-is-left) says why each one is waiting.
 
@@ -330,7 +331,6 @@ Designed, deferred, or still an argument. Nothing here is in the product; [What 
 | 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
 | 041g | [Latere runs a session](041g-latere-runs-a-session.md) | designed, durability-gated | 041e, Topos/Lux/Cella/Auth |
 | 045m | [The role reaches the agent](045m-the-role-reaches-the-agent.md) | draft | 045d, 045a, 005 |
-| 047 | [Set like the work it audits](047-set-like-the-work-it-audits.md) | drafted; prototype in review | 017, 029, 030, 033, 034, 040 |
 
 **Built:** [044](044-a-run-that-produced-nothing.md) is the record of the run that cost $2.21, took twenty minutes, and left a repository holding nothing but the five commits the system wrote itself. Four defects, each independently fatal, and each ordinary. The agent committed five times into the mount and never pushed, and a tool result in its own transcript says so explicitly; the mount protocol asked for a push in a subordinate clause and the rubric graded eight criteria, none of which was *did this leave the sandbox*. The agent had also copied its deliverable, `verdict.json` included, into the output directory, where the CLI would have harvested it and the server, which binds `evidence.Artifacts` and reads only `evidence.Events`, discarded it seconds before releasing the sandbox holding the only other copy. Meanwhile a second replica adopted the still-healthy run, because the lease is refreshed only by an observation and the controller emits one only when something *changed*, so five quiet minutes read as a dead process, and the two drivers' finalizes raced, the loser's `422` recording `failed` over the winner's success. The session then reported *the run did not write verdict.json*, which is true, and describes a findings problem where the truth was an empty repository. Its four children fix them one each: [044a](044a-the-mount-is-pushed.md) makes the push its own step and a graded criterion, [044b](044b-the-server-harvests-the-session.md) commits the outputs through the same `VerifyTree` gate the mount has, [044c](044c-a-lease-says-it-is-alive.md) heartbeats the jobs a worker drives and yields the one it has lost, and [044d](044d-an-empty-repository-says-so.md) makes finalize say which of the two things went wrong. 044a and 044b are both needed and fail differently: prevention that depends on the agent's discipline, and recovery that does not.
 
