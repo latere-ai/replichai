@@ -51,6 +51,12 @@ committed. The commit log already holds that.
   The paper's title, authors, venue and year are filled in by the admin paper
   refresh (`POST /admin/papers/refresh`) or the owner's "Fill in details" on
   the project.
+- When the Latere platform refuses a credential with 401, the error now names
+  the issuer and audience the platform takes a bearer from, so a token
+  addressed to another service says so. The command-line docs say that
+  `LATERE_TOKEN_COMMAND` must print a bearer addressed to `api.latere.ai`, and
+  that `latere print-token`, whose login token only Latere Auth accepts, is not
+  one; a personal access token in `LATERE_API_KEY` is the credential to use.
 
 ## v0.35.0 - 2026-10-16
 

@@ -28,16 +28,23 @@ const maxResponseBytes = 64 << 20
 
 // apiError is the platform's error body, {"error": {"code", "message"}}.
 // Only the code and message are kept: the details can echo request fields,
-// and an error is logged.
+// and an error is logged. A 401 is the exception. Its detail names the issuer
+// and the audience the platform takes a bearer from, and nothing of the
+// request, so it is kept: it is what tells a person that their credential is
+// addressed to the wrong service.
 type apiError struct {
 	Status  int
 	Code    string
 	Message string
+	Detail  string
 }
 
 func (e *apiError) Error() string {
 	if e.Code == "" {
 		return fmt.Sprintf("platform answered %d", e.Status)
+	}
+	if e.Detail != "" {
+		return fmt.Sprintf("platform answered %d %s: %s (%s)", e.Status, e.Code, e.Message, e.Detail)
 	}
 	return fmt.Sprintf("platform answered %d %s: %s", e.Status, e.Code, e.Message)
 }
@@ -114,10 +121,16 @@ func (c *client) send(ctx context.Context, bearer, method, path string, body any
 		Error struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
+			Details struct {
+				Detail string `json:"detail"`
+			} `json:"details"`
 		} `json:"error"`
 	}
 	if json.Unmarshal(raw, &envelope) == nil {
 		failure.Code, failure.Message = envelope.Error.Code, envelope.Error.Message
+		if response.StatusCode == http.StatusUnauthorized {
+			failure.Detail = envelope.Error.Details.Detail
+		}
 	}
 	switch {
 	case response.StatusCode == http.StatusNotFound:
