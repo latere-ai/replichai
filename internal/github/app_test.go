@@ -126,6 +126,24 @@ func TestAppClientMintsAndRefreshes(t *testing.T) {
 	}
 }
 
+// TestAppClientReadsAMissingFileAsAbsent checks that a client built by NewApp
+// reads GitHub's 404 for a missing file as absent. Every non-2xx answer goes
+// through the refusal path, which reads the client's clock, so NewApp must set
+// it as New does; left unset, the first missing file panicked the session that
+// asked for it.
+func TestAppClientReadsAMissingFileAsAbsent(t *testing.T) {
+	base := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	fa := &fakeApp{tokenExp: base.Add(time.Hour)}
+	srv := httptest.NewServer(fa.handler())
+	defer srv.Close()
+	c := appClientForTest(t, srv.URL, base)
+
+	content, found, err := c.GetFileContent(context.Background(), "open-hai", "registry", "manifest.json")
+	if err != nil || found || content != nil {
+		t.Fatalf("GetFileContent of a missing file = (%q, %v, %v), want (nil, false, nil)", content, found, err)
+	}
+}
+
 // TestPATClientNeverMints checks AC4: with no App configured the client
 // authenticates with the static PAT and calls none of the App endpoints, so a
 // deploy before the App exists is safe.

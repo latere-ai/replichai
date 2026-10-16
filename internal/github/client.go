@@ -63,11 +63,19 @@ type Option func(*Client)
 // WithBaseURL overrides the API root. Tests point it at a local server.
 func WithBaseURL(base string) Option { return func(c *Client) { c.base = base } }
 
-// New builds a client authenticating with token. The default timeout is
-// generous because a reproduction's transcript can be several megabytes, and the
-// Contents API base64-encodes the whole file into one request body.
+// New builds a client authenticating with token.
 func New(token string, opts ...Option) *Client {
-	c := &Client{token: token, base: DefaultBaseURL, http: &http.Client{Timeout: 3 * time.Minute, Transport: xotel.Transport(nil)}, now: time.Now}
+	c := newClient(opts)
+	c.token = token
+	return c
+}
+
+// newClient builds what both authentication modes share, so a field one
+// constructor sets is never left unset by the other. The default timeout is
+// generous because a reproduction's transcript can be several megabytes, and
+// the Contents API base64-encodes the whole file into one request body.
+func newClient(opts []Option) *Client {
+	c := &Client{base: DefaultBaseURL, http: &http.Client{Timeout: 3 * time.Minute, Transport: xotel.Transport(nil)}, now: time.Now}
 	for _, o := range opts {
 		o(c)
 	}
