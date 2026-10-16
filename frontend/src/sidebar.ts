@@ -35,19 +35,12 @@ export function useSidebar(): { folded: boolean; toggle: () => void } {
   return { folded, toggle }
 }
 
-// useDrawer holds whether the rail is showing as an overlay, which is what it
-// does below the phone breakpoint (030).
-//
-// This is deliberately not the fold above. The fold is a preference, a width
-// the operator chose, kept across reloads. A drawer standing open is transient:
-// a phone that reopened the navigation on every load would hide the screen the
-// link pointed at. So it lives in memory and starts
-// closed, and nothing here reads or writes `sidebar`.
-//
-// There is no media query here either. Above the breakpoint the rail is a
-// column in the flow and the class this state adds paints nothing, so the state
-// can be open and have no effect, which keeps the two widths one component
-// rather than two.
+// useDrawer holds whether the rail is showing as an overlay, which is how it
+// appears below the phone breakpoint. Unlike the fold, an open drawer is
+// transient: it lives in memory, starts closed and never touches `sidebar`, so a
+// phone does not reopen the navigation over the linked screen on every load.
+// Above the breakpoint the class this state adds paints nothing, so one
+// component serves both widths without a media query.
 export function useDrawer(): { open: boolean; show: () => void; hide: () => void } {
   const [open, setOpen] = useState(false)
 

@@ -3,15 +3,13 @@
 
 // A browser regression test for the app's tooltip.
 //
-// The bug it guards: the bubble used to be a `::after` pseudo-element on the
-// trigger, positioned absolutely. Every card in the app rounds its corners with
-// `overflow: hidden`, and an absolutely-positioned child is clipped by that, so
-// a tip on any control inside a card was cut off at the card's edge and showed
-// up on screen as a black stub with no text in it. The paper row's remove
-// button was the report; eighteen `overflow: hidden` rules were affected.
+// It guards that a tooltip is never clipped by the card it sits in. Every card
+// in the app rounds its corners with `overflow: hidden`, which clips an
+// absolutely positioned child, so a bubble drawn inside the card would be cut
+// off at its edge.
 //
 // Clipping does not change an element's own box, so "the bubble exists and has a
-// size" passes against the broken code too. The discriminating assertion is hit
+// size" passes even when it is clipped. The discriminating assertion is hit
 // testing, which Chrome resolves against what is painted: at the bubble's own
 // center, the topmost element must be the bubble. That plus "no ancestor of the
 // bubble clips it" is what a container can break. It needs a real layout engine,
@@ -23,7 +21,7 @@ const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
 const project = { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) }
 // A paper nobody has run yet: the remove button is gated on a session count of
-// zero, and it is the control the report was filed against.
+// zero, and it is a control inside a card.
 const paper = { key: 'pap-1', ref: '10.1145/3562939.3567802', title: 'Walk This Beam', sessions: 0 }
 
 const routes = [
@@ -49,8 +47,8 @@ try {
   const bubbles = (n) => page.waitForFunction(`${UP} === ${n}`, { timeout: 2000 }).catch(() => {})
 
   await page.open('/')
-  // Navigation is state, not a router: the dashboard's project row opens the
-  // project screen, where the paper rows live.
+  // The dashboard's project row opens the project screen, where the paper rows
+  // live.
   await page.waitForSelector('.row')
   await page.evaluate(() => document.querySelector('.row')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
   await page.waitForSelector('.icon-btn.danger[data-tip], .icon-btn.danger')
@@ -81,7 +79,7 @@ try {
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
       b.style.pointerEvents = prior
       // The other half of the same question, asked structurally: an ancestor with
-      // a clip that does not contain the bubble is exactly the old defect.
+      // a clip that does not contain the bubble is exactly what cuts it off.
       let clipper = ''
       for (let p = b.parentElement; p && !clipper; p = p.parentElement) {
         const cs = getComputedStyle(p)
@@ -115,7 +113,7 @@ try {
     return m
   }
 
-  // The report: a remove button inside a card, whose bubble the card clipped.
+  // A remove button inside a card, whose bubble the card must not clip.
   const remove = await hover('.icon-btn.danger', 'remove-paper button')
 
   // Away from the trigger, the bubble goes.
@@ -125,8 +123,7 @@ try {
   check(!lingering, `${lingering} tooltips stayed up after the pointer left`)
 
   // A trigger in the header, at the viewport's right edge: the bubble has to be
-  // pulled back inside rather than hang off the screen. This is what the old
-  // hand-placed `align="end"` was for.
+  // pulled back inside rather than hang off the screen.
   const wallet = await hover('.quota-pill', 'wallet pill')
 
   // The appearance switcher's radios carry `data-tip` as a plain attribute

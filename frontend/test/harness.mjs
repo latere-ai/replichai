@@ -1,15 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Where the browser suite finds Chrome, starts Vite, and mocks the API.
+// Where the browser suite finds Chrome, starts Vite, and mocks the API, so
+// every test shares one copy of each.
 //
-// Every test used to carry its own copy of all three: forty lines of discovery
-// and readiness polling, a hand-picked port that collided with another file's,
-// and a request handler that matched paths by hand. The copies drifted. One
-// answered a stream with an empty body while the server always sends a snapshot
-// first, which is why a reconnect loop went unnoticed for as long as it did.
-//
-// A test now reads:
+// A test reads:
 //
 //   const h = await start()
 //   const page = await h.page({ routes })
@@ -73,10 +68,8 @@ export function check(cond, msg) {
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // SLOW stretches every wait in the suite. Each wait is written with the budget
-// it needs on a developer's machine. The CI runner loads the same page about
-// twenty times slower, so the written budgets left it about twice the usual
-// time, and a busy moment ran one out: a timeout naming an element, in a
-// different file each time. One factor, applied where waits are made, keeps the
+// it needs on a developer's machine, and the CI runner loads the same page about
+// twenty times slower. One factor, applied where waits are made, keeps the
 // budgets in the tests readable and gives a slow machine the same headroom.
 // WEB_TEST_SLOW sets it; without it the factor is 4 on CI and 1 elsewhere.
 export const SLOW = Number(process.env.WEB_TEST_SLOW) || (process.env.CI ? 4 : 1)
@@ -291,14 +284,12 @@ export const STAND_IN_HEADER = 'x-web-test-backend'
 
 // startBackend is the backend the dev server proxies to while the suite runs.
 // It refuses every request at once, with the 500 the proxy itself gives when
-// nothing listens, so the app sees what it saw before.
+// nothing listens.
 //
 // The dev server's default backend is localhost:8080, which the suite does not
-// own. A request no route mocks is passed on to the proxy, so its answer used to
-// depend on whatever held that port: nothing on a developer's machine, and on a
-// shared CI runner sometimes another job's service. One that accepted the
-// connection and did not answer left a screen waiting, and the suite reported a
-// timeout naming an element. Owning the port the proxy points at removes that.
+// own. A request no route mocks is passed on to the proxy, so without this its
+// answer would depend on whatever holds that port, and a service there that
+// accepts the connection without answering would leave a screen waiting.
 async function startBackend() {
   const server = createHttpServer((req, res) => {
     req.resume()
@@ -318,10 +309,9 @@ async function startBackend() {
 // and says so in WEB_TEST_BASE, in which case the whole suite shares one server.
 // With WEB_TEST_BUILT set it serves the last `bun run build` through `vite
 // preview` instead of the dev server. CI sets it, right after building: the dev
-// server compiles each module on request, which on the shared runner made page
-// loads about twenty times slower than on a laptop and turned ordinary waits
-// into timeouts in whichever test happened to be slowest that run. Locally the
-// dev server stays the default, so a run always tests the code as it is now.
+// server compiles each module on request, which on a shared runner makes page
+// loads about twenty times slower than on a laptop. Locally the dev server
+// stays the default, so a run always tests the code as it is now.
 export async function startVite() {
   if (process.env.WEB_TEST_BASE) return { base: process.env.WEB_TEST_BASE, stop() {} }
   const port = await freePort()
@@ -353,14 +343,10 @@ export async function startVite() {
 // returns null where there is no Chrome to launch either, which the caller
 // reports as a skip.
 //
-// One process for the whole suite, not one per file. Every file used to launch
-// its own Chrome, so a run held as many browsers as it ran files at a time, each
-// with its own zygote, network service, GPU process and renderers. Under that
-// pressure a browser dies, and a dead browser is not an error puppeteer raises:
-// the call waiting on it is simply never answered. What the suite then reported
-// was whichever wait had a timeout on it, naming an element that had rendered
-// everywhere else, which is how a browser that crashed read as a landing page
-// that never came up.
+// One process for the whole suite, not one per file. A browser per file
+// multiplies Chrome's processes under load, and a browser that dies is not an
+// error puppeteer raises: the call waiting on it is simply never answered, and
+// the suite reports a timeout naming an element instead.
 export async function startBrowser({ headless = true, join = process.env.WEB_TEST_WS } = {}) {
   const puppeteer = (await import(require.resolve('puppeteer-core'))).default
   if (join) return { browser: await puppeteer.connect({ browserWSEndpoint: join }), owned: false }

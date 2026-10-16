@@ -178,15 +178,14 @@ test('an offset says how far into the run something happened', () => {
   expect(offsetOf(t, at('2026-07-14T10:47:00Z'), span)).toBe('+1h 47m')
 })
 
-// The clock is the app's language's, not the browser's: a German OS used to
-// write the gutter's times one way and the copy beside them another.
+// The clock is written in the app's language, not the browser's.
 test('a clock reads to the minute on a 24-hour dial in the app’s language', () => {
   const e = at('2026-07-14T09:05:41Z')
   expect(clockOf('en', e)).toBe(new Date(Date.parse('2026-07-14T09:05:41Z')).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false }))
 })
 
 test('cache writes count toward the total, whatever lifetime they bought', () => {
-  // A cache write is billed above fresh input (011), so a total that drops it
+  // A cache write is billed above fresh input, so a total that drops it
   // under-reports the run. The 5m/1h split is a pricing detail; a reader wants
   // one number, and a backend that reports no lifetime still gets counted.
   const u = {
@@ -210,14 +209,11 @@ test('usage from a backend that reports no cache writes still totals', () => {
   expect(totalOf(u)).toBe(16)
 })
 
-// The scrubber's cursor follows the event it landed on, not the pointer.
-//
-// A session that finishes its work early and sits in a phase for hours leaves a
-// stretch of bar with no events under it; an overnight run puts every event in
-// the first quarter. Each position in that tail resolves to the last event, so a
-// cursor drawn where the pointer was reported 09:00 while the transcript showed
-// 18:45. Snapping it back is both honest and a visible answer to "why can I not
-// scrub further".
+// The scrubber's cursor follows the event it landed on, not the pointer. A
+// session that finishes its work early leaves a stretch of bar with no events
+// under it, and each position there resolves to the last event, so the cursor
+// snaps back to it. That keeps the cursor in agreement with the transcript and
+// shows why scrubbing further does nothing.
 test('a scrub into the dead tail snaps the cursor back to the last event', () => {
   // Events span the first quarter; the session runs four times as long.
   const events = [at('2026-08-03T18:00:00Z'), at('2026-08-03T18:30:00Z'), at('2026-08-03T19:00:00Z')]

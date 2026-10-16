@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for removing a session (032).
+// A browser regression test for removing a session.
 //
 // It guards against a dead end. A run that began publishing and never finished
 // holds a repository with no reproduction record, and the publish gate blocks on
-// exactly that, so one cancelled or crashed session made its project
-// unpublishable forever, and nothing in the product could clear it. The refusal
-// named the session and offered one thing to do with it: open it, and land on a
-// transcript that does not mention publishing at all.
+// exactly that, so the owner needs a way to clear such a session.
 //
 // So two surfaces have to work, and the second is the one that matters:
 //
@@ -172,8 +169,8 @@ try {
   const blocked = await rows()
   if (blocked.length !== 1) fail(`the refusal named ${blocked.length} sessions, want the one unfinished run`)
   if (!/never finished/i.test(blocked[0])) fail(`the row does not explain the unfinished run: ${blocked[0]}`)
-  // The row carries its own remedy. Before 032 its only offer was "Open session",
-  // which led to a transcript that says nothing about publishing.
+  // The row carries its own remedy, not only a link to a transcript that says
+  // nothing about publishing.
   if (!(await page.$('[data-test="delete-blocker"]'))) fail('the unfinished blocker offers no way to remove it')
 
   // It confirms in the row, not in a second Modal: two modals would share the

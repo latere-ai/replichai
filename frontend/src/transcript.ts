@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The arithmetic behind the session screen (006s), kept out of the components
-// so it can be tested without a browser.
-//
-// Every function here reads the run's own record and nothing else. Where the
-// record is silent, as with an event with no timestamp or a session with no
-// usage anywhere, the answer is an explicit absence, never a filled-in zero.
+// The arithmetic behind the session screen, kept out of the components so it can
+// be tested without a browser. Every function reads the run's own record and
+// nothing else. Where the record is silent, as with an event with no timestamp,
+// the answer is an explicit absence, never a filled-in zero.
 import type { Event, Usage } from './api'
 import type { Lang, T } from './i18n'
 import { clockTime } from './locale'
@@ -44,12 +42,9 @@ function widen(s: Span): Span {
 }
 
 // runSpan is the interval the scrubber draws: the session's own extent, taken
-// from the phases it recorded, widened to cover any event outside it.
-//
-// The events alone are the wrong span. Every event is emitted inside `running`,
-// so a bar drawn to fit them would show one phase at full width and hide that
-// resolving took seven seconds and publishing seventeen, which is the
-// proportion a reader came for. The phases alone are also wrong, because a live
+// from the phases it recorded, widened to cover any event outside it. The events
+// alone are the wrong span, because every event is emitted inside `running` and
+// the other phases would vanish. The phases alone are also wrong, because a live
 // session has not recorded its last phase yet and its events run past the end.
 export function runSpan(events: Event[], phaseAt: Record<string, string> | undefined): Span | null {
   const ev = bounds(events)
@@ -133,21 +128,17 @@ export function cacheWrittenOf(u: Usage): number {
 }
 
 // freshOf is the tokens a request actually pushed through the model: the new
-// input and the output, with the cache reads left out.
-//
-// The total is the wrong measure of a step. On a real session it is 99% cache
-// reads, 11.6M of 11.7M, and a cache read scales with how long the conversation
-// has grown rather than with what the agent did, so ranking steps by total
-// draws a monotonic ramp and calls it spend. Fresh tokens vary with the work,
-// which is the question the histogram and the per-card figure are asking. The
-// full breakdown, cache included, is always one click away in the inspector.
+// input and the output, with the cache reads left out. The total is the wrong
+// measure of a step: it is dominated by cache reads, which grow with the length
+// of the conversation rather than with what the agent did. The full breakdown
+// is shown in the inspector.
 export function freshOf(u: Usage): number {
   return u.InputTokens + u.OutputTokens
 }
 
 // firstAtOrAfter is the index of the first event at or after an instant, which
-// is where the scrubber scrolls to. Events are in emission order, which is time order.
-// It returns the last index when the instant is past the final event, so
+// is where the scrubber scrolls to. Events are in emission order, which is time
+// order. It returns the last index when the instant is past the final event, so
 // scrubbing to the far right lands on the end of the run rather than nowhere.
 export function firstAtOrAfter(events: Event[], t: number): number {
   let last = -1
@@ -161,20 +152,10 @@ export function firstAtOrAfter(events: Event[], t: number): number {
 }
 
 // seekTarget maps a position on the scrubber onto the event it lands on, and
-// the position the cursor should then occupy.
-//
-// The two are not the same number. The bar spans the session (006s), because
-// every event is emitted inside `running` and a bar drawn across the events
-// alone would make the phase bands meaningless. But a long session can finish
-// its work early and sit in a phase for hours; an overnight run leaves three
-// quarters of the bar with no events under it. Every position in that tail
-// resolves to the last event, so a cursor drawn where the pointer was showed
-// 09:00 while the transcript showed 18:45.
-//
-// So the cursor follows the event, not the pointer. Clicking into the empty
-// tail snaps back to the last event, which is where the transcript went and
-// shows why scrubbing further does nothing. The span stays accurate and the
-// cursor matches it.
+// the position the cursor should then occupy. The bar spans the whole session,
+// so a session that finished its work early leaves a tail with no events under
+// it, and every position there resolves to the last event. The cursor follows
+// the event, not the pointer, so it always matches what the transcript shows.
 export function seekTarget(events: Event[], span: Span, f: number): { index: number; at: number; cursor: number } | null {
   const width = span.to - span.from
   const at = span.from + Math.min(1, Math.max(0, f)) * width

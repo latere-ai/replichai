@@ -1,25 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for the app on a phone (030).
+// A browser regression test for the app on a phone.
 //
-// What it guards: `.shell` is a flex row and `.rail` was `width: 236px;
-// flex: none` with no shell-level media query anywhere in the stylesheet, so a
-// 390px phone got 154px of content on every screen the app has. The topbar's
-// controls ran to x=579 and could not be tapped, and body copy set three words
-// to the line.
-//
-// None of that tripped the usual check. `.screen` is `overflow-y: auto`, which
-// computes `overflow-x` to `auto` as well, so the spill was contained in a pane
-// that scrolls sideways rather than in the document, and `documentElement.
-// scrollWidth` read clean while nothing was legible. This test therefore checks
-// both: nothing past the right edge, and no pane scrolling sideways to hide it.
+// It guards that the rail leaves the flow below the phone breakpoint, so every
+// screen gets the full width, and that nothing spills past the right edge. It
+// checks both the document and every pane: `.screen` is `overflow-y: auto`,
+// which computes `overflow-x` to `auto` as well, so a pane can hide a sideways
+// spill that `documentElement.scrollWidth` never sees.
 //
 // The drawer is the other half. Whether it is open is state, and whether the
-// rail is folded is a stored preference; `sidebar.ts` states that a width the
-// operator chose is never overridden by the window's width. The two are
-// asserted apart: the drawer must not read or write `sidebar`, and a stored
-// fold must not carry into a drawer that has room for its labels.
+// rail is folded is a stored preference that the window's width never
+// overrides (see `sidebar.ts`). The two are asserted apart: the drawer must not
+// read or write `sidebar`, and a stored fold must not carry into a drawer that
+// has room for its labels.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -34,7 +28,7 @@ const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
 const PROJECT = 'proj-1'
 // A second project, private and owned by the reader, so the head carries the
-// publish button, the sibling that took the title's width away from it.
+// publish button, which competes with the title for width.
 const PRIVATE = 'proj-private'
 // 122 characters. A paper's name is the longest string this app puts in a
 // heading, and the head has to hold one without pushing the tabs off a phone.
@@ -92,8 +86,8 @@ const routes = [
         ...project,
         id,
         // The private one is the head's worst case: a long title, the publish
-        // button beside it, and a description under it (038). The height below
-        // is asserted against that shape.
+        // button beside it, and a description under it. The height below is
+        // asserted against that shape.
         ...(id === PRIVATE ? { visibility: 'private', title: LONG_TITLE, description: DESCRIPTION } : {}),
       },
       sessions: [job],
@@ -139,8 +133,8 @@ const routes = [
   [
     '/admin/access',
     [
-      // Two ordinary rows and one crowded one: the tiers differ in width, which
-      // is what used to move every column after them.
+      // Two ordinary rows and one crowded one: the tiers differ in width, and
+      // the columns after them must not move.
       { email: 'ada@example.com', tier: 'user', wallet: 10_000_000, created_at: at(0), bound: true },
       { email: 'grace@example.com', tier: 'admin', wallet: 0, created_at: at(0), bound: true },
       { email: ADDRESS, tier: 'user', wallet: -1_500_000, created_at: at(0), bound: true, frozen: true },
@@ -150,7 +144,7 @@ const routes = [
   [/^\/admin\//, {}],
 ]
 
-// Every screen inside the shell. The landing has its own test (017) and is a
+// Every screen inside the shell. The landing has its own test and is a
 // different layout, so it is not swept here.
 const SCREENS = [
   ['projects', '/'],
@@ -170,7 +164,7 @@ const SCREENS = [
   ['session/artifacts', `/p/${PROJECT}/s/${JOB}/artifacts`],
 ]
 
-// The four views a signed-out reader is shown (`isPublicView`, 028): the
+// The four views a signed-out reader is shown (`isPublicView`): the
 // registry, a project in it, a session under that project, and a researcher's
 // page. Everything else is somebody's workspace and renders the landing.
 const PUBLIC_SCREENS = SCREENS.filter(([, path]) => path === '/registry' || path.startsWith('/p/') || path.startsWith('/u/'))
@@ -181,7 +175,8 @@ const PUBLIC_SCREENS = SCREENS.filter(([, path]) => path === '/registry' || path
 // The closed drawer is excluded, because it is off the left edge on purpose,
 // and so is anything inside a container this app intends to scroll sideways.
 // That allow-list is named rather than derived, because `.screen` computes to
-// `overflow-x: auto` too and deriving it would excuse the whole bug.
+// `overflow-x: auto` too, and deriving it would excuse the spill this test
+// looks for.
 const spill = (page, vw) =>
   page.evaluate((w) => {
     const nav = document.querySelector('.rail')
@@ -241,11 +236,10 @@ const open = async (path, { viewport = PHONE, sidebar, me = SIGNED_IN } = {}) =>
 try {
   /* ── The rail leaves the flow, on every screen ── */
 
-  // sweep measures one reader at one width. The signed-out pass matters: 028
-  // gave the app a second shell, in which the rail's foot becomes a sign-in and
-  // the topbar loses its controls, and a stranger opening a shared link on a
-  // phone is the likeliest mobile visit this app gets. The 264px drawer is a
-  // third width that foot has never been sized against.
+  // sweep measures one reader at one width. The signed-out pass matters: a
+  // signed-out reader gets a different top bar and rail, and a stranger
+  // opening a shared link on a phone is the likeliest mobile visit this app
+  // gets.
   const sweep = async (screens, { viewport, me, who }) => {
     for (const [name, path] of screens) {
       const page = await open(path, { viewport, me })
@@ -273,7 +267,7 @@ try {
         check(!w.railInFlow, `${label}: the rail is still on screen with the drawer closed`)
       }
 
-      // 047: no label is set in capitals or in the monospace face, and nothing
+      // No label is set in capitals or in the monospace face, and nothing
       // draws a colored edge down its left side. Monospace is for what is
       // literally code or an identifier, which these classes name; a label in
       // it reads as a developer tool. Measured on every screen, because a
@@ -403,7 +397,7 @@ try {
   /* ── The fold is a desktop preference, and the drawer is not it ── */
 
   {
-    // A rail left folded on a laptop must not reach the phone as five unlabelled
+    // A rail left folded on a laptop must not reach the phone as five unlabeled
     // icons: the drawer has room for the words.
     const page = await open('/', { sidebar: 'folded' })
     await page.waitForSelector('.rail-open-btn', { visible: true })
@@ -441,7 +435,7 @@ try {
     }
   }
 
-  /* ── The panes that were columns are rows ── */
+  /* ── Multi-column panes stack into rows ── */
 
   {
     const page = await open(`/p/${PROJECT}/s/${JOB}`)
@@ -454,9 +448,8 @@ try {
   {
     const page = await open('/')
     await page.waitForSelector('.project-list .row')
-    // A paper title is the row's main content. Squeezed into a 1fr track beside
-    // five fixed ones it had about 120px; on its own line it has the card's
-    // width.
+    // A paper title is the row's main content, so on a phone it gets its own
+    // line at the card's width.
     const title = await page.evaluate(() => Math.round(document.querySelector('.project-list .row .row-main').getBoundingClientRect().width))
     check(title >= 280, `a project's title cell is ${title}px wide; the row is still trying to be a table`)
     await page.close()
@@ -464,11 +457,9 @@ try {
 
   /* ── A project's head leaves room for the project ── */
 
-  // The title shared a flex row with the publish button, which cannot shrink,
-  // so the title took what was left: an 80px column, `overflow-wrap: anywhere`
-  // breaking a paper's name one syllable to the line, and a head 582px tall on
-  // an 844px phone. The tabs, which are how the rest of the project is reached,
-  // started at y=605.
+  // The title shares the head with the publish button, which cannot shrink.
+  // The title must keep a readable width, and the head must leave the tabs,
+  // which reach the rest of the project, on the first screen.
   {
     const page = await open(`/p/${PRIVATE}`)
     await page.waitForSelector('[data-test="publish-project"]')
@@ -482,8 +473,8 @@ try {
       return { head: box('.detail-head'), title: box('.detail-title'), tabs: box('.detail-tabs') }
     })
     check(head.title.w >= 260, `the project title is ${head.title.w}px wide; the button beside it is taking the line again`)
-    // 300 with a description under the title; the head was 582 before this was
-    // fixed, and the number is asserted so it cannot creep back.
+    // 300 with a description under the title, asserted so the head cannot
+    // creep taller.
     check(head.head.h <= 300, `the project head is ${head.head.h}px of an 844px phone`)
     check(head.tabs.top <= 330, `the tabs start at y=${head.tabs.top}; a phone cannot reach them without scrolling past the title`)
     await page.close()
@@ -491,10 +482,9 @@ try {
 
   /* ── People read as columns ── */
 
-  // Every row sized its own tier, amount and controls, so a USER row and an
-  // ADMIN row put them in different places and a phone broke the two controls
-  // across two more lines. A table needs the same field in the same place on
-  // every row.
+  // A table needs the same field in the same place on every row: the tier,
+  // amount and controls line up across rows whatever the tier's width, and the
+  // controls stay on one line.
   {
     const page = await open('/console')
     await page.waitForSelector('.member-row')

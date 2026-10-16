@@ -5,9 +5,9 @@ import type { I18n } from './i18n'
 
 // Where this app's source is. ReplicHAI is AGPL-3.0, and section 13 asks a
 // service run over a network to offer every user the source of the version
-// they are using. The link is off until the repository is public: a link to a
-// private repository answers 404 to everybody outside it, which offers
-// nothing. Turning it on is `published: true` here, and nothing else.
+// they are using. `published` turns the offer on. It stays false while the
+// repository is private, because a link to a private repository answers 404
+// to everybody outside it.
 export const SOURCE = { url: 'https://github.com/latere-ai/replichai', published: false } as const
 
 // SourceLink is the offer, wherever the app makes it: under the lockup at the

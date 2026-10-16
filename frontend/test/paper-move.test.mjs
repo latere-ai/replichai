@@ -1,26 +1,24 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for moving a paper to another project (035).
+// A browser regression test for moving a paper to another project.
 //
 // It guards that the move is offered when it is needed. A paper filed under the
 // wrong project is usually noticed after a replication has run against it,
-// which is the moment `removePaper` stops being allowed, because under 012 the
-// record of what was reproduced is not editable. So the earlier product had no
-// correction available at the only time anybody wanted one, and a Move gated on
-// "no sessions" would reproduce that.
+// which is when `removePaper` stops being allowed, because the record of what
+// was reproduced is not editable. A Move gated on "no sessions" would leave no
+// correction at the only time anybody wants one.
 //
-// Three things have to hold, and the third is the one that matters:
+// Three things have to hold:
 //
 //   1. A paper that has already been run still offers Move, while Remove is
-//      gone. Those two conditions are opposites, and getting them the same way
-//      round is the bug.
+//      gone. Those two conditions are opposites.
 //   2. Picking a destination is the app's own control, not an OS-drawn <select>,
 //      and the list excludes this project, published projects, and the trash,
 //      which are the three things the server refuses.
 //   3. Confirming calls POST /projects/{id}/papers/move with the right body, and
-//      the screen re-reads: the row leaves the source in place, with no
-//      reload to hide a list that never refetched.
+//      the screen re-reads in place: the row leaves the source with no reload
+//      to hide a list that never refetched.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -101,8 +99,8 @@ try {
   // Remove is gone, because the paper has a session. Move is not, and that
   // opposition is what this test checks.
   // Found by its own marker, not by shape: the sessions nested under a paper
-  // are `.row`s too and carry their own danger button (032), which is a
-  // different control on a different record.
+  // are `.row`s too and carry their own danger button, which is a different
+  // control on a different record.
   if (await page.$('[data-test="remove-paper"]')) fail('a paper with a session still offers Remove')
 
   /* ── 2. The destination list, in the app's own control ── */
@@ -112,10 +110,8 @@ try {
   if (await page.$('.modal select')) fail('the destination picker is an OS-drawn <select>')
 
   // Waited for, not slept on: the destinations arrive from /projects, and until
-  // they have the dialog shows a loading line with no control in it. A machine
-  // running the whole browser suite back to back is slower than one running
-  // this file alone, which is how this once clicked on nothing and read an
-  // empty list.
+  // they have, the dialog shows a loading line with no control in it. The
+  // whole suite run back to back is slower than this file alone.
   await page.waitForSelector('.modal [role="combobox"], .modal .select-btn', { timeout: 10000 })
   await page.evaluate(() => document.querySelector('.modal [role="combobox"], .modal .select-btn')?.click())
   await page.waitForSelector('[role="option"]', { timeout: 10000 })

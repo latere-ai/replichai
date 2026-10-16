@@ -7,9 +7,8 @@ import { join } from 'path'
 import ts from 'typescript'
 
 // Every user-facing string must route through t() (i18n.ts), so a locale added
-// later translates the whole product rather than most of it. This is the
-// enforcement the codebase had by discipline and now has by CI: a hardcoded
-// string in a component fails here.
+// later translates the whole product rather than most of it. A hardcoded string
+// in a component fails here.
 //
 // It parses the real source with the TypeScript compiler rather than grepping,
 // so a generic type (`Promise<Wallet>`) or a comment is never mistaken for a

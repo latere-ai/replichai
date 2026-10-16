@@ -3,12 +3,12 @@
 
 // A browser regression test for the transcript stream's layout.
 //
-// The bug it guards: `.tx-stream` is a scrolling flex column, and a flex column
-// shrinks its children once their combined height exceeds the box. Every event
-// card sets `overflow: hidden`, which drops its automatic minimum size to zero,
-// so a long transcript collapsed all of its cards to their padding and clipped
-// the text inside them. Short transcripts never overflowed and so never showed
-// it; the defect only appears past a few dozen events.
+// It guards that no event card is shrunk. `.tx-stream` is a scrolling flex
+// column, which shrinks its children once their combined height exceeds the
+// box, and every card sets `overflow: hidden`, which drops its automatic
+// minimum size to zero. Unguarded, a long transcript collapses its cards to
+// their padding and clips their text; a short one never overflows, so the
+// fixture is long.
 //
 // The assertion is geometry, not pixels: no event card may have more content
 // than it has room for. It needs a real layout engine, so it drives Chrome over
@@ -42,8 +42,7 @@ function events() {
     { role: 'agent', kind: 'tool_result', content: 'total 48\ndrwxr-xr-x 8 root root 4096 .\n' },
     { role: 'agent', kind: 'thinking', content: '' },
     // A kind the client has no name of its own for. It must never reach the
-    // filter rail as a raw identifier (006s AC7); this is the exact family that
-    // showed up on screen as `outcome_evaluation_ongoing`.
+    // filter rail as a raw identifier.
     { role: 'agent', kind: 'outcome_evaluation_ongoing', content: 'scoring 8 of 13 sub-claims' },
   ]
   const out = [{ role: 'user', kind: 'message', content: 'Reproduce this paper.', time: at(RUNNING_AT) }]
@@ -70,7 +69,7 @@ const job = {
   },
 }
 // A paper's real title and a real ACM address: the breadcrumb carries both, and
-// they are long enough to have wrapped the topbar into two lines.
+// they are long enough to wrap the topbar if it allowed a second line.
 const project = {
   id: 'proj-1',
   owner: 'p',
@@ -96,12 +95,12 @@ const h = await start()
 try {
   const page = await h.page({ routes })
   await page.open('/')
-  // Navigation is state, not a router: projects -> project -> session.
+  // Click through rows: projects -> project -> session.
   const openRow = (sel) => page.evaluate((s) => document.querySelector(s)?.dispatchEvent(new MouseEvent('click', { bubbles: true })), sel)
   await page.waitForSelector('.row')
   await openRow('.row')
   // A session row, not the paper it is a run of: on the project screen both are
-  // `.row`, and only a session's carries a phase badge (015).
+  // `.row`, and only a session's carries a phase badge.
   await page.waitForSelector('.row:has(.phase-slot)')
   await openRow('.row:has(.phase-slot)')
   await page.waitForSelector('.event')
@@ -127,7 +126,7 @@ try {
   if (m.clipped) fail(`${m.clipped}/${m.n} event cards clip their own content (${m.sample.join(' | ')})`)
   if (m.overlapping) fail(`${m.overlapping} event cards overlap the next one`)
 
-  // 006s AC3: the phase bands are proportional to elapsed time. `running` is
+  // The phase bands are proportional to elapsed time. `running` is
   // 21e6 of the 21.2e6 ms the job spent, so it must own almost the whole bar;
   // an evenly-divided strip would put it at a fifth.
   const bands = await page.evaluate(() => {
@@ -148,10 +147,9 @@ try {
     }
   }
 
-  // 006s AC4 + the reason the design's dimming was rejected: scrubbing scrolls
-  // the stream and must not write a single per-card style. Snapshot every card's
-  // inline style, drag across the bar, and require the snapshot to be unchanged
-  // while the scroll position moved.
+  // Scrubbing scrolls the stream and must not write a single per-card style.
+  // Snapshot every card's inline style, drag across the bar, and require the
+  // snapshot to be unchanged while the scroll position moved.
   const scrub = await page.evaluate(async () => {
     const stream = document.querySelector('.tx-stream')
     const bar = document.querySelector('.scrub-bar')
@@ -179,14 +177,14 @@ try {
   if (scrub.moved <= 0) fail(`scrubbing moved the stream by ${scrub.moved}px, want a forward scroll`)
   if (scrub.restyled) fail(`scrubbing rewrote the inline style of ${scrub.restyled} cards — that is the per-card work this design avoids`)
 
-  // 006s AC7: every kind in the rail has a human label. An underscore in a
+  // Every kind in the rail has a human label. An underscore in a
   // filter row means a backend identifier reached the screen.
   const rawLabels = await page.evaluate(() =>
     [...document.querySelectorAll('button.kind-btn span:not(.sq):not(.n)')].map((s) => s.textContent.trim()).filter((s) => /_/.test(s)),
   )
   if (rawLabels.length) fail(`raw identifiers in the filter rail: ${rawLabels.join(', ')}`)
 
-  // 006s AC5: search narrows the stream and the counts with it, and clearing it
+  // Search narrows the stream and the counts with it, and clearing it
   // restores the run. `web_fetch` is not in this fixture, so search for a string
   // that is: the tool call bodies.
   // React tracks the node's value, so assigning it directly is swallowed. Go
@@ -215,13 +213,12 @@ try {
   if (railTotal !== narrowed.cards) fail(`rail counts sum to ${railTotal} but ${narrowed.cards} cards are shown`)
   if (restored !== EVENTS + 1) fail(`clearing the search left ${restored} cards, want ${EVENTS + 1}`)
 
-  // The topbar is a single row, 56px since 034, and the app is a full-height
-  // shell: nothing on the session screen may wrap it or scroll the document
-  // sideways. The breadcrumb broke both: a paper title long enough to wrap took
-  // the trail onto a second line and pushed the header's controls off the right
-  // edge. Run last: it moves the viewport, and the checks above are placed at
-  // 1440. The floor is the three-column body, with 220px and 300px side rails
-  // beside the 236px nav, so the sweep stops where that layout stops fitting.
+  // The topbar is a single 56px row and the app is a full-height shell: a long
+  // breadcrumb on the session screen may neither wrap it nor scroll the
+  // document sideways. Run last: it moves the viewport, and the checks above
+  // are placed at 1440. The floor is the three-column body, with 220px and
+  // 300px side rails beside the 236px nav, so the sweep stops where that layout
+  // stops fitting.
   const widths = [1680, 1440, 1280, 1100, 1000, 900, 820]
   for (const width of widths) {
     await page.setViewport({ width, height: 900 })

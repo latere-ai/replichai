@@ -1,17 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The choice of where the next session runs and on what (048): the runtime,
-// when the deployment offers more than one, then the Effort level, and on the
-// Latere platform one specific model below the levels. One trigger on the
-// papers card opens a panel; the panel holds the whole choice so Start stays
-// one tap.
+// The choice of where the next session runs and on what: the runtime, when the
+// deployment offers more than one, then the Effort level, and on the Latere
+// platform one specific model below the levels. One trigger on the papers card
+// opens a panel that holds the whole choice, so Start stays one tap.
 //
-// It is built from the app's own primitives rather than a menu stack of its
-// own: the trigger and the panel take the Select's look and its behavior
-// (portalled, placed from the trigger, dismissed by a scroll or a click away,
-// arrows to move, Enter to pick, Escape to close), and the runtimes are a
-// Segmented.
+// The trigger and the panel take the Select's look and behavior (portalled,
+// placed from the trigger, dismissed by a scroll or a click away, arrows to
+// move, Enter to pick, Escape to close), and the runtimes are a Segmented.
 import {
   useCallback,
   useEffect,
@@ -36,8 +33,8 @@ export type Choice = { runtime: string; tier: string; model: string };
 // The levels in the order every Latere picker shows them, cheapest first.
 const levels = ["fast", "balanced", "best"] as const;
 
-// runtimesFrom reads the server's answer. A deployment that predates runtime
-// choice answers tiers only, which reads as one unnamed runtime.
+// runtimesFrom reads the server's answer. An answer with tiers and no runtimes
+// reads as one unnamed runtime.
 export function runtimesFrom(answer: {
   tiers?: ModelTier[];
   runtimes?: RuntimeOption[];
@@ -157,11 +154,9 @@ export function RuntimePick({
     };
     place();
     // A scroll of the page behind the panel moves the trigger out from under
-    // it, so it closes. A scroll inside the panel is the reader using it: the
-    // list of models scrolls, and so does the cursor's row coming into view.
-    // The listener is in the capture phase so it hears every scroller, which
-    // is why it has to ask where the scroll began; it used to close on all of
-    // them, so the first wheel tick over the list of models shut the panel.
+    // it, so it closes. A scroll inside the panel is the reader using it, so it
+    // does not. The listener is in the capture phase to hear every scroller,
+    // which is why it checks where the scroll began.
     const dismiss = (e: Event) => {
       if (e.target instanceof Node && pop.current?.contains(e.target)) return;
       close(false);

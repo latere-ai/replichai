@@ -4,13 +4,12 @@
 import type { PriceList } from './api'
 
 // Which rows of the rate card follow the price list and which an admin owns.
-//
-// The server reads a price list every hour and writes its prices into the rows
-// for the models it lists, so an edit to one of those rows lasts until the next
-// read. The admin console shows those rows as the list's, not as fields an
-// admin can change. A row is the list's when its model is one the server last
-// applied, matched the way the server matches it: the row's provider-qualified
-// ref, or an Anthropic model of the row's name for a row written before refs.
+// The server reads the price list every hour and overwrites the rows for the
+// models it lists, so the admin console shows those rows as the list's, not as
+// editable fields. A row is the list's when its model is one the server last
+// applied, matched the way the server matches it: by the row's
+// provider-qualified ref, or, for a row with no ref, as an Anthropic model of
+// the row's name.
 
 type Ref = { provider?: unknown; id?: unknown; billing_variant?: unknown }
 

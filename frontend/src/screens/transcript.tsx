@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The transcript pane of the session screen (006s): the run's events as cards
+// The transcript pane of the session screen: the run's events as cards
 // against their own clock, the scrubber and lifecycle strip above them, the
 // filter rail beside them, and the inspector that shows one event in full. The
 // arithmetic it draws from lives in transcript.ts, where it is tested without
@@ -38,13 +38,12 @@ import { phaseClass, phaseLabel } from '../phase'
 const plumbingKinds = new Set(['status_idle', 'status_running', 'thread_status_idle', 'thread_status_running', 'model_request_start', 'model_request_end'])
 
 // Card is an event with its place in the whole transcript. The place is the
-// event's identity on screen: cards were keyed by their position in the
-// filtered list, so a search that dropped one card handed its neighbor's open
-// disclosure to whichever event moved into that position.
+// event's identity on screen, so a filter that drops a card never hands its
+// open disclosure to whichever event moves into its position.
 type Card = { e: Event; n: number }
 // gradeKinds is the whole outcome family, which the filter rail folds into one
 // row: a reader wants "the grading" as a thing, not four of the backend's
-// internal steps (006s).
+// internal steps.
 const gradeKinds = new Set([
   'grade',
   'define_outcome',
@@ -53,7 +52,7 @@ const gradeKinds = new Set([
   'outcome_evaluation_end',
 ])
 
-// SessionTranscript is the run's trajectory in its own time (006s).
+// SessionTranscript is the run's trajectory in its own time.
 export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: string; job: Job | null }) {
   const { t } = i18n
   const [tr, setTr] = useState<Transcript | null>(null)
@@ -541,13 +540,10 @@ function EventCard({
 }
 
 // EventCost is what this one request pushed through the model; see freshOf for
-// why it is not the total. An event that was charged nothing renders nothing: a
-// zero here would claim a free request happened, which is not what an absent
-// figure means (006s).
-// What the figure means is said once, in the scrubber's legend above the
-// stream, rather than in a tooltip on each card: a card clips its own overflow,
-// so an overlay anchored inside one is cut off, which is why overlays portal to
-// the body elsewhere in this app.
+// why it is not the total. An event with no usage renders nothing, since a zero
+// would claim a free request happened. What the figure means is said once, in
+// the scrubber's legend, because a card clips its own overflow and would cut
+// off a tooltip anchored inside it.
 function EventCost({ u }: { u?: Usage }) {
   if (!u) return null
   return <span className="event-cost tabular">{compactTokens(freshOf(u))}</span>
@@ -595,13 +591,9 @@ function displayKind(kind: string) {
 }
 // kindLabel names an event kind in the two places a name is all that fits: the
 // filter list and the card's gutter. `thinking` has a separate short label
-// because its body copy is a whole sentence, which wrapped the gutter into a
-// column of single words.
-//
-// A kind with no name of its own is humanised rather than printed raw: the
-// backend adds event types faster than the client learns them, and
-// `outcome_evaluation_ongoing` sitting in a filter row is an identifier leaking
-// onto the screen, not a label (006s).
+// because its body copy is a whole sentence that would wrap the gutter. A kind
+// with no name of its own is humanized rather than printed raw, because the
+// backend adds event types faster than the client learns them.
 function kindLabel(t: I18n['t'], kind: string) {
   const map: Record<string, TKey> = {
     message: 'messageLabel',

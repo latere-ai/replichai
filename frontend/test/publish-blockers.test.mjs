@@ -1,17 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for a refused publish (006f's gate, on screen).
+// A browser regression test for a refused publish, as the publish gate's
+// refusal reaches the screen.
 //
-// It guards that a refusal is actionable. The public flip used to answer every
-// unpublishable project with one sentence, "its reproduction did not pass the
-// redistribution check", whatever the actual reason and whichever session
-// carried it. An owner read an accusation about content, went looking for
-// third-party data, and found none, because their run had never finished.
-//
-// So three things have to hold on screen: the refusal says which of the reasons
-// it was, it names every session in the way rather than the first, and each of
-// those is one click from the place the reader can see it for themselves.
+// It guards that a refusal is actionable. Three things have to hold on screen:
+// the refusal says which of the reasons it was, it names every session in the
+// way rather than the first, and each of those is one click from the place the
+// reader can see it for themselves. A generic sentence would send an owner
+// looking for a content problem when their run had simply never finished.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.

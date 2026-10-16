@@ -5,19 +5,12 @@ import { useEffect } from 'react'
 import type { I18n } from './i18n'
 import { pathOf, type View } from './routes'
 
-// What the document says about itself, after the first paint (042a).
-//
-// The server writes the head for the address a reader arrives at, because a
-// crawler and a link unfurler never run this file. From the second screen
-// onwards nothing on the server is involved: the reader is navigating inside one
-// document, and without this the tab keeps the title of wherever they came in,
-// for example the landing's question on the wallet screen, or one project's
-// name on another's.
-//
-// It writes only what the client actually knows. A project whose title has not
-// been fetched yet leaves the title alone rather than replacing it with the
-// site's name, because on a first load that would overwrite the correct title
-// the server just wrote with a worse one.
+// The document's title and canonical link after the first paint. The server
+// writes the head for the address a reader arrives at, because crawlers and link
+// unfurlers never run this file; navigation after that stays in one document, so
+// the client keeps the head in step with the screen. It writes only what it
+// knows: a project whose title has not been fetched yet leaves the title alone
+// rather than overwriting the server's correct one with the site's name.
 
 const SITE = 'ReplicHAI'
 
@@ -25,12 +18,9 @@ const SITE = 'ReplicHAI'
 const named = (name: string) => `${name} · ${SITE}`
 
 // titleOf is the tab title for a view, or null when the client cannot say
-// anything truer than what is already there.
-//
-// `authed` is what tells the two meanings of `/` apart: signed out it is the
-// landing, whose title is the product's claim and is the server's to write;
-// signed in it is the dashboard. Null is "not known yet", which is every render
-// before /me comes back.
+// anything truer than what is already there. `authed` tells the two meanings of
+// `/` apart: signed out it is the landing, whose title the server writes; signed
+// in it is the dashboard. Null means not known yet, before /me comes back.
 export function titleOf(view: View, t: I18n['t'], authed: boolean | null): string | null {
   switch (view.name) {
     case 'projects':

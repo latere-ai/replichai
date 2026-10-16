@@ -60,7 +60,7 @@ test('an empty list of mismatches leaves a verified claim resolved', () => {
   expect(unresolved(f)).toEqual([])
 })
 
-// An outer claim was never scored, so there is nothing about it to resolve.
+// An outer claim is not scored, so there is nothing about it to resolve.
 // Listing it under a heading about what failed would read as an accusation.
 test('outer claims are never unresolved', () => {
   const f = findings({ boundary: [claim({ claim: 'preferred', loop: 'outer', outcome: 'not_scored' })] })

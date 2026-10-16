@@ -10,9 +10,8 @@
 export const terminal = (phase: string) => phase === 'done' || phase === 'failed'
 
 // stopPending reports whether a stop is in flight: the viewer asked to stop, and
-// the session has not settled yet. It stays true after the request returns,
-// which is the case the button used to get wrong, snapping back to a live "Stop"
-// on a session still shown as running.
+// the session has not settled yet. It stays true after the request returns, so
+// the button does not offer a live "Stop" on a session still shown as running.
 export const stopPending = (phase: string, requested: boolean) => requested && !terminal(phase)
 
 // freshest picks which snapshot of a session a row should show when the list
@@ -24,6 +23,6 @@ export const freshest = <T extends { id: string; phase: string }>(shown: T, inco
   shown.id === incoming.id && terminal(shown.phase) && !terminal(incoming.phase) ? shown : incoming
 
 // stoppedByHand reports a failed session that was stopped rather than broken:
-// a person cancelled it, or the server restarted under it. It reads in the
+// a person canceled it, or the server restarted under it. It reads in the
 // neutral tone, and what it recorded is not a fault to report.
 export const stoppedByHand = (phase: string, error?: string) => phase === 'failed' && !!error && /cancel|stopped|restart/i.test(error)

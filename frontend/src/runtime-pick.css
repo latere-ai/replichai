@@ -1,8 +1,7 @@
-/* The runtime and model choice on the papers card (048). The trigger, the
-   panel and its rows are the Select's (.sel-btn, .sel-list, .sel-opt) and the
-   runtimes are a Segmented, so they follow the shared primitives; this sheet
-   only lays out what a Select does not have: sections, two-line rows, a search
-   and a note. It reads the platform's tokens and names no color, radius or
+/* The runtime and model choice on the papers card. The trigger, the panel and
+   its rows are the Select's (.sel-btn, .sel-list, .sel-opt) and the runtimes
+   are a Segmented; this sheet lays out only what a Select does not have:
+   sections, two-line rows, a search and a note. It names no color, radius or
    duration of its own. Its overrides name the shared class too, so they hold
    whichever sheet the bundle loads last. */
 

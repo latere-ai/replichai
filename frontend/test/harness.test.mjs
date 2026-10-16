@@ -4,16 +4,14 @@
 // What the harness itself has to hold, because the rest of the suite is written
 // on top of it and cannot see any of it.
 //
-// One browser for the run. Every file used to launch its own Chrome, so a run
-// held one browser per job, each with its own zygote, network service, GPU
-// process and renderers. A browser that dies under that pressure is not an error
-// puppeteer raises: the call waiting on it is never answered, so the file blocks
-// until some later wait times out and reports the element that wait named. That
-// is how a browser that crashed was read as a landing page that never rendered.
+// One browser for the run. A browser per file multiplies Chrome's processes
+// under load, and a browser that dies is not an error puppeteer raises: the
+// call waiting on it is never answered, so the file blocks until some later
+// wait times out and reports the element that wait named.
 //
-// So two things are asserted here. The file runs in a browser it did not start,
-// which is the pressure removed. And a browser that goes away is reported as a
-// browser that went away.
+// So two things are asserted here. The file runs in a browser it did not
+// start, and a browser that goes away is reported as a browser that went
+// away.
 import { check, start, startBrowser, watchBrowser } from './harness.mjs'
 
 const h = await start()

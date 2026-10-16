@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { TipHost } from './ui'
 // The ink ladder first, scoped to `data-design="ink"` on <html>, then the
-// app's own sheet, which adds only what the ladder does not name (047).
+// app's own sheet, which adds only what the ladder does not name.
 import 'latere-ui/ink'
 import './styles.css'
 

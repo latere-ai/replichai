@@ -9,17 +9,15 @@
 // The mark depends on no font. The wordmark is set in Inter, which the app
 // ships and preloads, so it renders in the face it was drawn for.
 
-// The mark draws the boundary the product defends (017). The inner loop, the
+// The mark draws the boundary the product defends. The inner loop, the
 // algorithm, model or analysis pipeline, is mechanically re-runnable, so it is
-// a closed ring, in the product's azure. The outer loop is the study with human
-// participants, which replichai never simulates, so it is drawn open: one arc
-// with one deliberate gap (047). It was six dashes until 047, and a ring of
-// dashes reads as a loading indicator or a selection marquee; a ring with one
-// gap reads as unfinished, which is the claim.
+// a closed ring in the product's azure. The outer loop is the study with human
+// participants, which replichai never simulates, so it is one arc with one
+// deliberate gap. A single gap reads as unfinished, which is the claim; a ring
+// of dashes would read as a loading indicator.
 //
 // The gap is centered up and to the right, away from the wordmark, so the
-// opening never reads as a letter beside the name. The radius ratio is 017's,
-// so the mark, the hero figure and the favicon are one geometry.
+// opening never reads as a letter beside the name.
 export const MARK_GAP_AT = -48
 export const MARK_GAP = 52
 
@@ -65,9 +63,7 @@ export function Mark({ size = 24, className }: { size?: number; className?: stri
 // Wordmark sets the name as one word, in the app's sans, with a hairline gap at
 // its seam between `Replic`, for replication, and `HAI`, for human-AI, the
 // lineage the `open-hai` forge account carries. The seam is spacing, never
-// color. 047 drew it for a while as outlines of a condensed display serif; it
-// read too tall and too decorative beside the text it heads, and the app ships
-// Inter now, so the name is set in it.
+// color.
 export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={className ? `wordmark ${className}` : 'wordmark'}>
@@ -79,7 +75,7 @@ export function Wordmark({ className }: { className?: string }) {
 // LatereMark is the identity of the provider behind the sign-in button, not
 // replichai's own. The credential comes from latere, and the button that asks
 // for it should look like the place it is going. The paths are the canonical
-// mark from `latere-ui`'s `LatereLogoMark.vue`, unchanged. Only the container
+// mark from `latere-ui`'s `LatereLogoMark`, unchanged. Only the container
 // differs: that one is sized into a square and letterboxes itself, while this
 // one sits inline in a line of text and is sized by its height.
 //

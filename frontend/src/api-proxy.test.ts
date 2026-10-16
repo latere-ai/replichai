@@ -4,12 +4,9 @@
 import { expect, test } from 'bun:test'
 
 // The dev server proxies the API to the Go backend by path prefix, from a list
-// written by hand. It went stale: '/projects', '/resolve', '/public', '/shared'
-// and '/profiles' were all added to the client after the list was written, so in
-// `bun run dev` every one of them hit Vite's own 404 instead of the backend.
-//
-// This reads both files rather than trusting either: every path api.ts fetches
-// has to be covered by a prefix vite.config.ts proxies.
+// written by hand. A path missing from it hits Vite's own 404 in `bun run dev`
+// instead of the backend, so this reads both files rather than trusting either:
+// every path api.ts fetches has to be covered by a prefix vite.config.ts proxies.
 test('the dev server proxies every path the client calls', () => {
   const client = Bun.file(`${import.meta.dir}/api.ts`).text()
   const config = Bun.file(`${import.meta.dir}/../vite.config.ts`).text()

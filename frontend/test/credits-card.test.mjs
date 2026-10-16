@@ -3,23 +3,19 @@
 
 // A browser regression test for the project credits card.
 //
-// Three defects, each invisible to a test that reads text:
+// Three things, each invisible to a test that reads text:
 //
-// The two amounts did not line up. `.usage-line .v` is `margin-left: auto`, so
-// both should have been flush right, but the second row was wrapped in a
-// <Tip>, whose <span> is inline, and an inline box around a block row collapses
-// that row to its content. The value then sits against its label. Only a
-// geometry measurement detects it.
+// The two amounts line up. `.usage-line .v` is `margin-left: auto`, but an
+// inline wrapper, such as a <Tip>'s <span>, around a block row collapses the
+// row to its content and the value sits against its label. Only a geometry
+// measurement detects it.
 //
-// The amount field took integers. It is a money field on every screen it
-// appears on, and stripping the decimal point meant a project could be
-// allocated whole dollars only, so a $16.82 balance could not be moved back in
-// one go.
+// The amount field takes cents. It is a money field, so a $16.82 balance can
+// be moved back in one go.
 //
-// The card ran the full width of the screen to show two numbers and a stepper,
-// pushing the sessions below the fold. It belongs in the rail beside them, which
-// is narrower than the three controls it holds, so the row has to wrap rather
-// than clip its third button.
+// The card sits in the rail beside the sessions, which is narrower than the
+// three controls it holds, so the row has to wrap rather than clip its third
+// button.
 import { fail, json, settled, start } from './harness.mjs'
 
 const at = (i) => new Date(1754_215_200_000 - i * 86_400_000).toISOString()
@@ -100,8 +96,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.numf-input')?.value === '', { timeout: 5000 }).catch(() => {})
   if (allocated !== 16_820_000) fail(`Allocate sent ${allocated}, want 16820000 — the cents were dropped`)
 
-  // The stepper keeps them too: it used to parse an integer and throw the
-  // fraction away on every press.
+  // The stepper keeps the cents too, on every press.
   await page.type('.numf-input', '5.25')
   await page.evaluate(() => document.querySelector('.numf-step')?.parentElement.querySelectorAll('.numf-step')[1].click())
   const stepped = await page.$eval('.numf-input', (el) => el.value)

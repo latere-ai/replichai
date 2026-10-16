@@ -4,9 +4,8 @@
 import { describe, expect, it } from 'bun:test'
 import { creditedMicro, formatUSD, parseUSD, stepDollars, typedDollars } from './money'
 
-// An amount is written in the app's language, not the browser's: the same
-// balance used to read "$12.34" in one OS and "12,34 $" in another, beside copy
-// that had not changed. The fraction of a cent keeps its own mark.
+// An amount is written in the app's language, not the browser's. The fraction
+// of a cent keeps its own mark.
 describe('formatUSD', () => {
   it('writes dollars and cents in the app’s language', () => {
     expect(formatUSD('en', 12_340_000)).toBe('$12.34')
@@ -64,8 +63,8 @@ describe('typedDollars', () => {
     expect(typedDollars('-5')).toBe('5')
   })
 
-  // The defect this exists for: a money field that strips the point can only
-  // ever allocate whole dollars.
+  // The point must survive: a money field that strips it can only ever
+  // allocate whole dollars.
   it('lets cents be typed at all', () => {
     expect(typedDollars('16.82')).toBe('16.82')
     expect(parseUSD(typedDollars('16.82'))).toBe(16_820_000)

@@ -15,43 +15,22 @@ import { Seams } from './ui'
 import { SourceLink } from './source'
 import './landing.css'
 
-// The landing (029, rebuilt by 033, set like a paper by 047): a full page
-// rather than a sign-in screen.
+// The signed-out landing: a full page rather than a sign-in screen. It makes the
+// argument, shows the mechanism, says what a session leaves behind, who it is
+// for and what it costs, and lists published work a reader can open before
+// they have an account.
 //
-// 047 sets it the way research is set: numbered sections under a rule rather
-// than boxed bands, a serif to state and a sans to read, a figure numbered and
-// captioned underneath, tables with three rules and nothing else, and the
-// registry as a list of references. The argument and every guarantee below
-// are unchanged.
-//
-// 017 built it as a single fold and 029 made it a page: the argument, three
-// figures that show the mechanism rather than assert it, and real published
-// work a reader can open before they have an account. 033 redesigned it: the
-// hero becomes a slab with the mark rendered inside it, the figures gain the
-// artifacts they describe, and the three questions the page never answered,
-// what comes back, who it is for and what it costs, get a band each.
-//
-// The sign-in control never leaves the screen. It is in a sticky header rather
-// than above a fold, which holds at any page length, and this page is long on
-// purpose.
-//
-// Everything that moves here is opt-in at the system level: the resting state
-// under `prefers-reduced-motion: reduce` is the finished page, never a frozen
-// first frame. `frontend/test/landing.test.mjs` asserts exactly that, so a new
-// band that dims or collapses has to say so in the same place.
+// Motion is opt-in. Under `prefers-reduced-motion: reduce` the resting state is
+// the finished page, never a frozen first frame. `frontend/test/landing.test.mjs`
+// asserts that, so a new section that dims or collapses needs a case there.
 
-// useReveal advances a section from its pre-reveal state to its resting one when
-// it first comes into view. It sets a class and nothing else: what the class
-// does, and whether it does anything at all, is decided by the stylesheet, so a
-// reader who asked for less motion gets the resting state from the start, with
-// no JavaScript branch to keep in step with the media query.
+// useReveal adds the `in` class to a section the first time it comes into view.
+// The stylesheet decides what the class does, so a reader who asked for less
+// motion gets the resting state with no JavaScript branch to keep in step.
 //
-// It is a callback ref rather than an effect over a ref object, because a
-// section on this page can appear after the first render: the published strip
-// renders nothing until its fetch lands, so an effect that read `ref.current`
-// once on mount read null, never observed anything, and left the section at the
-// pre-reveal opacity forever, so the band was on the page and invisible. A
-// callback ref runs when the node attaches, whenever that is.
+// It is a callback ref rather than an effect over a ref object because a
+// section can mount after the first render: the published strip waits for its
+// fetch, and an effect that read `ref.current` on mount would never see it.
 function useReveal<T extends HTMLElement>() {
   const io = useRef<IntersectionObserver | null>(null)
   return useCallback((el: T | null) => {
@@ -83,9 +62,9 @@ function useReveal<T extends HTMLElement>() {
 
 const REDUCE = '(prefers-reduced-motion: reduce)'
 
-// Band is one section of the page, set like a section of a paper: a rule, its
-// number and name in the margin, a serif heading, a caption, and whatever shows
-// the thing. It carries the reveal, so no section below has to remember to.
+// Band is one section of the page: a rule, its name in the margin, a heading,
+// a caption, and the content. It carries the reveal, so no section below has
+// to.
 function Band({
   id,
   eyebrow,
@@ -132,14 +111,13 @@ function SectionHead({ i18n, eyebrow, titleKey, caption }: { i18n: I18n; eyebrow
 
 // ── The hero ────────────────────────────────────────────────────────────────
 
-// Hero is the first screen: the claim and the way in on the left, Figure 1 on
+// Hero is the first screen: the claim and the way in on the left, the figure on
 // the right. Every word and both calls to action are HTML and depend on
 // nothing that loads; the figure is inline SVG and has nothing to fail.
 function Hero({ i18n, href }: { i18n: I18n; href: string }) {
   const { t } = i18n
-  // The hero is a band like any other and starts at the pre-reveal opacity, so
-  // it needs the observer that ends that. Without it the whole first screen
-  // stays at opacity 0 for every reader who has not asked for less motion.
+  // The hero starts at the pre-reveal opacity like every section, so it needs
+  // the reveal too.
   const reveal = useReveal<HTMLElement>()
   return (
     <section className="lp-hero" ref={reveal}>
@@ -186,8 +164,6 @@ function ShipsBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   return (
     <Band id="lp-ships" i18n={i18n} eyebrow={t('lpShipsEyebrow')} titleKey="lpShipsTitle" caption={t('lpShipsCaption')}>
-      {/* A table, set with three rules and nothing else; its caption above it,
-          where a journal sets a table's. */}
       <div className="lp-table-wrap">
         <p className="lp-table-caption">
           {t('lpShipsTable')}
@@ -262,14 +238,12 @@ const COMMITS = [
   ['f04ab8e', 'lpPlateCommit3'],
 ] as const
 
-// WalkBand pairs the four steps with the four artifacts they leave. Which plate
-// is open follows which step is in the reader's band.
+// WalkBand pairs the four steps with the four artifacts they leave. On scroll,
+// the step nearest the middle of the viewport is lit and its plate open; the
+// others dim and fold to their header strip.
 //
-// The driver dims and collapses, and both of those are motion: it does not run
-// under `reduce`, and it does not run in the one-column layout either, where
-// there is no second column for a plate to be sticky in. In both cases the
-// resting state, every step lit and every plate open, is the whole content, so
-// nothing is hidden behind a listener that never fired.
+// The driver does not run under `reduce` or in the one-column layout, where the
+// panel is not sticky. There every step stays lit and every plate open.
 function WalkBand({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   const root = useRef<HTMLElement | null>(null)
@@ -284,9 +258,8 @@ function WalkBand({ i18n }: { i18n: I18n }) {
 
     const still = window.matchMedia?.(REDUCE)
     const narrow = window.matchMedia?.('(max-width: 900px)')
-    // Measured before any collapse is applied, and re-measured on resize: a card
-    // that is not the reader's step folds down to its header strip, so no two
-    // cards ever show their bodies through each other.
+    // Each plate's open height, measured with no collapse applied and again on
+    // resize. A plate that is not the current step folds to HEAD pixels.
     const HEAD = 44
     let heights: number[] = []
     let active = -1
@@ -407,7 +380,6 @@ function WalkBand({ i18n }: { i18n: I18n }) {
               <div className="lp-plate-log">
                 {COMMITS.map(([sha, msg]) => (
                   <span key={sha}>
-                    {/* A short hash is a hash in every language. */}
                     <b>{sha}</b> {t(msg)}
                   </span>
                 ))}
@@ -450,10 +422,9 @@ const DEMO_ROWS = [
   { claim: 'lpDemoRow3', loop: 'lpDemoOuter', loopKind: 'outer', outcome: 'lpDemoNotScored', tone: 'none', ev: 'lpDemoRow3Evidence' },
 ] as const
 
-// AnatomyFigure pulls a verdict apart into the three things it is made of. It is
-// HTML rather than one drawn SVG because every part of it is a sentence: text in
-// a figure has to wrap, translate, and be selectable, and a picture of a sentence
-// does none of that.
+// The three things a verdict is made of. They are HTML rather than a drawn SVG
+// because every part is a sentence, and text has to wrap, translate, and be
+// selectable.
 const PARTS = ['Claim', 'Evidence', 'Verdict'] as const
 const PART_ICONS = { Claim: 'layers', Evidence: 'fileText', Verdict: 'shieldCheck' } as const
 
@@ -588,12 +559,10 @@ function CostBand({ i18n }: { i18n: I18n }) {
 
 // ── The registry ────────────────────────────────────────────────────────────
 
-// PublishedStrip is real work, read from the open registry (028).
-//
-// It is progressive enhancement and the page is complete without it: a call that
-// fails, or a registry with nothing in it yet, renders nothing at all. A skeleton
-// that never fills, or a "0 reproductions" heading, would each make a claim about
-// the community, and a wrong one.
+// PublishedStrip is real work, read from the open registry. The page is
+// complete without it: a failed call or an empty registry renders nothing,
+// because a skeleton that never fills or a "0 reproductions" heading would each
+// make a wrong claim about the community.
 function PublishedStrip({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   const [rows, setRows] = useState<ProjectView[]>([])
@@ -620,10 +589,8 @@ function PublishedStrip({ i18n }: { i18n: I18n }) {
               <span className="lp-card-body">
                 <span className="lp-card-title">{p.title}</span>
                 <PaperCite i18n={i18n} papers={p.papers} />
-                {/* Named, and named as what: a bare name under a paper's title
-                    reads as the paper's author, which is the one person this
-                    line is never about. The signer is who put their name to
-                    the reproduction. */}
+                {/* Labeled as the signer: a bare name under a paper's title
+                    would read as the paper's author. */}
                 <span className="lp-card-by">
                   {t('lpCardSigner', { name: p.signed_off_name || p.owner_name || t('ownerUnknown') })}
                   <span className="lp-card-foot"> · {countOf(t, 'sessionCount', p.session_count)}</span>
@@ -683,8 +650,8 @@ export function Landing({
 
   return (
     <div className="landing">
-      {/* The header stays put while the body scrolls under it, so the way in
-          is on screen at every scroll position. */}
+      {/* The header sits outside the scroll area, so the sign-in is on screen
+          at every scroll position. */}
       <header className="lp-bar">
         <div className="lp-bar-in">
           <HomeLockup />
@@ -731,16 +698,10 @@ export function Landing({
           </div>
         </section>
 
-        {/* The footer every Latere site ends in, from latere-ui, in the one
-            shape every site shares. It is the product's place in the lineup,
-            the legal links and the appearance control, none of which this page
-            implements itself. The page passes its own lockup and its theme, and
-            nothing else; the wrapper places the footer and joins the app's
-            palette to the names the footer reads.
-
-            No language menu: the app ships English only, and the footer offers
-            one only to a site that passes a language change and two languages
-            or more. */}
+        {/* The shared Latere footer from latere-ui. The page passes its lockup
+            and its theme; the wrapper places the footer and maps the app's
+            palette onto the names the footer reads. It shows no language menu,
+            because the app ships English only. */}
         <div className="lp-footer-wrap">
           <SiteFooter
             brand={

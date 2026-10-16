@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for a project's description (038) and the draft
-// that offers to write one (039).
+// A browser regression test for a project's description and the draft that
+// offers to write one.
 //
-// A project could show its title and nothing else. The title is either what
-// somebody typed or the first paper's reference, so about half of them were
-// named after a doi: string and none could explain its purpose to its owner
-// returning after a month, to a collaborator arriving, or to a stranger reading
-// the public zone.
+// A title is either what somebody typed or the first paper's reference, so it
+// rarely explains a project's purpose to its owner returning after a month, to
+// a collaborator arriving, or to a stranger reading the public zone. The
+// description does.
 //
 // Six things have to hold:
 //
@@ -114,7 +113,7 @@ try {
   if (row.lines > 24) fail(`the list row's description is ${row.lines}px tall; it must stay one line`)
   await page.close()
 
-  /* ── 5. A draft is a suggestion, not a save (039) ── */
+  /* ── 5. A draft is a suggestion, not a save ── */
 
   {
     const p = await open()

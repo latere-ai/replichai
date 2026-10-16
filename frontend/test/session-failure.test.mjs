@@ -3,13 +3,11 @@
 
 // A browser test for what a failed session says about its failure.
 //
-// The bug it guards: what the run reported was shown only in the tooltip on the
-// row's red mark. A runner that panicked records its whole stack trace, so that
-// tooltip was dozens of lines tall, ran off the bottom of the screen and could
-// be read whole nowhere. The session view now shows the report itself: the
-// first line as selectable text, the rest behind a disclosure in a box of
-// bounded height. The row's tooltip quotes only the first line and points to
-// the session.
+// It guards that a failure report is readable whole. A runner that panics
+// records its whole stack trace, which no tooltip can hold, so the session
+// view shows the report itself: the first line as selectable text, the rest
+// behind a disclosure in a box of bounded height. The row's tooltip quotes only
+// the first line and points to the session.
 //
 // What needs a browser is the geometry: whether the tooltip stays on screen,
 // whether a long trace stays inside its box, and whether the note fits a phone.

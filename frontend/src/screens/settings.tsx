@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Settings (024a): one screen with a sub-tab per real path. Account is what
-// you are on the platform, Profile is what you publish as. The profile fields
+// Settings: one screen with a sub-tab per real path. Account is what you are
+// on the platform, Profile is what you publish as. The profile fields
 // themselves are shared with the publish wizard and live in shared.tsx.
 
 import { useEffect, useState } from 'react'
@@ -15,10 +15,9 @@ import { Seams, Toggle } from '../ui'
 import { useTheme } from '../theme'
 import { Avatar, ProfileFields, type TextField, ThemeSwitcher, TierPill } from './shared'
 
-// SettingsScreen is one screen with three sub-tabs, each a real path (024a):
-// Account is what you are on the platform, Profile is what you publish as, and
-// Credits is what you have to spend. Switching a tab navigates, so Back returns
-// to the previous tab and a link opens on the tab it names.
+// SettingsScreen shows the Account and Profile sub-tabs, each a real path.
+// Switching a tab navigates, so Back returns to the previous tab and a link
+// opens on the tab it names.
 export function SettingsScreen({
   i18n,
   me,
@@ -61,8 +60,7 @@ export function SettingsScreen({
 }
 
 // AccountCard is identity, access, appearance, and sign-out: what you are on
-// the platform, kept apart from what you publish as on the Profile tab and what
-// you have to spend on the Credits tab.
+// the platform, kept apart from what you publish as on the Profile tab.
 function AccountCard({ i18n, me, theme }: { i18n: I18n; me: Me; theme: ReturnType<typeof useTheme> }) {
   const { t } = i18n
   return (
@@ -97,13 +95,9 @@ function AccountCard({ i18n, me, theme }: { i18n: I18n; me: Me; theme: ReturnTyp
   )
 }
 
-// CreditsCard is the wallet balance and its statement: the one place a person
-// reads their own number and can see where it came from. 024b makes each move
-// name its project; the statement itself is unchanged here.
-// ProfileCard edits the researcher identity a sign-off is published under
-// (006n). It is a default, not the record: what a published project reports is
-// the snapshot taken when it was signed, so editing here changes nothing that is
-// already public.
+// ProfileCard edits the researcher identity a sign-off is published under. It
+// is a default, not the record: a published project reports the snapshot taken
+// when it was signed, so editing here changes nothing already public.
 function ProfileCard({ i18n }: { i18n: I18n }) {
   const { t } = i18n
   const [p, setP] = useState<Profile | null>(null)

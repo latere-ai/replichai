@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Money is micro-USD everywhere it travels: an integer count of millionths of a
-// dollar, never a float and never a formatted string (011). A rate is quoted per
-// million tokens, so the unit multiplies cleanly at the one place a session is
-// priced, and a payment provider charges in minor units of the same currency.
-//
-// Formatting belongs here and nowhere else, so a balance rendered in the header
-// and the same balance rendered in the admin console cannot round differently.
+// dollar, never a float and never a formatted string. A rate is quoted per
+// million tokens, so the unit multiplies cleanly where a session is priced.
+// Formatting lives only here, so the same balance cannot round differently on
+// two screens.
 
 import type { Lang } from './i18n'
 import { formatCurrency } from './locale'
@@ -15,16 +13,9 @@ import { formatCurrency } from './locale'
 // MICRO is one dollar, in micro-USD.
 export const MICRO = 1_000_000
 
-// formatUSD renders an amount for a person to read: "$12.34".
-//
-// Cents, not micro-dollars, because that is the resolution a human decides
-// anything at. A non-zero amount that would round to $0.00 shows as "<$0.01"
-// instead, because a session that cost a fraction of a cent did cost something,
-// and showing it as nothing would mislead the reader.
-//
-// It is written in the app's language, not the browser's: the same balance
-// used to read "$12.34" in one OS and "12,34 $" in another, beside copy that
-// had not changed.
+// formatUSD renders an amount for a person to read, in cents and in the app's
+// language: "$12.34". A non-zero amount that would round to $0.00 shows as
+// "<$0.01", because a session that cost a fraction of a cent did cost something.
 export function formatUSD(lang: Lang, micro: number): string {
   const neg = micro < 0
   const abs = Math.abs(micro)
@@ -49,10 +40,9 @@ export function toDollars(micro: number): string {
 }
 
 // creditedMicro is what a gross top-up lands in a wallet after the purchase
-// spread (022b): the same arithmetic the server applies at checkout, so the
-// modal's quote is exactly what the webhook will credit. It rounds down to whole
-// cents, the processor's unit, first, then takes the percentage and the fixed
-// cut, and never returns less than zero.
+// spread. It is the same arithmetic the server applies at checkout, so the
+// modal's quote is exactly what the webhook will credit: round down to whole
+// cents first, then take the percentage and the fixed cut, never below zero.
 export function creditedMicro(grossMicro: number, spreadBps: number, spreadFixedMicro: number): number {
   const perCent = MICRO / 100 // 10_000 micro-USD to a cent
   const cents = Math.floor(grossMicro / perCent)
@@ -61,18 +51,11 @@ export function creditedMicro(grossMicro: number, spreadBps: number, spreadFixed
   return Math.max(0, gross - cut - spreadFixedMicro)
 }
 
-// typedDollars keeps what somebody is typing into a money field typeable.
-//
-// It is not parseUSD: that reads a finished value, this shapes an in-progress
-// one, and the two have opposite obligations. "12." is not a number, but a
-// person on their way to "12.50" must be allowed to have typed it, so this
-// returns strings parseUSD will reject and lets the caller's validity check
-// decide when to enable the button.
-//
-// The rules are the ones a currency has: digits, at most one point, and at most
-// two places after it. The ledger holds micro-dollars, but nobody allocates
-// tenths of a cent, and a field that accepts them invites a rounding surprise
-// between what was typed and what was charged.
+// typedDollars shapes an in-progress entry in a money field: digits, at most one
+// point, and at most two places after it. Unlike parseUSD it accepts partial
+// input such as "12." on the way to "12.50", and leaves validity to the caller.
+// Two places, because a field that accepted tenths of a cent would invite a
+// rounding gap between what was typed and what was charged.
 export function typedDollars(text: string): string {
   const cleaned = text.replace(/[^0-9.]/g, '')
   const [whole, ...rest] = cleaned.split('.')

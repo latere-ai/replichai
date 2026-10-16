@@ -9,35 +9,24 @@ import type { I18n, TKey } from './i18n'
 
 // The control set. Nothing here delegates to a browser-drawn widget: no native
 // checkbox, radio, select, number stepper, disclosure triangle, tooltip, or
-// prompt(). Each one is rebuilt so it carries the app's own tokens and reads
-// the same on every platform, and each one keeps the role, state, and keyboard
-// behavior the native element would have provided.
+// prompt(). Each one is drawn by the app so it carries the app's own tokens and
+// reads the same on every platform, and each one keeps the role, state, and
+// keyboard behavior the native element has.
 
 /* ── Type ── */
 
-// Seams renders a heading that breaks where its copy says it may.
+// Seams renders a heading that breaks where its copy says it may. CSS picks a
+// break by width alone, and `text-wrap: balance` only evens out line lengths;
+// neither knows where a clause ends. So the copy marks each allowed break with
+// `|`, each segment between seams renders unbreakable, and a translator moves
+// the seam with the clause.
 //
-// CSS picks a break by width alone: the last space that fits. `text-wrap:
-// balance` only re-picks it to equalise line lengths, which is why the landing's
-// boundary band read "One loop closes. One never / will." at every viewport from
-// a phone to a 2560px display, because the algorithm does not know a sentence
-// ended two words earlier. Where a heading comes apart is a fact about the language,
-// so it is written into the string as `|`, and each segment between seams is
-// rendered unbreakable. A translator moves the seam with the clause, which is
-// the half no stylesheet can follow.
+// The space joining two segments sits outside both spans, the only place the
+// line may break. A string with no seam renders as itself.
 //
-// The space joining two segments sits outside both spans, because that is the
-// only place the line is allowed to break. A string with no seam renders as
-// itself, so every heading can be passed through this whether or not its copy
-// has anything to say about breaking yet.
-//
-// It takes the key, not the text, because the seam is only legible to this
-// component: `t()` hands every other consumer the sentence with the seams
-// removed. A heading that forgets to come through here still reads correctly;
-// it breaks wherever the width dictates, which is the original problem.
-//
-// It reads the string with no `vars`, so a heading with a {placeholder} in it
-// must not carry seams, because the placeholder would render as itself. None do.
+// It takes the key, not the text, because `t()` hands every other consumer the
+// sentence with the seams removed. It reads the string with no `vars`, so a
+// heading with a {placeholder} in it must not carry seams.
 export function Seams({ i18n, k }: { i18n: I18n; k: TKey }) {
   const parts = i18n.raw(k).split('|')
   if (parts.length === 1) return <>{parts[0]}</>
@@ -91,10 +80,10 @@ export function Toggle({ on, onChange, children }: { on: boolean; onChange: (nex
 
 // RowButton is a list row that opens something: a project, a file, a session.
 // It is a div rather than a <button> because a row holds buttons of its own,
-// such as Stop and Remove, and a button may not contain a button; the role, the tab stop
-// and the key handling make it one to the keyboard and to a screen reader all
-// the same. Every clickable row goes through here, so none of them is a div a
-// keyboard cannot reach, which five of them were.
+// such as Stop and Remove, and a button may not contain a button; the role, the
+// tab stop and the key handling make it one to the keyboard and to a screen
+// reader. Every clickable row goes through here, so every one is reachable from
+// the keyboard.
 //
 // A key pressed on a control inside the row is that control's, not the row's:
 // Enter on Stop stops the session, and does not also open it.
@@ -128,9 +117,9 @@ export function RowButton({
 
 type Option<T extends string> = { value: T; label: string; icon?: IconName }
 
-// Select replaces the OS-drawn <select>. It is a combobox button over a
-// listbox: click or Enter opens it, arrows move, Enter picks, Escape closes and
-// returns focus, and a click anywhere else dismisses it.
+// Select is the app's own <select>: a combobox button over a listbox. Click or
+// Enter opens it, arrows move, Enter picks, Escape closes and returns focus,
+// and a click anywhere else dismisses it.
 export function Select<T extends string>({
   value,
   options,
@@ -173,8 +162,7 @@ export function Select<T extends string>({
     }
     place()
     // A scroll moves the anchor out from under a fixed list, so it dismisses.
-    // Named so the cleanup can take it back: a list closed any other way used
-    // to leave its listener armed on window, one per open.
+    // It is named so the cleanup can remove it when the list closes another way.
     const dismiss = () => close(false)
     window.addEventListener('resize', place)
     window.addEventListener('scroll', dismiss, { capture: true, once: true })
@@ -377,10 +365,9 @@ const focusable = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(
 
 // Modal is the one dialog shell: a backdrop that dismisses, Escape that
 // dismisses, a body that does not scroll behind it, and the keyboard's place
-// while it is up. aria-modal alone told a screen reader the page behind was
-// inert and did nothing to make it so: focus stayed on the button that opened
-// the dialog, Tab walked the page underneath, and nothing brought the keyboard
-// back when the dialog closed. Every dialog is one Modal, so it is done here.
+// while it is up. aria-modal alone does not make the page behind inert, so
+// focus moves into the dialog, Tab wraps inside it, and focus returns to the
+// opener on close.
 export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title: string; eyebrow?: ReactNode; icon?: IconName; onClose: () => void; children: ReactNode; foot?: ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
   // In on open, back to the opener on close. A field that took focus itself
@@ -420,11 +407,9 @@ export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title
       document.body.style.overflow = prior
     }
   }, [onClose])
-  // Portalled to <body>. A fixed backdrop is contained by any promoted
-  // ancestor, and both screens that open a dialog run a fade-up animation whose
-  // filled transform promotes them, which confined the backdrop to the content
-  // column, left the rail live behind a "modal", and centered the dialog on the
-  // wrong box.
+  // Portalled to <body>: a fixed backdrop is contained by any ancestor with a
+  // transform, and the screens that open a dialog run a fade-up animation that
+  // leaves one, which would confine the backdrop to the content column.
   return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={title} ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
@@ -494,7 +479,7 @@ export function PromptDialog({
       <p className="muted small" style={{ margin: 0, lineHeight: 1.6 }}>
         {body}
       </p>
-      {/* window.prompt let you type at once; the field takes focus so this does too. */}
+      {/* The field takes focus on open, so typing can start at once. */}
       <NumberField i18n={i18n} value={draft} onChange={setDraft} ariaLabel={title} width={132} autoFocus />
     </Modal>
   )
@@ -502,8 +487,8 @@ export function PromptDialog({
 
 /* ── Disclosure ── */
 
-// Disclosure replaces <details>, whose marker is drawn by the browser and
-// differs on every engine.
+// Disclosure is the app's own <details>, whose native marker is drawn by the
+// browser and differs on every engine.
 export function Disclosure({ summary, children }: { summary: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   return (
@@ -519,16 +504,13 @@ export function Disclosure({ summary, children }: { summary: string; children: R
 
 /* ── Tooltip ── */
 
-// Tip is the app's own tooltip. The `title` attribute is drawn by the browser,
-// appears after a delay nobody controls, and cannot be themed.
+// Tip is the app's own tooltip; the `title` attribute is drawn by the browser,
+// appears after a delay nobody controls, and cannot be themed. A trigger
+// declares its text with `data-tip`, and TipHost draws the bubble.
 //
-// A trigger only declares its text with `data-tip`; the bubble itself is drawn
-// by TipHost. `side` is the preferred edge, and TipHost overrides it when the
-// bubble would leave the viewport.
-//
-// 'right' is for a trigger in a vertical stack. Above and below are both a
-// neighbor's row there, as in the folded navigation rail, so the bubble
-// goes out to the side instead, where nothing is stacked.
+// `data-tip-side="right"` is for a trigger in a vertical stack, such as the
+// folded navigation rail, where the rows above and below are neighbors, so the
+// bubble goes out to the side instead.
 type TipSide = 'bottom' | 'right'
 
 // tipAttrs applies the tooltip to an element directly, for the cases where a
@@ -547,12 +529,9 @@ export function Tip({ text, children }: { text?: string; children: ReactNode }) 
 }
 
 // TipHost draws every tooltip in the app, from one bubble portalled to <body>.
-//
-// The bubble used to be a `::after` on the trigger. Absolute positioning is
-// contained by the nearest clipping ancestor, and every card in the app rounds
-// its corners with `overflow: hidden`, so a tip on any control inside a card
-// was sliced off at the card's edge. One fixed bubble outside every card is the
-// only placement no container can cut.
+// Every card in the app rounds its corners with `overflow: hidden`, which would
+// clip a bubble positioned inside the trigger; one fixed bubble outside every
+// card is the only placement no container can cut.
 //
 // It listens on the document rather than per trigger: `data-tip` stays a plain
 // attribute, so a tip can sit on an element that cannot take a wrapper, such as

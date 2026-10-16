@@ -1,23 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for the findings panes (021b, 021c).
+// A browser regression test for the findings panes.
 //
-// It guards the difference between a claim and an absence. Three things on these
-// screens can go wrong without any visible error:
+// It guards the difference between a claim and an absence, in three places
+// that can go wrong without any visible error:
 //
-// An outer-loop row must never read as a result. The product's rule is that the
-// study with human participants is not scored, and a row rendered with an
-// outcome tone states the opposite without any text changing.
+// An outer-loop row must never read as a result. The study with human
+// participants is not scored, and a row in an outcome tone says otherwise
+// without any text changing.
 //
-// A verified claim that disagrees with the paper must still surface. A table of
-// outcomes hides that case, where the run reproduced the claim and found the
-// paper's own figure wrong, and it stays hidden unless the mismatch is rendered
-// beside the outcome and repeated under "unresolved".
+// A verified claim that disagrees with the paper must still surface: the
+// mismatch is rendered beside the outcome and repeated under "unresolved".
 //
-// A session with no findings must say so. Rendering an empty boundary table
-// would tell the reader the paper had no claims, which is a false statement the
-// product would be making on its own.
+// A session with no findings must say so. An empty boundary table would tell
+// the reader the paper had no claims.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -142,7 +139,7 @@ try {
         claim: txt(tds[0]),
         loop: txt(tds[1]),
         outcome: txt(tds[2]),
-        // The tone is on the outcome's word and dot, inside the cell (047).
+        // The tone is on the outcome's word and dot, inside the cell.
         outcomeColor: getComputedStyle(tds[2].querySelector('.outcome-tag') ?? tds[2]).color,
         outer: tr.classList.contains('row-outer'),
         claimColor: getComputedStyle(tds[0].querySelector('.claim-text')).color,
@@ -153,8 +150,8 @@ try {
       summary: txt(document.querySelector('.findings-summary')),
       word: txt(document.querySelector('.findings-word')),
       rate: txt(document.querySelector('.findings-rate')),
-      // 047: the rate is the boundary table's footnote. It sits under the
-      // table, and it is set no larger than the table's own cells.
+      // The rate is the boundary table's footnote. It sits under the table,
+      // and it is set no larger than the table's own cells.
       rateSize: parseFloat(getComputedStyle(document.querySelector('.findings-rate')).fontSize),
       cellSize: parseFloat(getComputedStyle(document.querySelector('.grid-table .claim-text')).fontSize),
       rateBelow: document.querySelector('.findings-decomp').getBoundingClientRect().top >= document.querySelector('.grid-table').getBoundingClientRect().bottom,
@@ -216,8 +213,8 @@ try {
 
   // One verdict word on the screen, and it is the paper's. The manifest's grade
   // is the rubric's judgment of the run, which a careful audit of a paper that
-  // does not reproduce passes, so heading both "Verdict" put two verdicts on
-  // one paper and invited the reader to take "Passed" as "it reproduced".
+  // does not reproduce passes, so it must not also read as a verdict, or a
+  // reader takes "Passed" as "it reproduced".
   const verdicts = await page.evaluate(() => {
     const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null)
     const record = document.querySelector('[data-test="run-record"]')
@@ -284,7 +281,7 @@ try {
     const rows = [...document.querySelectorAll('.release-row')].map((r) => ({
       where: txt(r.querySelector('.release-where')),
       text: txt(r),
-      // The result's tone: the word and its dot are both drawn in it (047).
+      // The result's tone: the word and its dot are both drawn in it.
       dot: getComputedStyle(r.querySelector('.release-result')).color,
     }))
     const released = document.querySelector('.release-row')
@@ -335,7 +332,7 @@ try {
   if (bareArt.released) fail('a session with no findings rendered a released list')
   if (!bareArt.browser) fail('a session with no findings lost its file browser')
 
-  /* ── The sessions tab's rail, and Publish… on the header (021e) ── */
+  /* ── The sessions tab's rail, and Publish… on the header ── */
 
   await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('.findings-rail', { timeout: 15000 })
@@ -364,11 +361,10 @@ try {
   }
   if (!rail.publish) fail('the project header offers no Publish… button')
 
-  /* ── The windowed spend (021e) ── */
+  /* ── The windowed spend ── */
 
-  // 034 folded the three counters into two cards; the spend kept its own ruled
-  // row on the credits card. Its position changed; what it must say did not: a
-  // figure must state its period.
+  // The spend has its own row on the credits card, and a figure must state its
+  // period.
   await page.open('/')
   await page.waitForSelector('[data-test="spend-30d"]', { timeout: 15000 })
   // A dash stands in until the list has landed and the sum is known.

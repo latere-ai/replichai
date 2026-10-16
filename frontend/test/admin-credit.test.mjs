@@ -3,9 +3,9 @@
 
 // Browser regression for an admin adding credits to their own wallet.
 //
-// The admin people table and the header are fed by different endpoints. The
-// table refresh alone used to leave the header's /me snapshot stale until a
-// reload, so this test requires both surfaces to show the completed top-up.
+// The admin people table and the header are fed by different endpoints, so
+// this test requires both surfaces to show the completed top-up without a
+// reload.
 import { fail, start, waitUntil } from './harness.mjs'
 
 const EMAIL = 'admin@example.com'
@@ -52,11 +52,9 @@ try {
   // The same completed action must refresh the header without a reload.
   await page.waitForFunction(() => document.querySelector('.quota-pill')?.textContent.trim() === '$30.00')
 
-  // The policy card's Save writes the whole card, not the field its button sits
-  // beside. One request writes both numbers, so a Save placed next to the
-  // overdraft floor suggested to an admin editing the start reserve that their
-  // change was not covered. Position is the claim here, so it is asserted as
-  // geometry: below both fields, and the last control in the card.
+  // The policy card's Save writes the whole card in one request, so it sits
+  // where it reads as saving all of it. Position is the claim here, so it is
+  // asserted as geometry: below every field, and the last control in the card.
   const policy = await page.evaluate(() => {
     const card = document.querySelector('[data-test="save-policy"]')?.closest('.card')
     if (!card) return null
@@ -66,15 +64,15 @@ try {
     return {
       fields: rows.length,
       belowEveryField: rows.every((r) => btn.getBoundingClientRect().top >= bottom(r) - 1),
-      // Nothing may sit inside a policy row with it: that is what made it read
-      // as one field's control.
+      // Nothing may sit inside a policy row with it, or it reads as that
+      // field's control.
       insideAField: rows.some((r) => r.contains(btn)),
       last: card.querySelectorAll('button, a').length > 0 && [...card.querySelectorAll('button')].pop() === btn,
     }
   })
   if (!policy) fail('the platform policy card has no save control')
   else {
-    // Three since 039: the reserve, the floor, and which model drafts. The
+    // Three: the reserve, the floor, and which model drafts. The
     // count is asserted so that the "Save is below every field" check below has
     // fields to compare against; a card that lost its fields would pass it
     // vacuously.

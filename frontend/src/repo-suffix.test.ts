@@ -24,7 +24,7 @@ describe('repoSuffix', () => {
 })
 
 // A row under a paper card says what the run ran on. The paper's own reference
-// is on the card above it, so repeating it per row told the reader nothing
+// is on the card above it, so repeating it per row would tell the reader nothing
 // about which of five sessions they were looking at.
 describe('runLabel', () => {
   it('names the model the session ran on', () => {

@@ -6,17 +6,10 @@ import type { Job } from './api'
 import { terminal } from './session-stop'
 
 // A running session is watched over the server's event stream, which sends a
-// snapshot of the job the moment it connects and a frame on every change after,
-// see internal/httpapi/events.go. Both screens that show a session used to open
-// the stream from an effect that depended on the job itself, so the snapshot
-// the connect produced replaced the job, the replaced job re-ran the effect,
-// and the effect reconnected: one stream per frame, for as long as the page was
-// open. The row in a project list had the same bug and reopened its stream on
-// every refresh of the list around it.
-//
-// The stream's lifetime is now decided by two facts only: which session, and
-// whether it is still worth watching. Nothing the stream delivers can reach
-// either, so nothing it delivers can reopen it.
+// snapshot of the job when it connects and a frame on every change after (see
+// internal/httpapi/events.go). The stream's lifetime depends only on which
+// session and whether it is still worth watching, never on the job it
+// delivers. An effect keyed on the job would reconnect on every frame.
 
 // watchJob opens the stream, hands each frame to onJob, and closes once the job
 // settles; the server closes its end then too. It returns the close.

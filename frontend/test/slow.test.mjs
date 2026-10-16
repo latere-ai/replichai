@@ -5,14 +5,9 @@
 //
 // Every wait in the suite carries a budget written for a developer's machine:
 // fifteen seconds for a page to load and show a screen, five for a list to
-// open. The CI runner loads the same page about twenty times slower (a file
-// that takes 0.4s locally took 8.5s there), so a budget with room to spare at
-// a desk left about twice the usual time on the runner, and a busy moment ran
-// it out. The suite then failed on a timeout naming an element, in a different
-// file each time, on commits that touched no frontend code.
-//
-// So the harness stretches every wait by one factor, WEB_TEST_SLOW, which is
-// 1 at a desk and larger on CI. This file sets the factor to 3 and checks that
+// open. The CI runner loads the same page about twenty times slower, so the
+// harness stretches every wait by one factor, WEB_TEST_SLOW, which is 1 at a
+// desk and larger on CI. This file sets the factor to 3 and checks that
 // a wait which must fail takes three times its written budget to give up, for
 // each kind of wait the suite uses. Run it with `bun run test:browser`.
 process.env.WEB_TEST_SLOW = '3'

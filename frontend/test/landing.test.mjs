@@ -1,56 +1,32 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for the first screen (017, rebuilt by 029 and 033).
+// A browser regression test for the landing page and the auth failure cards.
 //
-// What it guards: the landing is a page a researcher reads, and the sign-in
-// never leaves the screen. 017 guaranteed that with a fold, the sign-in button's
-// box above 900px, which a page that scrolls cannot keep. The replacement is
-// stronger and independent of page length: a sticky header, asserted at the top
-// of the page and at the bottom of it, on both viewports. Those two assertions
-// supersede 017's criteria 3 and 4.
-//
-// It also guards the figures. Three of them carry the argument, and a reader who
-// has asked for less motion must get the finished state of each rather than a
-// frozen first frame. That is a claim about computed style, which no unit test
-// can make.
-//
-// It also guards the mark. The one it replaced was the character `r` set in
-// `--font-serif: 'Instrument Serif'`, a font with no `@font-face` anywhere in
-// the repository, so the identity had always rendered in Georgia. The assertions
-// below require an SVG that paints, in both themes, at every size it is used.
-//
-// 033 rebuilt the page from the design and added four things to guard: the hero
-// is now a slab that has to hold its own copy at both viewports and stay legible
-// when its WebGL scene never loads; the walkthrough dims steps it is not on,
-// which is motion and must be disabled under `reduce`; the file list names the
-// product's own output and must match the publish gate; and the verdict panel is
-// a fabrication, so it has to be marked as one and must never carry a paper key
-// that resolves.
-//
-// 047 set the page like a paper and guards what that changed: the hero is a
-// drawn figure rather than a WebGL scene, and it runs only when it should and
-// rests on its finished frame otherwise; the header and its sign-in stay put
-// while the body scrolls; the example verdict's rate is a footnote under its table; the
-// page sets one face, Inter, which it ships, and no serif; every text tone reads
-// at 4.5:1 on its ground in both themes; every control shows its focus ring;
-// and the figure arriving shifts nothing.
+// It guards what only computed style and layout can show: the header sits
+// outside the `.lp-body` scroll area, so its sign-in is on screen at every
+// scroll position on both viewports; the mark is an SVG that paints in both
+// themes; the drawn hero figure animates only when motion is allowed and
+// otherwise rests on its finished frame; every band becomes visible and shares
+// one column; the page sets only Inter, every text reaches 4.5:1 in both
+// themes, and every control shows a focus ring; the example verdict is marked
+// as one and carries no real paper key; and the shared footer carries this
+// product's lockup and working links.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
 import { DESKTOP, fail, json, settled, sleep, start, waitUntil } from './harness.mjs'
 
 const PHONE = { width: 390, height: 844 }
-// The widest screen the page claims to serve. 044 added it: nothing in this
-// suite could see a band that stopped at 1180px on a 2560px display.
+// The widest screen the page claims to serve.
 const WIDE = { width: 2560, height: 1440 }
 
 const h = await start()
 
 // open serves one mocked `/me` and returns a page at `path`. `me` is the body
 // the mock answers with; passing null makes the call fail, which is the outage
-// case 014d distinguishes from being signed out. `routes` answers whatever else
-// a block needs the server to say.
+// case, distinct from being signed out. `routes` answers whatever else a block
+// needs the server to say.
 const open = async (me, { path = '/', viewport = DESKTOP, theme = 'light', routes = [] } = {}) => {
   const page = await h.page({ viewport, routes: [['/me', me === null ? json({}, 500) : me], ...routes] })
   await page.evaluateOnNewDocument((t) => localStorage.setItem('theme', t), theme)
@@ -95,16 +71,16 @@ try {
         w: r.width,
         h: r.height,
         // A mark that paints: both rings have a real stroke and neither is
-        // transparent. The `r` this replaced was a div and would fail none of
-        // these checks, which is why the tag is asserted first.
+        // transparent. The tag is asserted first, because these style checks
+        // alone do not prove the mark is an SVG.
         innerStroke: cs(inner).stroke,
         outerStroke: cs(outer).stroke,
         outerOpacity: +cs(outer).opacity,
-        // The outer loop is drawn open: one arc with one gap (047), so its
-        // length is short of the full circle it sits on. A closed outer ring
-        // claims the study with people is re-run.
+        // The outer loop is drawn open: one arc with one gap, so its length is
+        // short of the full circle it sits on. A closed outer ring claims the
+        // study with people is re-run.
         open: outer.tagName.toLowerCase() === 'path' && outer.getTotalLength() < 0.9 * 2 * Math.PI * 9.2 && inner.tagName.toLowerCase() === 'circle' && (inner.getAttribute('stroke-dasharray') || '') === '',
-        // The wordmark is set in Inter, which the app ships and preloads (047).
+        // The wordmark is set in Inter, which the app ships and preloads.
         font: cs(document.querySelector('.wordmark')).fontFamily,
         seam: !!document.querySelector('.wordmark .wordmark-seam'),
         word: document.querySelector('.wordmark').textContent.trim(),
@@ -144,9 +120,8 @@ try {
     const page = await open({ authenticated: false }, { viewport })
     await page.waitForSelector('.landing .lp-bar')
     // The header's sign-in, its box, and where the page scrolls. The header is
-    // outside the one scroll area, so the browser's elastic overscroll cannot
-    // move it; a headless browser draws no overscroll, so the test holds the
-    // structure that guarantees it instead.
+    // outside the one scroll area, so overscroll cannot move it; a headless
+    // browser draws no overscroll, so the test asserts that structure instead.
     const frame = () =>
       page.evaluate((vh) => {
         const bar = document.querySelector('.lp-bar')
@@ -201,7 +176,7 @@ try {
     await page.close()
   }
 
-  /* ── Figure 1, and the bands it sits above ── */
+  /* ── The hero figure, and the bands it sits above ── */
 
   {
     const page = await open({ authenticated: false })
@@ -220,8 +195,8 @@ try {
         parts: document.querySelectorAll('.lp-part').length,
       }
     })
-    if (fig.svg !== 'svg') fail('Figure 1 is not an svg')
-    if (fig.canvases) fail(`the landing draws ${fig.canvases} canvases; Figure 1 is a drawing`)
+    if (fig.svg !== 'svg') fail('the hero figure is not an svg')
+    if (fig.canvases) fail(`the landing draws ${fig.canvases} canvases; the hero figure is a drawing`)
     if (fig.outer === fig.inner) fail(`both loops are painted ${fig.outer}; the boundary is the color as much as the gap`)
     if (fig.stations !== 4) fail(`the inner loop shows ${fig.stations} stations, want implement, run, compare and record`)
     if (!/^The boundary every audit draws\./.test(fig.caption)) fail(`the figure's caption reads "${fig.caption.slice(0, 40)}"; it opens with what the figure shows`)
@@ -256,9 +231,9 @@ try {
   /* ── Nothing shifts as the page arrives ── */
 
   {
-    // Figure 1's box is the viewBox's ratio from the first frame, and the faces
-    // are preloaded with `block`, so the first screen moves nothing once
-    // painted. Layout shift is what a reader reads as imprecision.
+    // The hero figure's box is the viewBox's ratio from the first frame, and
+    // the faces are preloaded with `block`, so the first screen moves nothing
+    // once painted.
     const page = await h.page({ routes: [['/me', { authenticated: false }]] })
     await page.evaluateOnNewDocument(() => {
       window.__shift = 0
@@ -280,7 +255,7 @@ try {
       return { inter: document.fonts.check('600 16px Inter') && document.fonts.check('400 16px Inter'), serifs }
     })
     if (!fonts.inter) fail('Inter did not load; the page falls back to the system face')
-    if (fonts.serifs) fail(`${fonts.serifs} elements on the landing set a serif; the page sets one face, Inter (047)`)
+    if (fonts.serifs) fail(`${fonts.serifs} elements on the landing set a serif; the page sets one face, Inter`)
     await page.close()
   }
 
@@ -303,7 +278,7 @@ try {
     })
     if (still.hidden) fail(`${still.hidden} parts of the landing are transparent under reduced motion; the resting state has to be the finished one`)
     if (still.animated) fail(`${still.animated} bands still animate under reduced motion`)
-    if (still.figure) fail(`${still.figure} parts of Figure 1 still animate under reduced motion`)
+    if (still.figure) fail(`${still.figure} parts of the hero figure still animate under reduced motion`)
     if (still.pause !== 'none') fail('the figure offers a pause control under reduced motion, where it never runs')
     // The finished frame: the marker parked on "record", the left of the loop,
     // and staying there.
@@ -314,10 +289,8 @@ try {
     if (!(x < 300)) fail(`under reduced motion the marker rests at ${still.marker}; the finished frame parks it on "record"`)
 
     // The walkthrough dims the steps it is not on and folds their artifacts down
-    // to a header strip. Both are motion by this page's own definition, so under
-    // `reduce` the driver must never start: every step lit, every plate open. A
-    // reader who asked for less movement is not made to scroll to find three
-    // quarters of a band.
+    // to a header strip. Both are motion, so under `reduce` the driver must
+    // never start: every step lit, every plate open.
     await page.evaluate(() => {
       document.querySelector('.lp-walk').scrollIntoView()
     })
@@ -362,20 +335,17 @@ try {
     if (hero.h1 < 20) fail(`at ${viewport.width}px the hero carries no claim`)
     if (!hero.signin) fail(`at ${viewport.width}px the hero's sign-in is not with its claim`)
     if (!hero.registry) fail(`at ${viewport.width}px the hero's registry link is not with its claim`)
-    if (!hero.figure) fail(`at ${viewport.width}px Figure 1 has no box`)
+    if (!hero.figure) fail(`at ${viewport.width}px the hero figure has no box`)
     await page.close()
   }
 
   /* ── Every word on the page is copy, not a key ── */
 
   {
-    // t() falls back to the key when a locale has no string for it, which is
-    // right for a locale that is behind and wrong for a key that exists
-    // nowhere: the boundary band showed `landingVerdictBody` to readers for
-    // three weeks because the strings had been deleted as unused while the
-    // markup still asked for them. The compiler catches that now, because t()
-    // is typed against TKey, and this makes the same check on the rendered
-    // page, which is where a reader would see it.
+    // t() falls back to the key when a locale has no string for it. The
+    // compiler catches a key that exists nowhere, because t() is typed against
+    // TKey; this makes the same check on the rendered page, where a reader
+    // would see it.
     const page = await open({ authenticated: false })
     await page.waitForSelector('.lp-section')
     await scrollThrough(page)
@@ -393,9 +363,8 @@ try {
     })
     if (keys.length) fail(`the landing paints ${keys.length} untranslated keys at readers: ${JSON.stringify([...new Set(keys)])}`)
     // The same check for the other marker a reader must never see. A seam is
-    // an instruction to whoever sets the line; t() removes it for every other
-    // consumer, and the tab once read "No page|at this address" because it did
-    // not.
+    // an instruction to whoever sets the line, and it must not reach the page
+    // text or the document title.
     const seam = await page.evaluate(() => {
       const bad = []
       const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
@@ -409,15 +378,12 @@ try {
     await page.close()
   }
 
-  /* ── The page is one width, top to bottom (044) ── */
+  /* ── The page is one width, top to bottom ── */
 
   {
-    // The hero is full-bleed and every band under it used to be capped at
-    // 1180px, so a wide screen got a full-width first screen followed by a
-    // column with 400px of empty space on either side. The page has one edge
-    // now, and this asserts it: the gutter each band leaves is the page's own
-    // margin rather than the remainder of a cap, on the widest viewport the
-    // page claims to serve.
+    // Every band shares the hero's two edges on the widest viewport the page
+    // claims to serve, so a wide screen never shows a full-width first screen
+    // over a narrower column.
     // With published work, so the registry strip is a band with contents to
     // measure rather than one this loop skips.
     const published = Array.from({ length: 6 }, (_, i) => ({
@@ -432,9 +398,8 @@ try {
     await page.waitForSelector('[data-test="lp-strip"] .lp-card')
     // Every band, including the ones a reveal observer has not reached yet:
     // geometry is measured on the box, and a transparent box measures the same.
-    // 047 sets every band on the platform's container, min(1200px, 100% − 96px),
-    // so the measure is that each band shares the hero's two edges and sits
-    // centered: one column down the page, never a band of its own width.
+    // Every band sits on the platform's container, min(1200px, 100% − 96px), so
+    // each shares the hero's two edges and sits centered.
     const bands = await page.evaluate(async () => {
       const out = []
       for (const band of document.querySelectorAll('.lp-hero, .lp-section, .lp-close-wrap')) {
@@ -478,15 +443,14 @@ try {
   /* ── Every band reaches the page, motion or not ── */
 
   {
-    // The counterpart to the reduced-motion block, and the one that was missing:
-    // with motion allowed every band starts transparent and is brought in by
-    // an observer, so a band whose reveal ref was never wired is on the page,
-    // occupying its full height, and invisible. Geometry assertions do not catch
-    // that, because a box at opacity 0 measures exactly like a box at opacity 1,
-    // which is how a blank hero reached production.
+    // The counterpart to the reduced-motion block: with motion allowed every
+    // band starts transparent and is brought in by an observer, so a band whose
+    // reveal ref was never wired is on the page, full height, and invisible.
+    // Geometry assertions miss that, because a box at opacity 0 measures
+    // exactly like a box at opacity 1.
     const page = await open({ authenticated: false }, { routes: [['/public', []]] })
     await page.waitForSelector('.lp-hero')
-    // The hero is above the fold and must be visible with no scrolling at all.
+    // The hero is on the first screen and must be visible with no scrolling.
     // Its reveal is a transition, so it is waited for; one that never comes is
     // the failure the check reports.
     await page.waitForFunction(() => +getComputedStyle(document.querySelector('.lp-hero')).opacity >= 0.9, { timeout: 3000 }).catch(() => {})
@@ -543,7 +507,7 @@ try {
       files: [...document.querySelectorAll('.lp-file-name')].map((e) => e.textContent.trim()),
       example: !!document.querySelector('.lp-tag.example'),
       // The example's rate is derived from its table and set as that table's
-      // footnote (047): under it, and no larger than its cells.
+      // footnote: under it, and no larger than its cells.
       foot: (() => {
         const f = document.querySelector('.lp-verdict-foot')
         const t = document.querySelector('.lp-verdict-table')
@@ -581,10 +545,9 @@ try {
   /* ── The published strip is a band a reader can see ── */
 
   {
-    // The strip renders only once its fetch lands, which is after the first
-    // paint, and every band on this page starts at the pre-reveal opacity. A
-    // reveal that was wired up on mount alone never observed this one, so the
-    // section was on the page, occupying its full height, and invisible.
+    // The strip renders only once its fetch lands, after the first paint, and
+    // every band starts at the pre-reveal opacity, so the reveal has to observe
+    // a band that mounts late.
     const published = [
       {
         id: 'a',
@@ -592,7 +555,7 @@ try {
         signed_off_name: 'Ada Lovelace',
         session_count: 3,
         visibility: 'public',
-        // Two papers, the first one cited (043). The second's authors must never
+        // Two papers, the first one cited. The second's authors must never
         // appear on the first's line, and its existence must be counted.
         papers: [
           { title: 'Attention Is All You Need', authors: ['Ashish Vaswani', 'Noam Shazeer', 'Niki Parmar', 'Jakob Uszkoreit'], venue: 'NeurIPS', year: 2017 },
@@ -643,8 +606,8 @@ try {
       if (by.trim() === signers[i]) fail(`strip card ${i} names "${by}" and nothing else; a bare name reads as the paper's author`)
       if (!/sign/i.test(by)) fail(`strip card ${i} says "${by}"; it has to say the name signed the reproduction`)
     })
-    // 043: the card names the paper it is a reproduction of. The project title
-    // is a name somebody typed; this line is the paper's own.
+    // The card names the paper it is a reproduction of. The project title is a
+    // name somebody typed; this line is the paper's own.
     const cite = strip.cites[0]
     if (!cite) fail('the first strip card shows no citation for a paper that has one')
     else {
@@ -682,21 +645,21 @@ try {
     await page.close()
   }
 
-  /* ── The registry is linked, now that it can be read signed out (028) ── */
+  /* ── The registry is linked, since it can be read signed out ── */
 
   {
     const page = await open({ authenticated: false })
     await page.waitForSelector('.landing')
     const links = await page.evaluate(() => [...document.querySelectorAll('.landing a[href="/registry"]')].length)
-    if (!links) fail('the landing links nowhere; 028 opened the registry so that it could')
+    if (!links) fail('the landing links nowhere; the registry is open signed out so that it could')
     await page.close()
   }
 
   /* ── The way in still works ── */
 
   {
-    // A project address renders the app signed out since 028, so the landing's
-    // own round trip is asserted from an address that still needs an account.
+    // A project address renders the app signed out, so the landing's own round
+    // trip is asserted from an address that still needs an account.
     // public-shell.test.mjs guards the public deep link.
     const page = await open({ authenticated: false }, { path: '/new' })
     await page.waitForSelector('.landing')
@@ -713,10 +676,10 @@ try {
       const btn = getComputedStyle(btnEl)
       return { w: r.width, h: r.height, fill: getComputedStyle(svg).fill, ink: btn.color, bg: btn.backgroundColor, paths: svg.querySelectorAll('path').length }
     })
-    // Hovered, too. 034 made the base `.btn:hover` repaint the fill and the
-    // ink, so a slab button that overrides only the fill inherits the base's
-    // ink. That is how the hero's sign-in became white on white, taking the
-    // latere mark with it, since the mark fills with currentColor.
+    // Hovered, too. The base `.btn:hover` repaints both the fill and the ink,
+    // so a button that overrides only the fill inherits the base's ink and can
+    // go blank, taking the latere mark with it, since the mark fills with
+    // currentColor.
     const hovered = await page.evaluate(async () => {
       const out = []
       for (const sel of ['[data-test="lp-hero-signin"]', '.lp-close .btn:not(.ghost)']) {
@@ -771,15 +734,14 @@ try {
     await page.close()
   }
 
-  /* ── Every word reads on its ground, in both themes (047) ── */
+  /* ── Every word reads on its ground, in both themes ── */
 
   {
-    // 040 guarded four dark blocks; 047 removed them, and what is left to guard
-    // is the thing that block test was for: that no ink lands on a ground it
-    // cannot be read on. Every text element on the page is measured against
-    // the first opaque ground behind it, its ink composited over that ground
-    // first, and must reach WCAG's 4.5:1. Measured at rest, under reduced
-    // motion, because the walkthrough dims the steps it is not on by design.
+    // No ink lands on a ground it cannot be read on. Every text element is
+    // measured against the first opaque ground behind it, its ink composited
+    // over that ground first, and must reach WCAG's 4.5:1. Measured at rest,
+    // under reduced motion, because the walkthrough dims the steps it is not on
+    // by design.
     for (const theme of ['light', 'dark']) {
       const page = await h.page({ routes: [['/me', { authenticated: false }]] })
       await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
@@ -834,7 +796,7 @@ try {
     }
   }
 
-  /* ── Every control shows where the keyboard is (047) ── */
+  /* ── Every control shows where the keyboard is ── */
 
   {
     const page = await open({ authenticated: false })
@@ -892,7 +854,7 @@ try {
     await page.close()
   }
 
-  /* ── The page ends in the Latere footer, and it works (040) ── */
+  /* ── The page ends in the Latere footer, and it works ── */
 
   {
     const page = await open({ authenticated: false })
@@ -923,7 +885,7 @@ try {
         // computes to the inherited color rather than to nothing.
         ink: getComputedStyle(f.querySelector('.lu-footer-link')).color,
         muted: getComputedStyle(f.querySelector('.lu-footer-bottom p')).color,
-        // The old one-line strip is gone, not left behind next to the new one.
+        // No one-line footer of the landing's own beside the shared one.
         legacy: !!document.querySelector('.lp-foot'),
       }
     })

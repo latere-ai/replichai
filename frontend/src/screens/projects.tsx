@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The lists of projects: the reader's own dashboard (018, 034) with its filter
-// and its trash dialog, the trash itself (019) with the restore and the purge,
-// and the public registry (028), plus the cells and badges every row shares.
+// The lists of projects: the reader's own dashboard with its filter and its
+// trash dialog, the trash itself with the restore and the purge, and the public
+// registry, plus the cells and badges every row shares.
 
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -43,14 +43,10 @@ function projectMatches(p: ProjectView, q: string, f: ProjectFilter, ownerLabel:
 }
 
 // The projects list: one list of everything the reader may work in, owned or
-// shared, with the owner named on the row rather than as a tab (018). Which of
-// the two a project was is not a fact the reader chose, and splitting on it
-// meant finding work started with remembering who had created it.
-//
-// 034 moved the owner and the date out of the column grid and into the title's
-// meta line. The owner still links to their profile and the age still carries
-// its exact moment; the move frees the width for the column that was missing,
-// which is what this project has handed over.
+// shared, with the owner named on the row rather than split into tabs, because
+// who created a project is not something the reader chose. The owner and the
+// date sit in the title's meta line, which leaves the width for what each
+// project has handed over.
 export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpen: (id: string, title?: string) => void }) {
   const { t } = i18n
   // The shared list: the rail reads the same one, so the count up there and the
@@ -86,8 +82,8 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
         <p className="screen-desc">{t('projectsIntro')}</p>
       </div>
 
-      {/* The boundary band. It replaces three counters, two of which restated
-          the list below them. */}
+      {/* The boundary band: what all the reader's projects have handed over,
+          and the wallet. */}
       <div className="boundary-grid" data-test="boundary">
         <div className="boundary" data-test="evidence-card">
           <div className="boundary-head">
@@ -122,8 +118,8 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
             <span className="boundary-of">{t('creditsInWallet')}</span>
           </div>
           <p className="boundary-note">{t('creditsNote')}</p>
-          {/* The windowed spend keeps its own row and keeps its window named
-              (021e): a figure whose period is not stated is not a figure. */}
+          {/* The windowed spend keeps its own row and its window named: a
+              figure whose period is not stated is not a figure. */}
           <div className="boundary-foot" data-test="spend-30d">
             <span>{t('statSpend30d')}</span>
             <span className="boundary-foot-n">{list === null || !spendKnown ? '—' : formatUSD(i18n.lang, spend30d)}</span>
@@ -143,10 +139,8 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
               data-test="project-filter"
             />
           </label>
-          {/* A segmented control is back on this screen, and 018's removal of the
-              mine/shared tabs still stands: that split was a fact about a project
-              the reader did not choose, and this is a narrowing they pick and can
-              unpick. */}
+          {/* A narrowing the reader picks and can undo. The list is not split
+              by owner, which is a fact the reader did not choose. */}
           <Segmented
             value={filter}
             options={[
@@ -174,9 +168,9 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
                 and widened in another. */}
             <div className="project-head" aria-hidden="true">
               <span className="eyebrow">{t('colPaper')}</span>
-              {/* Named so the phone can fold it away first: what a project has
+              {/* Named so the phone can hide it first: what a project has
                   handed over is context, while its title and its phase identify
-                  the row and are not (030). */}
+                  the row. */}
               <span className="eyebrow row-published">{t('colPublished')}</span>
               <span className="eyebrow">{t('colStatus')}</span>
               <span className="eyebrow row-visibility">{t('colVisibility')}</span>
@@ -188,23 +182,21 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
               <RowButton key={p.id} className="row" onOpen={() => onOpen(p.id, p.title)}>
                 <div className="row-main">
                   <div className="row-title">{p.title}</div>
-                  {/* Which paper the project is about (043), directly under its
-                      title, exactly as the registry sets it. A title is a name
-                      its owner typed and two projects can carry the same one;
-                      the citation is what tells them apart at a glance. */}
+                  {/* Which paper the project is about, directly under its
+                      title, as the registry sets it. Two projects can share a
+                      title; the citation tells them apart at a glance. */}
                   <RowCitation i18n={i18n} papers={p.papers} />
                   {/* One line of what the project is about, where its owner has
-                      said (038). It sits above the facts rather than among them:
-                      it is the only part of the row somebody wrote. */}
+                      said. It sits above the facts rather than among them: it is
+                      the only part of the row somebody wrote. */}
                   {p.description && (
                     <div className="row-desc" data-test="row-description">
                       {p.description}
                     </div>
                   )}
-                  {/* Owner, count, and age on one line under the title. They are
-                      the same facts the columns carried and behave the same way:
-                      the owner links and the age holds its exact moment. They no
-                      longer each cost a column. */}
+                  {/* Owner, count, and age on one line under the title. The
+                      owner links to their page and the age holds its exact
+                      moment. */}
                   <div className="row-meta">
                     <OwnerCell i18n={i18n} me={me} p={p} />
                     <span className="row-meta-dot" aria-hidden="true" />
@@ -234,23 +226,20 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
                     <span className="pub-none">{t('publishedNone')}</span>
                   )}
                 </div>
-                {/* Each badge gets its own cell rather than sizing the column
-                    itself. A badge is as wide as its word, for example "1
-                    RUNNING" against "DONE", and letting that width set the
-                    column pushed every cell to its left out of line, row by
-                    row. */}
+                {/* Each badge gets its own cell rather than sizing the column:
+                    a badge is as wide as its word, and that width would push
+                    the cells to its left out of line, row by row. */}
                 <span className="row-cell">
                   <StatusBadge i18n={i18n} p={p} />
                 </span>
                 <span className="row-cell row-visibility">
                   <VisibilityBadge i18n={i18n} visibility={p.visibility} icon />
                 </span>
-                {/* An anchor, not a fetch: the browser's own download should
-                    handle a body this size. The condition is the server's own.
-                    A project whose sessions all failed before publishing has
-                    sessions and nothing to hand over, and the download is a
-                    top-level navigation, so reaching its refusal would replace
-                    the app with a JSON body (020). */}
+                {/* An anchor, not a fetch: the browser's own download handles
+                    a body this size. The condition is the server's own. The
+                    download is a top-level navigation, so offering it on a
+                    project with nothing published would replace the app with
+                    the server's JSON refusal. */}
                 {(p.published_sessions ?? 0) > 0 ? (
                   <Tip text={t('download')}>
                     <a
@@ -488,8 +477,8 @@ function PurgeDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
 function OwnerCell({ i18n, me, p }: { i18n: I18n; me: Me; p: ProjectView }) {
   const { t } = i18n
   // Both sides can be absent: a reader with no stake is not sent the owning
-  // principal, and a signed-out reader has none of their own (028). Two
-  // absences must not compare as the same person.
+  // principal, and a signed-out reader has none of their own. Two absences
+  // must not compare as the same person.
   const mine = isMine(me, p.owner)
   const label = mine ? t('ownerYou') : p.owner_name || t('ownerUnknown')
   return (
@@ -516,15 +505,11 @@ function ModifiedCell({ i18n, at }: { i18n: I18n; at?: string }) {
   )
 }
 
-// RowCitation is a list row's version of what a landing card says: the first
-// paper's citation, and how many others the project holds. Both lists of
-// projects render it, the registry and the owner's own dashboard, because a
-// row is scanned for which paper it is about before anything else about it.
-//
-// It renders nothing when no source could fill the record in. On the registry
-// that is the end of it. On the dashboard the invitation to complete a record
-// lives on the project screen, addressed to the owner who can act on it, rather
-// than in a list row that would repeat it once per project.
+// RowCitation is the first paper's citation and how many others the project
+// holds. The registry and the dashboard both render it, because a row is
+// scanned for which paper it is about first. It renders nothing when no
+// source could fill the record in; the invitation to complete a record lives
+// on the project screen, not once per row.
 function RowCitation({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
   const { t } = i18n
   const { bits, more } = listCitation(papers, t('etAl'))

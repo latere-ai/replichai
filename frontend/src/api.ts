@@ -5,7 +5,7 @@
 // bypass is sent automatically.
 import type { Findings } from './findings'
 
-// Credits is what this person has to spend (011), in micro-USD. The wallet is
+// Credits is what this person has to spend, in micro-USD. The wallet is
 // never spent by a session directly, because a run draws on the pot of the
 // project it belongs to. start_reserve is what a project must have available
 // before a session may start there. It is public so the client can explain the
@@ -18,10 +18,10 @@ export type Me = {
   email?: string
   tier?: string
   credits?: Credits
-  // frozen is view-only mode: a negative wallet with no admin override (022d).
+  // frozen is view-only mode: a negative wallet with no admin override.
   // The banner and the disabled spend controls read this one field.
   frozen?: boolean
-  // Display claims from the IdP (006m). Both are optional and cosmetic; the
+  // Display claims from the IdP. Both are optional and cosmetic; the
   // email stays the identifier everything binds on.
   name?: string
   picture?: string
@@ -54,7 +54,7 @@ export type Job = {
   // paper.
   status?: { State: string; Usage: Usage; Model?: string; ModelProvider?: string; Runtime?: string }
   // The paper this session targeted, as the offline key project_papers is keyed
-  // on (012). It is what joins a run to the paper it is a run of.
+  // on. It is what joins a run to the paper it is a run of.
   paper_key?: string
   // Set when the publishing phase opens, not when it succeeds, so a session
   // that failed while publishing carries one too. `isGradeable` in papers.ts is
@@ -74,7 +74,7 @@ export type Project = {
   id: string
   owner: string
   title: string
-  // What the project is about, in its owner's words (038). Absent for one
+  // What the project is about, in its owner's words. Absent for one
   // nobody has described, and for a private project somebody may not read.
   description?: string
   visibility: 'private' | 'public'
@@ -82,9 +82,9 @@ export type Project = {
   signed_off_by?: string
   signed_off_at?: string
   attestation_version?: string
-  // The signer as they were when they signed (006n): a snapshot recorded at the
-  // flip, not a view of their profile, so these never change afterwards. Empty
-  // on a v1 sign-off, which predates them.
+  // The signer as they were when they signed: a snapshot recorded at the flip,
+  // not a view of their profile, so these never change afterwards. Empty on a
+  // v1 sign-off.
   signed_off_name?: string
   signed_off_institution?: string
   signed_off_contact?: string
@@ -92,13 +92,13 @@ export type Project = {
   signed_off_scholar?: string
   // Already redacted server-side; the signer's full address never reaches here.
   signed_off_email?: string
-  // The retraction (006o), absent until a publication is withdrawn. It sits
+  // The retraction, absent until a publication is withdrawn. It sits
   // beside the sign-off rather than replacing it, so a project can carry both.
   // Read `visibility` to ask whether a project is open, never `signed_off_at`.
   withdrawn_at?: string
   withdrawn_by?: string
   withdrawn_reason?: string
-  // When the owner moved this project to the trash (019), absent for one that is
+  // When the owner moved this project to the trash, absent for one that is
   // not there. A trashed project leaves every list but keeps its address: its
   // owner still reads it, read-only, with a way back.
   deleted_at?: string
@@ -113,7 +113,7 @@ export type Profile = {
   contact_email?: string
   orcid?: string
   scholar_url?: string
-  // The public page (006r): a handle that can go in a URL, and whether there is
+  // The public page: a handle that can go in a URL, and whether there is
   // a page at all. A profile is private until its owner says otherwise.
   handle?: string
   public?: boolean
@@ -134,19 +134,19 @@ export type PublicProfile = {
 
 type PublicSigned = { id: string; title: string; signed_off_at?: string }
 
-// signer_handle is where the signer's name links (006r). It is resolved on
+// signer_handle is where the signer's name links. It is resolved on
 // every read from the signer's current profile and never snapshotted, so a
 // profile going private removes the link and changes nothing on the record.
 export type ProjectView = Project & {
   session_count: number
   running: number
-  // What this project's sessions cost in the last thirty days, in micro-USD
-  // (021e). Windowed on when a session last changed, so a long run that settled
+  // What this project's sessions cost in the last thirty days, in micro-USD.
+  // Windowed on when a session last changed, so a long run that settled
   // recently counts; a running one counts what it has burned so far.
   spend_30d?: number
   latest_phase?: string
   signer_handle?: string
-  // Who owns it, as a reader can read them (018). `owner` is an opaque OIDC
+  // Who owns it, as a reader can read them. `owner` is an opaque OIDC
   // subject and names nobody, so the list's Owner column reads these: the
   // owner's profile name, and their handle when that profile is public and the
   // name can therefore link. Both absent for somebody who has saved no profile.
@@ -154,14 +154,14 @@ export type ProjectView = Project & {
   owner_name?: string
   owner_handle?: string
   // How many of its sessions committed a repository, which is what the archive
-  // contains (020). It is the exact condition the download endpoint refuses on,
+  // contains. It is the exact condition the download endpoint refuses on,
   // so the button and the handler cannot disagree. A session count says nothing
   // about whether any session published.
   published_sessions?: number
   // When this project last changed: the newest of its creation, its papers, and
   // its sessions. Derived server-side on every read, and what the list sorts on.
   modified_at?: string
-  // What this project is a reproduction of (043): every paper it holds, as a
+  // What this project is a reproduction of: every paper it holds, as a
   // citation. All of them are included because one line under a two-paper
   // project would put the second paper's work under the first one's name.
   // Absent for a project that holds none.
@@ -170,7 +170,7 @@ export type ProjectView = Project & {
 
 // may_submit is the server's answer to whether this caller, as owner or
 // collaborator, may open a session here. A public project is readable by
-// everyone, so the client cannot infer it (006l).
+// everyone, so the client cannot infer it.
 type ProjectDetail = { project: Project; sessions: Job[]; may_submit: boolean; signer_handle?: string; credits?: ProjectCredits }
 
 // ProjectCredits is a project's money as a member reads it, in micro-USD.
@@ -188,7 +188,7 @@ export type ProjectCredits = { balance: number; available: number; start_reserve
 // so every balance can be accounted for.
 //
 // The spread and floor are included so the top-up modal can quote a credit and
-// refuse a too-small amount before the processor is called (022b/022e). They
+// refuse a too-small amount before the processor is called. They
 // are zero on a deployment that sells no credits.
 export type Wallet = {
   balance: number
@@ -204,7 +204,7 @@ export type LedgerEntry = {
   amount: number
   kind: 'topup' | 'allocate' | 'reclaim' | 'hold' | 'release' | 'charge' | 'adjust'
   job_id?: string
-  // The project an allocate or reclaim moved credits to or from (024b).
+  // The project an allocate or reclaim moved credits to or from.
   // project_name is a snapshot taken at the move, so it still reads after the
   // project is purged. project_alive is whether the project still exists: true
   // links to it, false shows the name as plain text.
@@ -219,7 +219,7 @@ export const getWallet = () => fetch('/me/credits').then(json<Wallet>)
 
 // startCheckout opens a hosted payment page for a top-up of amountMicro, in
 // micro-USD, and returns its URL for the browser to follow. The webhook credits
-// the wallet (022b), not the return from that page, so the client only sends
+// the wallet, not the return from that page, so the client only sends
 // the person to pay and re-reads the balance when they come back.
 export const startCheckout = (amountMicro: number) =>
   fetch('/me/credits/checkout', {
@@ -261,7 +261,7 @@ export type Event = {
   tool?: string
   content?: string
   time?: string
-  // What the backend charged for this one request (006s). Absent on the events
+  // What the backend charged for this one request. Absent on the events
   // that were charged nothing, which is most of them, so it is rendered only
   // where it exists, never as a zero.
   usage?: Usage
@@ -300,15 +300,10 @@ export type PublishBlocker = {
 }
 
 // ApiError carries both halves of a refusal: the status, and the machine-
-// readable code the server put in the body.
-//
-// The message stays the bare status, because that is what every existing caller
-// compares against. The code is what a caller needs when one status means more
-// than one thing. A 409 on the public flip is either an unclear tree or a
-// profile that is not public, and those need different remedies.
-//
-// blockers is the rest of the body, for the refusals that name the sessions in
-// the way. The code says what happened; blockers says which sessions.
+// readable code the server put in the body. The message is the bare status,
+// which callers compare against; the code tells apart refusals that share a
+// status, such as a 409 on the public flip. blockers names the sessions in the
+// way, for the refusals that carry them.
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -343,9 +338,8 @@ async function refusal(r: Response): Promise<ApiError> {
 
 // json reads a successful response's body. A 2xx that does not parse, such as
 // the dev server's own HTML for a path it does not proxy or a gateway page in
-// front of the API, is a server fault and is reported as one, with its status
-// and a code. Before, r.json() threw a SyntaxError that nothing downstream
-// recognized, and every screen reported it as "you appear to be offline".
+// front of the API, is reported as a server fault with its status and the code
+// `malformed_response`. A bare SyntaxError would be read as "offline".
 async function json<T>(r: Response): Promise<T> {
   if (!r.ok) throw await refusal(r)
   try {
@@ -380,7 +374,7 @@ export const resolvePaper = (url: string) =>
   }).then(json<ResolvedPaper>)
 
 // One reference's result in a create: the paper it was recorded as, or why it
-// was not recorded. A create runs nothing (012), so the only thing that can go
+// was not recorded. A create runs nothing, so the only thing that can go
 // wrong per reference is the reference itself.
 export type PaperResult = { ref: string; key?: string; title?: string; error?: string }
 export type CreatedProject = { project_id?: string; title?: string; papers?: PaperResult[]; members?: string[]; error?: string }
@@ -395,7 +389,7 @@ export type ProjectPaper = {
   added_at: string
   sessions: number
   latest_phase?: string
-  // The bibliography, as the paper's own source declared it (037). Absent for a
+  // The bibliography, as the paper's own source declared it. Absent for a
   // paper whose reference nothing could be looked up for.
   record?: PaperRecord
   // Which fields somebody corrected by hand. Enrichment never touches these.
@@ -418,7 +412,7 @@ export type PaperRecord = {
   abstract?: string
 }
 
-// PaperCitation is one paper as a list carries it (043): its title and the
+// PaperCitation is one paper as a list carries it: its title and the
 // three fields a citation line is made of. The public registry sends this
 // rather than the whole record, because an abstract is paragraphs long and a
 // page of cards would otherwise ship one per card to print one line per card.
@@ -473,7 +467,7 @@ export const removePaper = (id: string, key: string) =>
   fetch(`/projects/${id}/papers?key=${encodeURIComponent(key)}`, { method: 'DELETE' }).then(ok)
 
 // movePaper refiles a paper, and the sessions that are runs of it, under
-// another project (035). It is the lead's at both ends, and is refused 409
+// another project. It is the lead's at both ends, and is refused 409
 // while a run is still in flight, while either project is published or in the
 // trash, or when the destination already holds that paper.
 //
@@ -488,14 +482,10 @@ export const movePaper = (id: string, key: string, toProject: string) =>
 
 // startSession runs one paper the project holds. This is the call that spends:
 // it is refused 402 when the project's pot cannot cover the start reserve, and
-// 409 when that paper is already running.
-//
-// tier is the model the session runs on (031). Omitted means the caller did not
-// choose and the engine's default applies, which is what every call did before
-// the choice existed; a tier the server does not offer is refused 400.
-// startSession starts a paper's session. The choice names the tier and, where
-// the deployment offers them (048), the runtime and one exact model; a field
-// left empty is not sent, so the server's default applies.
+// 409 when that paper is already running. The choice names the tier and, where
+// the deployment offers them, the runtime and one exact model. A field left
+// empty is not sent, so the server's default applies; a tier the server does
+// not offer is refused 400.
 export const startSession = (id: string, paperKey: string, choice?: { tier?: string; runtime?: string; model?: string }) =>
   fetch(`/projects/${id}/sessions`, {
     method: 'POST',
@@ -540,7 +530,7 @@ export type EffortOption = {
   error?: string
 }
 
-// A runtime a session may run on (048). payer says who pays: the project's
+// A runtime a session may run on. payer says who pays: the project's
 // credits, or the person's own Latere wallet. models lists the exact models a
 // person may pick there, and is absent where the runtime offers only levels.
 export type RuntimeOption = {
@@ -554,7 +544,7 @@ export type RuntimeOption = {
 }
 
 // draftDescription asks the deployment's configured model for a description of
-// this project (039). It writes nothing: what comes back is a suggestion, and
+// this project. It writes nothing: what comes back is a suggestion, and
 // the project's own field changes only when somebody saves it. The project pays
 // for the call whether or not they keep the answer.
 export const draftDescription = (id: string) =>
@@ -586,7 +576,7 @@ export const renameProject = (id: string, title: string) =>
     body: JSON.stringify({ title }),
   }).then(json<Project>)
 
-// describeProject writes what a project is about (038). Empty clears it, which
+// describeProject writes what a project is about. Empty clears it, which
 // is a deliberate edit and not the same as leaving the field alone.
 export const describeProject = (id: string, description: string) =>
   fetch(`/projects/${id}`, {
@@ -599,7 +589,7 @@ export const describeProject = (id: string, description: string) =>
 // job, which is failed with a "cancelled" cause.
 export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { method: 'POST' }).then(json<Job>)
 
-// deleteSession removes one finished session from the app (032). Owner-only, and
+// deleteSession removes one finished session from the app. Owner-only, and
 // refused 409 `session_running` while it is still in flight; stop it first.
 //
 // It is what clears a run that began publishing and never finished: such a run
@@ -609,8 +599,8 @@ export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { metho
 export const deleteSession = (id: string) => fetch(`/jobs/${id}`, { method: 'DELETE' }).then(ok)
 
 // listProjects returns every project the caller may work in, their own and the
-// ones they were invited to, newest-modified first, each with a session count
-// (018). The session cookie scopes the result server-side.
+// ones they were invited to, newest-modified first, each with a session count.
+// The session cookie scopes the result server-side.
 export const listProjects = () => fetch('/projects').then(json<ProjectView[]>)
 
 // trashProject moves an owned project to the trash. It rejects 409
@@ -625,7 +615,7 @@ export const restoreProject = (id: string) => fetch(`/projects/${id}/restore`, {
 // that was never thrown away; the reversible step cannot be skipped.
 export const purgeProject = (id: string) => fetch(`/projects/${id}?purge=1`, { method: 'DELETE' }).then(ok)
 
-// archiveUrl is where a project's whole output is downloaded from (020): one zip
+// archiveUrl is where a project's whole output is downloaded from: one zip
 // of every session's committed tree, built server-side from the repositories the
 // app already proxies file by file. It is a URL rather than a fetch because the
 // browser's own download should handle a body this size; a fetch would buffer
@@ -668,9 +658,8 @@ export const saveProfile = (p: Profile) =>
 export const getPublicProfile = (handle: string) =>
   fetch(`/profiles/${encodeURIComponent(handle)}`).then(json<PublicProfile>)
 
-// The current responsibility-attestation text version the sign-off records. v2
-// added the signer snapshot and the published contact, so the text a signer
-// affirms changed with it (006n).
+// The version of the responsibility-attestation text a sign-off records. It
+// changes whenever the text a signer affirms changes.
 const ATTESTATION_VERSION = 'v2'
 
 // The signer as the publish wizard confirmed them. The contact is required; the
@@ -684,12 +673,12 @@ export type SignOff = {
   signed_off_scholar?: string
 }
 
-// makeProjectPublic is the owner's public flip with a recorded sign-off. See
-// withdrawProject for the reverse (006o).
-// flipRepo, true by default, makes the GitHub repository public too; false
-// keeps the repo private while the in-app artifacts still go public. It rejects
-// with the HTTP status, so the caller can tell a validation refusal, 400, from
-// a project whose tree never cleared the gate, 409.
+// makeProjectPublic is the owner's public flip with a recorded sign-off; see
+// withdrawProject for the reverse. flipRepo, true by default, makes the GitHub
+// repository public too; false keeps the repo private while the in-app
+// artifacts still go public. It rejects with the HTTP status, so the caller can
+// tell a validation refusal, 400, from a project whose tree never cleared the
+// gate, 409.
 export const makeProjectPublic = (id: string, signOff: SignOff, flipRepo = true) =>
   fetch(`/projects/${id}/public`, {
     method: 'POST',
@@ -697,7 +686,7 @@ export const makeProjectPublic = (id: string, signOff: SignOff, flipRepo = true)
     body: JSON.stringify({ ...signOff, attestation_version: ATTESTATION_VERSION, flip_repo: flipRepo }),
   }).then(json<Project>)
 
-// withdrawProject ends a publication (006o): the project returns to private and
+// withdrawProject ends a publication: the project returns to private and
 // every repository it owns is closed on the forge. The sign-off is kept, because
 // a withdrawal retracts a publication and does not erase the attestation, so the
 // returned project still carries its signed_off_* fields.
@@ -717,7 +706,7 @@ export const getTranscript = (id: string) => fetch(`/jobs/${id}/transcript`).the
 // so they work even when the underlying repository stays private.
 export const getReproduction = (id: string) => fetch(`/jobs/${id}/reproduction`).then(json<Reproduction>)
 
-// getFindings returns the run's own verdict.json (021a): the boundary table,
+// getFindings returns the run's own verdict.json: the boundary table,
 // the decisions, the scorecard, and what the authors released. It is a separate
 // call from getReproduction on purpose: that one is the system's manifest, this
 // one is the agent's claims, and a session that has one may not have the other.
@@ -734,7 +723,7 @@ export const getArtifact = (id: string, path: string) =>
     return r.text()
   })
 
-/* ─── Platform admin (006k) ─── */
+/* ─── Platform admin ─── */
 
 // GrantView is one row of the people table: the ACL row, whether it has bound
 // to a principal yet, and what their wallet holds in micro-USD.
@@ -746,7 +735,7 @@ export type GrantView = {
   granted_at?: string
   wallet: number
   // frozen is whether this account is in view-only mode: a negative wallet with
-  // no admin override (022d), derived the same way the gate derives it.
+  // no admin override, derived the same way the gate derives it.
   frozen?: boolean
 }
 
@@ -760,10 +749,10 @@ export type PlatformSettings = {
   overdraft_cap: number
   rates: RateCard
   // draft is which model writes a project's description when somebody asks for
-  // one (039). No credential: that is the deployment's, from its environment.
+  // one. No credential: that is the deployment's, from its environment.
   draft?: DraftConfig
   // latere_environments are the environments a session on the Latere
-  // platform may name (051); known_latere_environments the ones the runtime
+  // platform may name; known_latere_environments the ones the runtime
   // knows, which the console offers. base is always among the first.
   latere_environments?: string[]
   known_latere_environments?: string[]
@@ -792,12 +781,12 @@ export type ModelRates = { model: string; input: number; output: number; cache_r
 export type RateCard = { models: ModelRates[] }
 
 // listGrants returns the people table. With negativeOnly it returns only the
-// accounts that owe, which are the debts an operator acts on (022d).
+// accounts that owe, which are the debts an operator acts on.
 export const listGrants = (negativeOnly = false) =>
   fetch('/admin/access' + (negativeOnly ? '?filter=negative' : '')).then(json<GrantView[]>)
 
 // unfreezeAccount grants a one-shot override so a negative-wallet account may
-// work again; refreezeAccount clears it (022d). getSolvency reads the platform's
+// work again; refreezeAccount clears it. getSolvency reads the platform's
 // outstanding sold liability, the sum of all wallets and all pots, which the
 // operator watches.
 export const unfreezeAccount = (email: string) =>

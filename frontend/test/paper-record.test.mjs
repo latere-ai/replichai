@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for a paper's bibliography (037).
-//
-// A project used to show a title and the string somebody typed to name the
-// paper. Everything else, namely who wrote it, where it appeared and when, was
-// fetched during resolution and discarded, so a project read as a list of URLs.
+// A browser regression test for a paper's bibliography: who wrote it, where it
+// appeared and when, so a project reads as a list of papers rather than URLs.
 //
 // Five things have to hold:
 //
@@ -174,8 +171,7 @@ try {
     await p.waitForSelector('[data-test="paper-abstract"]', { timeout: 15000 })
     await settled(p)
 
-    // The title is not the item that shrinks: it gets a whole line of its own,
-    // which is the complaint this layout answers.
+    // The title is not the item that shrinks: it gets a whole line of its own.
     const title = await p.$eval('.paper-title', (e) => ({
       w: Math.round(e.getBoundingClientRect().width),
       full: e.scrollWidth <= e.clientWidth + 1 || e.getBoundingClientRect().height > 20,

@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// A browser regression test for the app's addresses (013).
+// A browser regression test for the app's addresses.
 //
-// The bug it guards: navigation used to be one useState and the address bar never
-// moved, so a reload started over at the dashboard, no screen could be linked to,
-// and Back left the app. Every assertion here is about the browser's own state,
-// namely the location after a click, the screen after a reload and the screen
-// after Back, which a unit test of pathOf/viewOf cannot reach.
+// It guards that every screen and tab has an address: a click moves the
+// address bar, a reload lands on the same screen, and Back and Forward walk
+// in-app history. These are claims about the browser's own state, which a unit
+// test of pathOf/viewOf cannot reach.
 //
 // It drives Chrome over a Vite dev server with the API mocked. Run it with
 // `bun run test:browser`.
@@ -20,10 +19,8 @@ const JOB = 'job-a'
 const JOB_B = 'job-b'
 const project = { id: PROJECT, owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) }
 
-// Two papers, each with its own published session (012, 015). This is the shape
-// the reported defect needed: the project's artifacts and verdict tabs picked
-// the newest session with a repository and showed it under the project's own
-// name, so paper B hid paper A entirely.
+// Two papers, each with its own published session, so a screen that shows one
+// session's results under the other's paper is caught.
 const run = (id, key, ref, repo) => ({
   id,
   kind: 'replicate',
@@ -52,7 +49,7 @@ const shownAs = { passed: 'Passed', needs_revision: 'Needs revision' }
 // Each session's own findings, so the project's verdict list can be asked to
 // keep one paper's verdict off another paper's row. The two words differ from
 // the grades above on purpose: a grade judges the run against the rubric, a
-// verdict judges the paper, and this test now asserts both are shown where they
+// verdict judges the paper, and this test asserts both are shown where they
 // belong rather than one standing in for the other.
 const findingsOf = {
   [JOB]: {
@@ -123,8 +120,8 @@ try {
   // Which screen is up, read off the DOM rather than off the app's own state.
   const screen = () =>
     page.evaluate(() => {
-      // Both screens carry a tab strip now (015), so a session is told by its
-      // own container rather than by the transcript happening to be open.
+      // Both screens carry a tab strip, so a session is told by its own
+      // container rather than by the transcript happening to be open.
       const tabOn = (root) => root.querySelector('.tab.on')?.textContent?.trim() ?? '?'
       const session = document.querySelector('.session-head .detail-tabs')
       if (session) return 'session:' + tabOn(session)
@@ -149,11 +146,8 @@ try {
   await page.waitForSelector('.detail-tabs')
   if ((await path()) !== `/p/${PROJECT}`) fail(`opening a project left the address at ${await path()}, want /p/${PROJECT}`)
 
-  // The reported defect, end to end (015). Two papers, each with a published
-  // session: the artifacts of each must be the artifacts of that run. The old
-  // project-level tab showed whichever session was newest, under an address that
-  // named the project, so paper A's reproduction was in the product and
-  // reachable by nothing.
+  // Two papers, each with a published session: the artifacts of each must be
+  // the artifacts of that run.
   const filesShown = () => page.evaluate(() => [...document.querySelectorAll('.file-row .row-title')].map((e) => e.textContent.trim()))
   for (const [id, want] of [
     [JOB, filesOf[JOB]],
@@ -170,10 +164,8 @@ try {
     if ((await screen()) !== 'session:Artifacts') fail(`${await path()} rendered ${await screen()}`)
   }
 
-  // Each session's record is its own, too. The grade lives on the run record
-  // rather than under a "Verdict" heading now, because it is the rubric's
-  // judgment of the run rather than the paper's verdict, but the invariant 015
-  // wrote this for is unchanged: one session's pane must never show another's.
+  // Each session's record is its own, too: one session's pane must never show
+  // another's grade.
   for (const id of [JOB, JOB_B]) {
     await page.open(`/p/${PROJECT}/s/${id}/verdict`)
     await page.waitForSelector('[data-test="run-record"]')
@@ -194,8 +186,8 @@ try {
   await addressed(`/p/${PROJECT}/s/${JOB}`)
   if ((await path()) !== `/p/${PROJECT}/s/${JOB}`) fail(`Back from a session tab went to ${await path()}`)
 
-  // The project's own artifacts tab is gone: there is no project-wide repository
-  // to browse. The address falls back to the project, as any stray segment does.
+  // There is no project-wide repository to browse, so /p/{id}/artifacts falls
+  // back to the project, as any stray segment does.
   await page.open(`/p/${PROJECT}/artifacts`)
   await page.waitForSelector('.detail-tabs')
   if ((await path()) !== `/p/${PROJECT}`) fail(`the retired project artifacts address left the reader at ${await path()}`)
@@ -288,8 +280,8 @@ try {
   await addressed('/')
   if ((await path()) !== '/') fail(`two Backs from a session ended at ${await path()}, want /`)
 
-  // The rail's own destinations, each at the address the spec names. The registry
-  // and the console are not at /public and /admin because the API owns both.
+  // The rail's own destinations, each at its address. The registry and the
+  // console are not at /public and /admin because the API owns both.
   for (const [selector, want] of [
     ['registry', '/registry'],
     ['console', '/console'],
@@ -309,8 +301,8 @@ try {
   if ((await path()) !== '/new') fail(`new project is at ${await path()}, want /new`)
 
   // One project screen after another. The screen is remounted per project, so
-  // nothing of the first survives into the second; reusing the instance showed
-  // the previous project's title and sessions until the fetch landed.
+  // nothing of the first survives into the second while its fetch is in
+  // flight.
   await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('.detail-tabs')
   const heading = () => page.evaluate(() => document.querySelector('.detail-title')?.textContent?.trim() ?? '')
@@ -341,11 +333,9 @@ try {
   await page.waitForSelector('.detail-tabs')
   if ((await path()) !== `/p/${PROJECT}`) fail(`a mistyped tab left the address at ${await path()}, want /p/${PROJECT}`)
 
-  // An address the app does not own says so, at the address that was asked for
-  // (042c). It used to render the dashboard and rewrite the URL to `/`, which
-  // was a page nobody asked for and, to a crawler, an unbounded set of URLs
-  // answering 200 with identical content. The tab says it too, and Back still
-  // works.
+  // An address the app does not own says so, at the address that was asked
+  // for, rather than rewriting the URL to `/`. The tab says it too, and the
+  // screen offers a way back.
   await page.open('/nonsense')
   await page.waitForSelector('[data-test="not-found"]')
   if ((await path()) !== '/nonsense') fail(`a miss corrected the address to ${await path()}, want /nonsense`)
@@ -360,7 +350,7 @@ try {
   await page.waitForSelector('.row')
   if ((await path()) !== '/') fail(`leaving the not-found screen went to ${await path()}`)
 
-  // The tab follows the screen after the first paint (042a): the head the server
+  // The tab follows the screen after the first paint: the head the server
   // wrote is for the address the reader arrived at, and nothing on the server is
   // involved from the second screen onwards.
   await page.open(`/p/${PROJECT}`)

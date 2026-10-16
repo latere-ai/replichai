@@ -4,9 +4,7 @@
 // Runs the browser suite: every test/*.test.mjs, against one Vite server and one
 // browser, a few at a time, and reports every failure rather than the first.
 //
-// It replaces a `&&` chain in package.json that stopped at the first failing
-// file and had to be edited to admit a new one. A file is in the suite when it
-// is in the directory.
+// A file is in the suite when it is in the directory.
 //
 //   node test/run.mjs               # everything
 //   node test/run.mjs session       # files whose name contains "session"
@@ -36,11 +34,10 @@ if (!findChrome()) {
 
 const jobs = Math.max(1, Number(process.env.JOBS) || Math.min(4, Math.ceil(availableParallelism() / 2)))
 const vite = await startVite()
-// One browser for the run, the way there is one server for it. A file that
-// launched its own held a browser per job, and a browser that dies under that
-// pressure takes its file down with a timeout that names an element rather than
-// the browser. Each file still gets its own context, so nothing is shared but
-// the process.
+// One browser for the run, the way there is one server for it: a browser per
+// file can die under load and take its file down with a timeout that names an
+// element rather than the browser. Each file still gets its own context, so
+// nothing is shared but the process.
 // `join: null` because the runner is the owner: it names the browser it started
 // and must not read that name back. An inherited WEB_TEST_WS, left in a shell by
 // an earlier run, otherwise points this run at a browser it does not own and

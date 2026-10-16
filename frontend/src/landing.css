@@ -1,15 +1,6 @@
-/* The landing (029, rebuilt by 033, set like a paper by 047).
-
-   The page is set the way research is set. Sections are numbered under a rule,
-   with the number and name in a margin column that stays beside the reader,
-   instead of being boxed in tinted slabs: on paper a block of color around a
-   section says "advertisement", and a rule says "next section". One face,
-   Inter, upright throughout: headings in its semibold, text in its regular.
-   Figure 1 is captioned underneath and the tables above, as a journal sets
-   them, and a table has three rules and nothing else.
-
-   Every color is a token from the ink ladder or the product azure, so the page
-   holds in both themes with no second palette. */
+/* The signed-out landing. Each section sits under a rule with its name in a
+   margin column, rather than in a tinted band. Every color is a token from the
+   ink ladder or the product azure, so the page holds in both themes. */
 
 .landing {
   /* The platform landing's container: 1200px, with 48px either side until the
@@ -17,8 +8,8 @@
   --lp-w: min(1200px, calc(100% - 96px));
   --lp-margin: 220px;
   --lp-gutter: 40px;
-  /* The window never scrolls: the header is fixed in the column and .lp-body
-     is the page's one scroll area, so elastic overscroll moves only the body.
+  /* The window never scrolls. The header is the column's first row and
+     .lp-body is the page's one scroll area, so overscroll moves only the body.
      dvh follows a phone's collapsing browser bar; vh is the fallback. */
   height: 100vh;
   height: 100dvh;
@@ -176,7 +167,7 @@
   color: var(--fg-3);
 }
 
-/* ── Figure 1 ─────────────────────────────────────────────────────────────── */
+/* ── The hero figure ──────────────────────────────────────────────────────── */
 
 .hf {
   margin: 0;
@@ -275,7 +266,6 @@
   font-weight: 500;
   fill: var(--fg-2);
 }
-/* Numerals are Inter's: the serif's 1 is a bare stroke that reads as an l. */
 .hf-run-n {
   font-family: var(--font-sans);
   font-size: 50px;
@@ -322,9 +312,8 @@
 
 /* ── Each section ─────────────────────────────────────────────────────────── */
 
-/* A section is a rule, a margin column with its number and name, and a body
-   column. The margin label stays beside the reader while the section scrolls,
-   the way a running head does. */
+/* A section is a rule, a margin column with its name, and a body column. The
+   name stays in view while its section scrolls. */
 .lp-section {
   width: var(--lp-w);
   margin: 120px auto 0;
@@ -376,7 +365,7 @@
   color: var(--fg-2);
 }
 
-/* ── 1 The boundary ───────────────────────────────────────────────────────── */
+/* ── The boundary ─────────────────────────────────────────────────────────── */
 
 .landing-points {
   display: grid;
@@ -400,7 +389,7 @@
   color: var(--fg-2);
 }
 
-/* ── 2 A session, step by step ────────────────────────────────────────────── */
+/* ── A session, step by step ──────────────────────────────────────────────── */
 
 .lp-walk-grid {
   display: grid;
@@ -557,7 +546,7 @@
 
 /* ── Tables ───────────────────────────────────────────────────────────────── */
 
-/* A table's caption sits above it, as a journal sets one. */
+/* A table's caption sits above it. */
 .lp-table-caption {
   margin: 0 0 12px;
   font-size: 13px;
@@ -569,7 +558,7 @@
   color: var(--fg-1);
 }
 
-/* ── 3 What comes back ────────────────────────────────────────────────────── */
+/* ── What comes back ──────────────────────────────────────────────────────── */
 
 /* Three rules: a heavier one above and below the table, and a light one under
    its head. No fills, no vertical rules, no rule between rows. */
@@ -609,7 +598,7 @@
   color: var(--warn);
 }
 
-/* ── 4 A verdict you can check ────────────────────────────────────────────── */
+/* ── A verdict you can check ──────────────────────────────────────────────── */
 
 .lp-window {
   border: 1px solid var(--border);
@@ -796,7 +785,7 @@
   color: var(--fg-3);
 }
 
-/* ── 5 Who it is for ──────────────────────────────────────────────────────── */
+/* ── Who it is for ────────────────────────────────────────────────────────── */
 
 .lp-fields {
   display: grid;
@@ -820,7 +809,7 @@
   color: var(--fg-2);
 }
 
-/* ── 6 What it costs ──────────────────────────────────────────────────────── */
+/* ── What it costs ────────────────────────────────────────────────────────── */
 
 .lp-costs {
   list-style: none;
@@ -879,7 +868,6 @@
   font-size: 14px;
   color: var(--fg-1);
 }
-/* An article's title is upright in a reference list. */
 .lp-card-title {
   font-size: 16px;
   font-weight: 600;
@@ -957,15 +945,11 @@
 }
 
 /* ── The shared footer ────────────────────────────────────────────────────────
-   latere-ui's SiteFooter is one shape on every Latere site and ships its own
-   stylesheet, which this app does not restyle. That sheet reads --text and
-   its two quieter steps, which the ink ladder names --fg-1 to --fg-3, so the
-   wrapper around the footer joins the two by aliasing, and the footer and its
-   menus inherit the names from it. --accent needs no alias: the ink ladder
-   defines it. The wrapper also sets the footer's distance from the close.
-
-   The alternative, importing `latere-ui/tokens`, is not used: that sheet
-   defines --bg, --bg-surface and --bg-raised at :root for the whole page. */
+   latere-ui's SiteFooter ships its own stylesheet, which this app does not
+   restyle. It reads --text and its two quieter steps, so the wrapper aliases
+   them to the ink ladder's --fg-1 to --fg-3 and the footer inherits them.
+   Importing `latere-ui/tokens` instead would redefine --bg, --bg-surface and
+   --bg-raised at :root for the whole page. */
 .lp-footer-wrap {
   --text: var(--fg-1);
   --text-secondary: var(--fg-2);
@@ -1009,9 +993,9 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
   }
-  /* One column: there is no second column for a plate to be sticky in, so the
-     artifacts sit under the steps and every one of them is open. The scroll
-     driver in landing.tsx is disabled at this width for the same reason. */
+  /* One column: the panel sits under the steps and is not sticky, and every
+     plate is open, because the scroll driver in landing.tsx does not run at
+     this width. */
   .lp-walk-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 28px;
@@ -1031,7 +1015,7 @@
   }
 }
 
-/* The app's phone breakpoint (030). */
+/* The app's phone breakpoint. */
 @media (max-width: 760px) {
   .landing {
     --lp-w: calc(100% - 32px);
@@ -1046,8 +1030,8 @@
     margin-top: 96px;
     padding-top: 56px;
   }
-  /* Figure 1's tight frame at this width (hero-figure.tsx), so the box keeps
-     the frame's ratio from the first paint. */
+  /* The figure's tight frame at this width (FRAME.narrow in hero-figure.tsx),
+     so the box keeps that ratio from the first paint. */
   .hf-svg {
     aspect-ratio: 432 / 470;
   }
@@ -1055,8 +1039,7 @@
 
 /* ── Motion ───────────────────────────────────────────────────────────────── */
 
-/* With the driver disabled every artifact is open at once, which is taller
-   than the panel it sits in. Without motion there is nothing to cap. */
+/* Under reduced motion the figure never runs, so it offers no pause control. */
 @media (prefers-reduced-motion: reduce) {
   .hf-pause {
     display: none;
@@ -1065,8 +1048,7 @@
 
 /* Motion, for readers who have not asked for less of it. Everything above is
    already the resting state, so this adds movement and never removes content.
-   The platform's tokens: 150ms for a hover, 220ms for a thing arriving, one
-   curve. A section arrives once, rising 8px. */
+   A section arrives once, rising 8px. */
 @media (prefers-reduced-motion: no-preference) {
   .lp-hero,
   .lp-section,
@@ -1082,9 +1064,8 @@
     transform: none;
   }
   /* Inside a revealed section the rows appear in reading order. The
-     walkthrough's steps are not in this list: their opacity belongs to the
-     scroll driver, and two writers on one property left a step stuck at a
-     third of its opacity. */
+     walkthrough's steps are not in this list: the scroll driver owns their
+     opacity, and a second writer on that property would fight it. */
   .lp-file,
   .lp-part,
   .lp-strip > li {
@@ -1100,7 +1081,7 @@
     transform: none;
   }
 
-  /* Figure 1 draws itself once: the outer arc, then the inner ring, then its
+  /* The figure draws itself once: the outer arc, then the inner ring, then its
      graduation, its stations in order, and last the marker that will travel
      it. After that the only motion is the marker's. */
   .hf-outer,
@@ -1173,8 +1154,8 @@
   }
 }
 
-/* The offer of the app's source under the footer's lockup (source.tsx). It
-   renders nothing until the repository is public. */
+/* The link to the app's source under the footer's lockup (source.tsx). It
+   renders nothing while the repository is private. */
 .lp-footer-brand {
   display: inline-flex;
   flex-direction: column;

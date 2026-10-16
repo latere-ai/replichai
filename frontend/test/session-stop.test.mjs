@@ -3,15 +3,14 @@
 
 // A browser regression test for the Stop control on a running session.
 //
-// The bug it guards: stopping is not instant. POST /jobs/{id}/cancel returns as
-// soon as the worker has been signaled, and the session it reads back can still
-// be running because the backend run has yet to come down. The row cleared its
-// "stopping" flag the moment that response landed, so the button snapped back to
-// a live, red "Stop" over a session still badged RUNNING, and a second click
-// fired a second cancel.
+// It guards that Stop stays pending until the session settles. Stopping is not
+// instant: POST /jobs/{id}/cancel returns as soon as the worker has been
+// signaled, and the session it reads back can still be running while the
+// backend run comes down. A button that re-armed on that response would offer
+// a second cancel over a session still badged RUNNING.
 //
-// "The button says Stopping… while the request is in flight" passes against the
-// broken code too; that part always worked. The discriminating measurement is
+// "The button says Stopping… while the request is in flight" is not enough to
+// show that. The discriminating measurement is
 // taken after the response has landed: with the session still non-terminal,
 // the button must still be disabled and still read Stopping…. Run it with
 // `bun run test:browser`.
@@ -72,7 +71,7 @@ try {
   }
 
   // An early mismatch means the mock or the row changed, and the measurement
-  // below would not be the reported bug, so those cases stop the run.
+  // below would not test what it is meant to, so those cases stop the run.
   await (async () => {
     await page.open('/p/proj-1')
     await page.waitForSelector('.rows .row button.btn')
@@ -85,11 +84,11 @@ try {
 
     // Wait for the cancel to land and the row to have re-rendered on its answer.
     // The re-render itself is the measurement, so it is given a moment rather
-    // than waited for: the broken row and the fixed one both change here.
+    // than waited for: the row changes here whether or not it is correct.
     await waitUntil(() => cancels === 1, { what: 'the cancel to be sent' })
     await sleep(300)
 
-    // The report. The session is still running, so the stop is still in flight.
+    // The session is still running, so the stop is still in flight.
     const after = await readBtn()
     if (!after) return fail('the Stop button vanished from a session that is still running')
     check(after.disabled, `the Stop button re-armed while the session was still running — a second click would send a second cancel (${JSON.stringify(after)})`)

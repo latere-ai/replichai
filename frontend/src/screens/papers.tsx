@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// What a project is about (012, 015): the papers card, each paper carrying the
-// sessions that are runs of it, the citation and abstract under its title, and
-// the dialogs that correct a paper's record or refile it under another project
-// (035, 037).
+// What a project is about: the papers card, each paper carrying the sessions
+// that are runs of it, the citation and abstract under its title, and the
+// dialogs that correct a paper's record or refile it under another project.
 
 import { Fragment, useEffect, useState } from 'react'
 import {
@@ -34,18 +33,12 @@ import { isMine } from '../account'
 import { CardHead, Empty } from './shared'
 import { DeleteSessionDialog, SessionRow } from './sessions'
 
-// PapersCard is what a project is about, and where a run is started (012). Each
-// paper carries the sessions that are runs of it (015).
+// PapersCard is what a project is about, and where a run is started. Each
+// paper carries the sessions that are runs of it.
 //
-// Adding a paper and starting a session are separate acts. Adding a paper says
-// what this project means to reproduce and costs nothing; starting a session
-// runs it and spends. When the two were one act, creating a project could be
-// refused for money, and a paper whose only run failed disappeared from the
-// project it belonged to.
-//
-// Until 015 the sessions were a flat list beside this card, so a run was not
-// tied to the paper it was a run of. They are nested now, so the screen reads
-// the way the records do.
+// Adding a paper and starting a session are separate acts. Adding a paper costs
+// nothing; starting a session spends. Kept apart, creating a project is never
+// refused for money, and a paper whose only run failed stays in its project.
 export function PapersCard({
   i18n,
   me,
@@ -80,26 +73,24 @@ export function PapersCard({
   const [adding, setAdding] = useState(false)
   const [busyKey, setBusyKey] = useState('')
   const [err, setErr] = useState('')
-  // Where the next session runs and on what (031, 048): the runtime, the
-  // Effort level and, on the Latere platform, one specific model. It is
-  // deliberately not persisted: a remembered choice would quietly become the
-  // project's policy, and a per-project default is a decision with a
-  // different owner.
+  // Where the next session runs and on what: the runtime, the Effort level
+  // and, on the Latere platform, one specific model. Not persisted, because a
+  // remembered choice would quietly become the project's policy.
   const [choice, setChoice] = useState<Choice>({ runtime: '', tier: '', model: '' })
   const [runtimes, setRuntimes] = useState<RuntimeOption[]>([])
-  // The session waiting on a delete confirmation (032). One dialog for the card
+  // The session waiting on a delete confirmation. One dialog for the card
   // rather than one per row, the way the projects list holds its trash dialog.
   const [dropping, setDropping] = useState<Job | null>(null)
-  // The paper waiting on a move (035). One dialog for the card, as above.
+  // The paper waiting on a move. One dialog for the card, as above.
   const [moving, setMoving] = useState<ProjectPaper | null>(null)
-  // The paper being corrected (037), and whether a fill-in is running.
+  // The paper being corrected, and whether a fill-in is running.
   const [editing, setEditing] = useState<ProjectPaper | null>(null)
   const [filling, setFilling] = useState(false)
   const [filled, setFilled] = useState<number | null>(null)
   const refresh = onRefresh
-  // Only the owner may remove a session, the same rule 019 sets for projects.
-  // The trashed clause matches the server, which refuses every write on a
-  // project in the trash.
+  // Only the owner may remove a session, the same rule as for projects. The
+  // trashed clause matches the server, which refuses every write on a project
+  // in the trash.
   const mayDelete = isMine(me, project.owner) && !project.deleted_at
 
   // The tiers and their prices come from the server. Read once per mount, and
@@ -162,11 +153,9 @@ export function PapersCard({
     }
   }
 
-  // Whether the project can afford another run. The button says so before it is
-  // pressed rather than after a refusal, and the pot it is short of is on the
-  // same screen. A run the person pays for from their own Latere wallet does
-  // not draw on the project's credits (048), so the project's balance does not
-  // hold it back.
+  // Whether the project can afford another run, so the button says so before
+  // it is pressed. A run paid from the person's own Latere wallet does not draw
+  // on the project's credits, so the project's balance does not hold it back.
   const chosen = runtimes.find((r) => r.name === choice.runtime) ?? runtimes.find((r) => r.default)
   const short = chosen?.payer !== 'person' && !!credits && credits.available < credits.start_reserve
   const shortWhy = credits ? t('startNeedsCredits', { reserve: formatUSD(i18n.lang, credits.start_reserve) }) : ''
@@ -174,9 +163,8 @@ export function PapersCard({
   return (
     <div className="card">
       <CardHead label={t('papers')} icon="fileText" tone="var(--accent)">
-        {/* The fill-in, for the papers recorded before a paper had a
-            bibliography (037). Offered only when there is something to fill;
-            a button that always reports nothing to do serves no purpose. */}
+        {/* The fill-in looks up missing bibliography details. Offered only
+            when some paper is missing them. */}
         {mayWork && grouped.papers.some((g) => needsDetails(g.paper)) && (
           <button
             className="btn ghost sm"
@@ -261,7 +249,7 @@ export function PapersCard({
                   </a>
                 {/* The count is the length of what this row lists. The server
                     sends one too, but it is the input to the never-remove-a-run
-                    rule (012), not a second answer to the same question. */}
+                    rule, not a second answer to the same question. */}
                   <span className="muted small paper-state">
                     {g.sessions.length > 0 ? countOf(t, 'sessionCount', g.sessions.length) : t('paperNeverRun')}
                   </span>
@@ -421,20 +409,16 @@ function Citation({ i18n, paper }: { i18n: I18n; paper: ProjectPaper }) {
   )
 }
 
-// Abstract is what the paper is about, in its own source's words (037).
-//
-// Three lines, then "more". Long enough to tell two papers apart, short enough
-// that a project holding six of them still shows its sessions without a scroll.
-// Expanding is per paper and per visit, because a preference about somebody
-// else's abstract is not worth storing.
+// Abstract is what the paper is about, in its own source's words. Three lines,
+// then "more": enough to tell two papers apart while a project of six still
+// shows its sessions. Expanding is per paper and per visit, and not stored.
 function Abstract({ i18n, text }: { i18n: I18n; text?: string }) {
   const { t } = i18n
   const [open, setOpen] = useState(false)
   if (!text) return null
-  // The clamp is CSS, so "is it actually longer than three lines" is a layout
-  // question; the control is offered from a length that cannot fit in three
-  // lines at this measure rather than from a measurement that would force a
-  // reflow to answer.
+  // The clamp is CSS. The control is offered from a length that cannot fit in
+  // three lines at this measure, rather than from a measurement that would
+  // force a reflow.
   const long = text.length > 260
   return (
     <div className="paper-abstract-wrap">
@@ -463,7 +447,7 @@ function Abstract({ i18n, text }: { i18n: I18n; text?: string }) {
 // shortRef renders a reference as the identifier it is: a DOI or arXiv id
 // without the URL scaffolding, and anything else as its host and last segment.
 // The full reference is the link's target, so nothing is lost by not printing
-// it, and a 60-character URL was taking a third of the row.
+// a long URL that would take a third of the row.
 function shortRef(ref: string): string {
   const trimmed = ref.trim()
   const doi = trimmed.match(/10\.\d{4,9}\/\S+/)
@@ -479,13 +463,12 @@ function shortRef(ref: string): string {
   }
 }
 
-// EditPaperDialog corrects a paper's record (037). What it writes is permanent:
-// the server marks every corrected field, so the next lookup fills only what is
+// EditPaperDialog corrects a paper's record. What it writes is permanent: the
+// server marks every corrected field, so the next lookup fills only what is
 // still empty and never puts a source's wrong answer back.
 //
-// Authors are one field, one per line. A list of people is what somebody pastes
-// from a reference manager, and a row-per-author editor would make correcting a
-// twelve-author paper a chore for no gain in precision.
+// Authors are one field, one per line, which is what a reference manager
+// pastes.
 function EditPaperDialog({
   i18n,
   project,
@@ -596,12 +579,12 @@ function EditPaperDialog({
 }
 
 // MovePaperDialog refiles one paper, and its replications, under another
-// project (035).
+// project.
 //
 // The destinations are the caller's own projects that are private and not in
-// the trash. Those are the same three things the server checks, so the list
-// offers nothing that would be refused. The server still decides: it authorizes
-// a lead of either end, which this picker does not yet surface.
+// the trash, the same three things the server checks, so the list offers
+// nothing that would be refused. The server also lets a lead of either end
+// move a paper, which this picker does not list.
 function MovePaperDialog({
   i18n,
   project,

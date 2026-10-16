@@ -4,11 +4,11 @@
 import { expect, test } from 'bun:test'
 import { countOf, readLang, translator } from './i18n'
 
-// The language is remembered in localStorage, and localStorage holds whatever
-// was last written there, by an older build, by another tab, or by hand. It used
-// to be trusted as it was, so a value naming no locale ('fr') reached the string
-// table as an undefined block and the first t() threw. Anything unrecognised is
-// English, the same rule the theme follows for its stored mode.
+// The language is remembered in localStorage, which holds whatever was last
+// written there, by another build, another tab, or by hand. A value naming no
+// locale ('fr') must not reach the string table as an undefined block, so
+// anything unrecognized is English, the same rule the theme follows for its
+// stored mode.
 test('a stored language the app does not have reads as English', () => {
   expect(readLang('fr')).toBe('en')
   expect(readLang('')).toBe('en')

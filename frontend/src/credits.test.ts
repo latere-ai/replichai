@@ -106,9 +106,9 @@ test('a wallet statement names only the kinds a wallet can hold', () => {
   }
 })
 
-// A move that captured a project names it (024b). The three cases: a live
-// project links, a purged one reads as plain text but still names itself, and a
-// pre-024b move that never captured a project keeps the old label.
+// A move that captured a project names it. The three cases: a live project
+// links, a purged one reads as plain text but still names itself, and a move
+// that captured no project keeps the kind label.
 const entry = (e: Partial<LedgerEntry>): LedgerEntry => ({ id: 'e', holder: 'user:a@b', amount: -1, kind: 'allocate', actor: 'a@b', created_at: '2026-08-09', ...e })
 
 test('an allocate to a live project links to it', () => {
@@ -127,7 +127,7 @@ test('a pre-024b move with no captured project keeps the generic label', () => {
 })
 
 test('a card purchase and refund name their source, not an admin', () => {
-  // The actor distinguishes a Stripe purchase from an admin grant (022b/022c).
+  // The actor distinguishes a Stripe purchase from an admin grant.
   expect(ledgerLabel(t, entry({ kind: 'topup', amount: 1, actor: 'stripe:pi_1' }))).toEqual({ kind: 'plain', text: 'ledgerCardTopup' })
   expect(ledgerLabel(t, entry({ kind: 'adjust', amount: -1, actor: 'stripe:refund:re_1' }))).toEqual({ kind: 'plain', text: 'ledgerRefund' })
   // An admin grant still reads as an admin grant.

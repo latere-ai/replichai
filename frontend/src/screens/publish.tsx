@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Going public, and coming back: the panel that opens the decision, the
-// three-step wizard that records it, the sessions standing in its way, the card
-// that reports the recorded sign-off, and the dialog that withdraws it (006n,
-// 006o, 032).
+// Going public, and coming back: the three-step wizard that records the
+// decision, the sessions standing in its way, the card that reports the
+// recorded sign-off, and the dialog that withdraws it.
 
 import { useEffect, useState } from 'react'
 import {
@@ -41,10 +40,8 @@ export function PublishWizard({
   projectID: string
   onClose: () => void
   onPublished: () => void
-  // Something under this dialog changed, and the screen behind it is now stale
-  // (032). Deleting a blocker removes a session the project screen is listing;
-  // an owner who then closes the wizard instead of signing off again would
-  // otherwise be left clicking a row that is no longer there.
+  // Something under this dialog changed, so the screen behind it is stale:
+  // deleting a blocker removes a session the project screen is listing.
   onChanged?: () => void
   // Where a named blocker is opened. Absent on a screen with no session to go
   // to; the refusal then still says what is wrong but offers no link.
@@ -72,10 +69,9 @@ export function PublishWizard({
   }
 
   const hasContact = (p.contact_email ?? '').trim() !== ''
-  // 006r: publishing puts a name on a result, and the name has to resolve to
-  // somewhere. The wizard sets it here rather than sending the signer to
-  // settings and back: they are mid-decision, and the requirement is part of
-  // the decision.
+  // Publishing puts a name on a result, and the name has to resolve to a
+  // public page. The wizard sets it here rather than sending the signer to
+  // settings mid-decision.
   const hasPage = !!p.public && (p.handle ?? '').trim() !== ''
   const canContinueFromStep2 = hasContact && hasPage
 
@@ -220,13 +216,9 @@ export function PublishWizard({
 }
 
 // Blockers lists the sessions standing between a project and the public flip:
-// one row each, saying what is wrong with that one and opening it.
-//
-// The refusal used to be a single sentence about "the reproduction", which
-// named neither the session nor, when there were several, how many more were
-// behind it, so an owner fixed one and was refused again. An unfinished run is
-// the one blocker with nothing to read and nothing to fix: it has no manifest,
-// so opening it shows nothing. The row carries its own remedy instead (032).
+// one row each, saying what is wrong with that one and opening it, so an owner
+// sees every blocker at once. An unfinished run has no manifest to read, so its
+// row carries its own remedy instead.
 function Blockers({
   i18n,
   blockers,
@@ -321,8 +313,7 @@ function BlockerRow({
 
 // PublishedCard reports the recorded sign-off: who signed, where they were, and
 // how to reach them. A v1 sign-off carries no snapshot and shows the date line
-// alone, exactly as it did before 006n. It also offers the withdrawal: the
-// owner may withdraw the publication (006o).
+// alone. It also offers the owner the withdrawal.
 export function PublishedCard({
   i18n,
   project,
@@ -351,8 +342,8 @@ export function PublishedCard({
           <div className="signer-name">
             {/* The name links to the signer's page when they have one, and is
                 plain text when they do not. The snapshot below is what the
-                attestation reports; this is a convenience that may come and go
-                as its owner turns their profile on and off (006r). */}
+                attestation reports; the link comes and goes as its owner turns
+                their profile on and off. */}
             {t('signedOffBy')}{' '}
             {signerHandle ? (
               <a className="link" href={`/u/${signerHandle}`}>

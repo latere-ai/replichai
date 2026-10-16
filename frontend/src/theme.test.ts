@@ -18,8 +18,7 @@ test('a pinned mode ignores the system preference', () => {
   expect(resolveTheme('light', true)).toBe('light')
 })
 
-// The app stored a bare 'dark'/'light' before there was an auto mode, so a
-// returning operator must keep the appearance they picked.
+// A stored bare 'dark' or 'light' keeps the appearance the operator picked.
 test('a stored legacy choice survives', () => {
   expect(readMode('dark')).toBe('dark')
   expect(readMode('light')).toBe('light')
