@@ -65,14 +65,14 @@ func TestASignInStoreExistsExactlyWhenAPersonPays(t *testing.T) {
 		t.Fatalf("no key = %v", err)
 	}
 	t.Setenv("REPLICHAI_SIGNIN_KEY", strings.Repeat("ab", 32))
-	t.Setenv("AUTH_CLIENT_SECRET", "")
-	if _, _, err := personSignIns(stores{}, []managed.RuntimeName{"latere"}, false); err == nil || !strings.Contains(err.Error(), "AUTH_CLIENT_SECRET") {
-		t.Fatalf("no client secret = %v", err)
-	}
-	t.Setenv("AUTH_CLIENT_SECRET", "s")
-	store, minter, err = personSignIns(stores{}, []managed.RuntimeName{"latere"}, false)
-	if err != nil || store == nil || minter == nil || signInOf(minter) == nil {
-		t.Fatalf("with both = %v %v %v", store, minter, err)
+	// The production client is public, so no client secret is needed: the
+	// minter refreshes with the client's id alone.
+	for _, secret := range []string{"", "s"} {
+		t.Setenv("AUTH_CLIENT_SECRET", secret)
+		store, minter, err = personSignIns(stores{}, []managed.RuntimeName{"latere"}, false)
+		if err != nil || store == nil || minter == nil || signInOf(minter) == nil {
+			t.Fatalf("with the key and client secret %q = %v %v %v", secret, store, minter, err)
+		}
 	}
 	if signInOf(nil) != nil {
 		t.Fatal("a source with no minter")
