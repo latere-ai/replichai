@@ -17,6 +17,10 @@ committed. The commit log already holds that.
   audit as a hosted agent session, charged to your own Latere wallet; sign in
   with a personal access token in `LATERE_API_KEY`. A deployment offers it
   beside its default runtime with `REPLICHAI_RUNTIMES=latere`.
+- Starting a session in the app, you choose where it runs and how hard it
+  works: one picker on the paper offers the deployment's runtimes, an Effort
+  level, and on the Latere platform a specific model. A session on Latere runs
+  as you, after you sign in to Latere once, and your own Latere wallet pays.
 - `--model` takes an Effort level, `quick`, `thorough` or `sustained` (the
   names `fast`, `balanced` and `best` still work), or one exact model as
   `provider/id`; `replichai models --runtime <name>` lists what a runtime
