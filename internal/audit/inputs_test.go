@@ -157,3 +157,27 @@ func TestARunIsHandedTheStudysArtifactSnapshots(t *testing.T) {
 		t.Fatalf("Run on a runtime with no inputs = %v", err)
 	}
 }
+
+// A named environment reaches the session's specification, and a runtime
+// that does not offer it refuses the run before a session exists, rather than
+// running it on another environment.
+func TestANamedEnvironmentIsAskedForOrRefused(t *testing.T) {
+	runtime := managedmemory.New()
+	refused := NewSessionAuditor(sessionController(t, runtime), testMethod, WithEnvironment("science"))
+	if _, err := refused.Run(context.Background(), "paper", t.TempDir()); !errors.Is(err, managed.ErrUnsupported) {
+		t.Fatalf("Run on a runtime with no science environment = %v, want unsupported", err)
+	}
+	if len(runtime.Specs()) != 0 {
+		t.Fatal("a session started on an environment the runtime does not offer")
+	}
+
+	offering := managedmemory.NewWithStore(nil, managedmemory.Config{Environments: []string{"science"}})
+	auditor := NewSessionAuditor(sessionController(t, offering), testMethod, WithEnvironment("science"))
+	if _, err := auditor.Run(context.Background(), "paper", t.TempDir()); err != nil {
+		t.Fatalf("Run on a runtime that offers science: %v", err)
+	}
+	specs := offering.Specs()
+	if len(specs) != 1 || specs[0].Sandbox.Environment != "science" {
+		t.Fatalf("the session's specification = %+v, want the science environment", specs)
+	}
+}

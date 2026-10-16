@@ -41,6 +41,8 @@ type Entry struct {
 	Harness string `yaml:"harness"`
 	Sandbox string `yaml:"sandbox"`
 	Network string `yaml:"network"`
+	// Environment names what the run's machine runs, such as science.
+	Environment string `yaml:"environment"`
 	// File is a copy of the paper the operator supplies, a path relative to
 	// the project file, which every run of the paper is handed in place of a
 	// copy the system fetches. It is how a paper whose publisher refuses
@@ -100,6 +102,9 @@ type File struct {
 	// Network names the network profile every run is given unless its paper
 	// names another. Empty leaves the choice to the command that runs it.
 	Network string `yaml:"network"`
+	// Environment names what every run's machine runs unless its paper names
+	// another. Empty is the runtime's default.
+	Environment string `yaml:"environment"`
 	// Runs is how many times each paper is reproduced unless the paper says
 	// otherwise. Zero means once.
 	Runs    int           `yaml:"runs"`
@@ -155,6 +160,9 @@ func (f File) Entries() ([]Resolved, error) {
 		}
 		if entry.Network == "" {
 			entry.Network = f.Network
+		}
+		if entry.Environment == "" {
+			entry.Environment = f.Environment
 		}
 		runs := cmp.Or(entry.Runs, f.Runs, 1)
 		for range runs {

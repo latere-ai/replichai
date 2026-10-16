@@ -59,6 +59,9 @@ type LatereConfig struct {
 	// TokenCommand prints a bearer for the platform's API, in the manner
 	// of a git credential helper.
 	TokenCommand string
+	// Environments are the environments a session may name; empty offers
+	// the base environment alone.
+	Environments []string
 }
 
 // WithLatereSignIn attaches the person a Latere call acts for, as a function
@@ -83,7 +86,7 @@ func buildLatere(config LatereConfig) (managed.Runtime, error) {
 	case strings.TrimSpace(config.TokenCommand) != "":
 		tokens = latere.Command(config.TokenCommand)
 	}
-	return latere.New(latere.Config{BaseURL: config.BaseURL, Tokens: tokens})
+	return latere.New(latere.Config{BaseURL: config.BaseURL, Tokens: tokens, Environments: config.Environments})
 }
 
 // Latere names the runtime that runs a session on the Latere platform.

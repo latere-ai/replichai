@@ -3,6 +3,8 @@
 
 package runtimes
 
+import "strings"
+
 // LookupEnv is the environment reader credential resolution goes through, so a
 // caller can pass the process environment or a fixed map in a test.
 type LookupEnv func(string) (string, bool)
@@ -22,6 +24,11 @@ type ProviderCredentials struct {
 	LatereAuthURL      string
 	LatereAPIKey       string
 	LatereTokenCommand string
+	// LatereEnvironments are the environments a Latere session may name,
+	// from LATERE_ENVIRONMENTS, a comma-separated list such as
+	// "base,science". Empty offers the base environment alone, which is
+	// the only one a deployment can rely on the platform's catalog holding.
+	LatereEnvironments []string
 }
 
 // ResolveCredentials reads each runtime's own configuration out of the
@@ -36,5 +43,12 @@ func ResolveCredentials(lookup LookupEnv) ProviderCredentials {
 	credentials.LatereAuthURL, _ = lookup("LATERE_AUTH_URL")
 	credentials.LatereAPIKey, _ = lookup("LATERE_API_KEY")
 	credentials.LatereTokenCommand, _ = lookup("LATERE_TOKEN_COMMAND")
+	if list, ok := lookup("LATERE_ENVIRONMENTS"); ok {
+		for name := range strings.SplitSeq(list, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				credentials.LatereEnvironments = append(credentials.LatereEnvironments, name)
+			}
+		}
+	}
 	return credentials
 }

@@ -323,3 +323,12 @@ func TestTwoListsOfArtifactsForOnePaperAreRefused(t *testing.T) {
 		t.Fatalf("a list given by the second entry = %+v, %v", inputs, err)
 	}
 }
+
+// The environment is a default of the file that a paper may override, as the
+// network profile is.
+func TestTheEnvironmentIsAFileDefaultAPaperOverrides(t *testing.T) {
+	entries := resolved(t, File{Environment: "science", Papers: []Entry{{Paper: "a"}, {Paper: "b", Environment: "gui"}}})
+	if entries[0].Environment != "science" || entries[1].Environment != "gui" {
+		t.Fatalf("environments = %q, %q", entries[0].Environment, entries[1].Environment)
+	}
+}

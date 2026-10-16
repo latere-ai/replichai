@@ -86,9 +86,12 @@ type SessionAuditor struct {
 	// profile fixes the session's egress to a named profile, and paper is the
 	// copy of the paper the session is handed. Both are set for every run of
 	// a study, so its runs have the same inputs (046).
-	profile   NetworkProfile
-	paper     *paper.Copy
-	artifacts []paper.Artifact
+	profile NetworkProfile
+	paper   *paper.Copy
+	// environment names what the session's machine runs, such as science;
+	// empty is the runtime's default.
+	environment string
+	artifacts   []paper.Artifact
 	// workspaceIsARepository reports that the runtime gives the session a git
 	// repository without mounting one. This is the local path, where the host
 	// pushes what was committed once the session has ended.
@@ -158,6 +161,13 @@ func WithLocalWorkspace() SessionOption {
 // It applies when the session is created, so it affects Start and Run only.
 func WithSessionMount(mount SessionMount) SessionOption {
 	return func(a *SessionAuditor) { a.mount = mount }
+}
+
+// WithEnvironment names the environment the session's machine runs, such as
+// science for a paper whose analysis needs the statistics stack. A runtime
+// that does not offer it fails the session before it starts.
+func WithEnvironment(name string) SessionOption {
+	return func(a *SessionAuditor) { a.environment = name }
 }
 
 // WithSessionHooks installs the caller's lifecycle hooks. Run and Resume wrap
@@ -281,8 +291,9 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 	spec := managed.SessionSpec{
 		Model: ModelSelector(a.model), Instructions: instructions, Task: task,
 		Sandbox: managed.SandboxSpec{
-			Packages: []managed.Package{{Manager: "pip", Name: "pypdf"}, {Manager: "pip", Name: "requests"}},
-			Network:  network,
+			Environment: a.environment,
+			Packages:    []managed.Package{{Manager: "pip", Name: "pypdf"}, {Manager: "pip", Name: "requests"}},
+			Network:     network,
 		},
 		Resources:  resources,
 		Evaluation: &managed.EvaluationSpec{Rubric: a.method.Rubric, MaxRevisions: a.maxRevisions},
