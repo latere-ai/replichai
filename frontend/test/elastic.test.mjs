@@ -14,7 +14,7 @@
 // overscroll behavior of the root and the panes, and what a wheel event does to
 // boxes on screen. It drives Chrome over a Vite dev server with the API mocked.
 // Run it with `bun run test:browser`.
-import { fail, settled, sleep, start } from './harness.mjs'
+import { SLOW, fail, settled, sleep, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 const project = { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) }
@@ -30,31 +30,53 @@ const SIGNED_OUT = { authenticated: false }
 const h = await start()
 
 // pull sends a trackpad's pixel wheel events over the middle of `pane` and
-// reports, mid-pull, the stretch and where `still` sits, then the same once the
-// wheel has gone quiet.
+// reports the largest stretch the pane showed and whether `still` moved while
+// the pull lasted, then the pane at rest once the wheel has gone quiet. Both are
+// recorded inside the page as they happen: a pull ends SETTLE ms after the last
+// wheel, so a read sent from here afterwards can arrive after the stretch has
+// already gone back to 0, which it does on a slow runner.
 const pull = async (page, pane, still, dy) => {
   const at = await page.evaluate((s) => {
     const r = document.querySelector(s).getBoundingClientRect()
     return { x: r.x + r.width / 2, y: r.y + Math.min(r.height / 2, 300) }
   }, pane)
-  const top = () => page.evaluate((s) => document.querySelector(s).getBoundingClientRect().top, still)
-  const before = await top()
+  await page.evaluate(
+    (p, s) => {
+      const host = document.querySelector(p)
+      const anchor = document.querySelector(s)
+      const top = anchor.getBoundingClientRect().top
+      const seen = { elastic: 0, stillMoved: false }
+      const look = () => {
+        seen.elastic = Math.max(seen.elastic, parseFloat(host.style.getPropertyValue('--elastic') || '0'))
+        if (anchor.getBoundingClientRect().top !== top) seen.stillMoved = true
+      }
+      const observer = new MutationObserver(look)
+      observer.observe(host, { attributes: true, attributeFilter: ['style'] })
+      let frame = requestAnimationFrame(function tick() {
+        look()
+        frame = requestAnimationFrame(tick)
+      })
+      window.__pull = { seen, stop: () => (observer.disconnect(), cancelAnimationFrame(frame)) }
+    },
+    pane,
+    still,
+  )
   await page.mouse.move(at.x, at.y)
   for (let i = 0; i < 8; i++) {
     await page.mouse.wheel({ deltaY: dy })
     await sleep(16)
   }
-  const shift = (s) =>
-    page.evaluate((s) => {
-      const host = document.querySelector(s)
-      const moved = host.matches('.lp-body') ? host : host.firstElementChild
-      return { elastic: parseFloat(host.style.getPropertyValue('--elastic') || '0'), translate: getComputedStyle(moved).translate }
-    }, s)
-  const during = await shift(pane)
-  const stillMoved = (await top()) !== before
-  await sleep(900)
-  const after = await shift(pane)
-  return { during, stillMoved, after }
+  await sleep(900 * SLOW)
+  const seen = await page.evaluate(() => {
+    window.__pull.stop()
+    return window.__pull.seen
+  })
+  const after = await page.evaluate((s) => {
+    const host = document.querySelector(s)
+    const moved = host.matches('.lp-body') ? host : host.firstElementChild
+    return { translate: getComputedStyle(moved).translate }
+  }, pane)
+  return { during: { elastic: seen.elastic }, stillMoved: seen.stillMoved, after }
 }
 
 try {
