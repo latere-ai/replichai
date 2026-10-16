@@ -29,6 +29,22 @@ const SIGNED_OUT = { authenticated: false }
 
 const h = await start()
 
+// asTrackpad makes `page` a machine with a fine pointer, as a laptop with a
+// trackpad is. elastic.ts stretches only under a fine pointer, and headless
+// Chrome on a server with no input device reports none, so without this the
+// suite would test a machine no pull ever comes from. Chrome cannot emulate the
+// pointer media feature, so the query is answered in the page before the app
+// reads it.
+const asTrackpad = (page) =>
+  page.evaluateOnNewDocument(() => {
+    const real = window.matchMedia.bind(window)
+    window.matchMedia = (query) => {
+      const list = real(query)
+      if (!/\(\s*pointer\s*:\s*fine\s*\)/.test(query)) return list
+      return new Proxy(list, { get: (target, key) => (key === 'matches' ? true : Reflect.get(target, key).bind?.(target) ?? Reflect.get(target, key)) })
+    }
+  })
+
 // pull sends a trackpad's pixel wheel events over the middle of `pane` and
 // reports the largest stretch the pane showed and whether `still` moved while
 // the pull lasted, then the pane at rest once the wheel has gone quiet. Both are
@@ -84,6 +100,7 @@ try {
 
   {
     const page = await h.page({ routes: [['/me', SIGNED_IN], ...routes] })
+    await asTrackpad(page)
     await page.open('/')
     await page.waitForSelector('.screen')
     await settled(page)
@@ -111,6 +128,7 @@ try {
 
   {
     const page = await h.page({ routes: [['/me', SIGNED_OUT], ...routes] })
+    await asTrackpad(page)
     await page.open('/')
     await page.waitForSelector('.lp-body')
     await settled(page)
@@ -125,6 +143,7 @@ try {
 
   {
     const page = await h.page({ routes: [['/me', SIGNED_IN], ...routes] })
+    await asTrackpad(page)
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
     await page.open('/')
     await page.waitForSelector('.screen')
