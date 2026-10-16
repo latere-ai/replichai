@@ -11,10 +11,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/httpapi"
+	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/platform"
 )
 
@@ -357,5 +359,88 @@ func TestAnAdminChoosesTheLatereEnvironments(t *testing.T) {
 		if w := do("PUT", body); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "bad_environments") {
 			t.Errorf("%s = %d %s, want 400 bad_environments", name, w.Code, w.Body)
 		}
+	}
+}
+
+// The console shows which rows of the card follow the price list, and a save
+// keeps those rows at the list's prices: the next sync would put them back
+// within the hour, and a console that read the card before the last sync
+// would otherwise write back the prices the list replaced. A row the list
+// does not price keeps what the admin gives it. A deployment with no list
+// sends no price_list at all, so every row is the admin's.
+func TestSettingsShowAndKeepTheRowsThePriceListSets(t *testing.T) {
+	ctx := context.Background()
+	acc := access.NewMemStore()
+	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com"}
+	if err := acc.SeedAdmin(ctx, admin.Email); err != nil {
+		t.Fatalf("SeedAdmin: %v", err)
+	}
+	if _, ok, _ := acc.Resolve(ctx, admin); !ok {
+		t.Fatal("the admin should resolve granted")
+	}
+	plat := platform.NewMemStore(acc)
+	applied := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	prices := platform.NewPriceList("https://openrouter.ai/api/v1/models", func() time.Time { return applied })
+	listed := credit.Rates{
+		Model: "claude-opus-5-5", Ref: managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5-5"},
+		Input: 4_000_000, Output: 20_000_000, CacheRead: 400_000, CacheWrite5m: 5_000_000, CacheWrite1h: 8_000_000,
+	}
+	fetch := func(context.Context) ([]credit.Rates, error) { return []credit.Rates{listed}, nil }
+	if _, err := platform.ApplyPriceList(ctx, prices.Recording(plat), fetch); err != nil {
+		t.Fatalf("ApplyPriceList: %v", err)
+	}
+	mux := http.NewServeMux()
+	MountAdmin(mux, RequireTier(acc, access.TierAdmin), NewAdmin(acc, plat, nil, WithPriceList(prices)))
+	do := func(method, body string) settingsView {
+		t.Helper()
+		r := httptest.NewRequest(method, "/admin/settings", strings.NewReader(body))
+		r = r.WithContext(identityCtx(r, admin))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s /admin/settings = %d %s", method, w.Code, w.Body.String())
+		}
+		var got settingsView
+		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+			t.Fatalf("decode settings: %v", err)
+		}
+		return got
+	}
+
+	got := do("GET", "")
+	if got.PriceList == nil {
+		t.Fatal("the settings name no price list, want the one the card follows")
+	}
+	if got.PriceList.URL != "https://openrouter.ai/api/v1/models" || !got.PriceList.AppliedAt.Equal(applied) ||
+		!slices.Equal(got.PriceList.Models, []managed.ModelRef{listed.Ref}) {
+		t.Errorf("the price list reads %+v, want its address, %v and %v", *got.PriceList, applied, listed.Ref)
+	}
+
+	// An edit to the listed row is replaced by the list's prices; an edit to
+	// a row the list does not price stays.
+	body := `{"start_reserve":5000000,"rates":{"models":[` +
+		`{"model":"claude-opus-5-5","model_ref":{"provider":"anthropic","id":"claude-opus-5-5"},"input":9000000,"output":25000000,"cache_read":500000,"cache_write_5m":6250000,"cache_write_1h":10000000},` +
+		`{"model":"claude-opus-4-1","input":15000000,"output":75000000,"cache_read":1500000,"cache_write_5m":18750000,"cache_write_1h":30000000}]}}`
+	got = do("PUT", body)
+	opus, ok := got.Rates.PricedRef(listed.Ref)
+	if !ok || opus.Input != listed.Input || opus.Output != listed.Output || opus.CacheWrite1h != listed.CacheWrite1h {
+		t.Errorf("after a save the listed row prices as (%+v, %v), want the list's prices", opus, ok)
+	}
+	own, ok := got.Rates.PricedRef(managed.ModelRef{Provider: "anthropic", ID: "claude-opus-4-1"})
+	if !ok || own.Input != 15_000_000 || own.Output != 75_000_000 {
+		t.Errorf("after a save the admin's row prices as (%+v, %v), want what they gave it", own, ok)
+	}
+	if len(got.Rates.Models) != 2 {
+		t.Errorf("after a save the card has %d rows, want the 2 it was given", len(got.Rates.Models))
+	}
+
+	// With no list, the payload names none.
+	bare, _, _, _ := mountedAdmin(t)
+	r := httptest.NewRequest("GET", "/admin/settings", nil)
+	r = r.WithContext(identityCtx(r, admin))
+	w := httptest.NewRecorder()
+	bare.ServeHTTP(w, r)
+	if strings.Contains(w.Body.String(), "price_list") {
+		t.Errorf("a deployment with no price list sent one: %s", w.Body.String())
 	}
 }

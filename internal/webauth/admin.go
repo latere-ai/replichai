@@ -36,6 +36,15 @@ type Admin struct {
 	// environments are the Latere environments the runtime knows, which an
 	// admin chooses among (051). Nil checks no name against them.
 	environments []string
+	// prices is the price list the card follows. Nil for a deployment that
+	// prices every model by hand.
+	prices *platform.PriceList
+}
+
+// WithPriceList names the price list the card follows, so the console shows
+// which rows are the list's and a save keeps them at the list's prices.
+func WithPriceList(p *platform.PriceList) func(*Admin) {
+	return func(a *Admin) { a.prices = p }
 }
 
 // WithLatereEnvironments names the environments the Latere runtime knows, so
@@ -225,18 +234,25 @@ func (a *Admin) Settings(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.WarnContext(r.Context(), "admin: reading platform settings", "error", err)
 	}
-	writeJSON(w, a.withKnown(s))
+	writeJSON(w, a.view(s))
 }
 
 // settingsView is the settings as the console reads them, with the Latere
-// environments it may offer beside the ones in force.
+// environments it may offer beside the ones in force, and the price list the
+// card follows, if any. Neither is stored with the settings.
 type settingsView struct {
 	platform.Settings
-	KnownLatereEnvironments []string `json:"known_latere_environments,omitempty"`
+	KnownLatereEnvironments []string                `json:"known_latere_environments,omitempty"`
+	PriceList               *platform.PriceListView `json:"price_list,omitempty"`
 }
 
-func (a *Admin) withKnown(s platform.Settings) settingsView {
-	return settingsView{Settings: s, KnownLatereEnvironments: a.environments}
+func (a *Admin) view(s platform.Settings) settingsView {
+	v := settingsView{Settings: s, KnownLatereEnvironments: a.environments}
+	if a.prices != nil {
+		list := a.prices.View()
+		v.PriceList = &list
+	}
+	return v
 }
 
 // SetSettings writes the platform policy row.
@@ -285,6 +301,16 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 	if body.Rates != nil {
 		next.Rates = *body.Rates
 	}
+	// A row the price list prices keeps the list's prices. The next sync would
+	// write them back within the hour, and until then a console that read the
+	// card before the last sync would put back the prices the list replaced.
+	// An empty card is left empty, so the store still falls back to the
+	// compiled-in one.
+	if a.prices != nil && len(next.Rates.Models) > 0 {
+		if listed := a.prices.Listed(); len(listed) > 0 {
+			next.Rates, _ = next.Rates.WithListed(listed)
+		}
+	}
 	next.SpreadBps = current.SpreadBps
 	next.SpreadFixedMicro = current.SpreadFixedMicro
 	next.MinTopupMicro = current.MinTopupMicro
@@ -320,7 +346,7 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		writeAdminError(w, err)
 		return
 	}
-	writeJSON(w, a.withKnown(s))
+	writeJSON(w, a.view(s))
 }
 
 // Solvency reports outstanding sold liability: the sum of every wallet and pot
