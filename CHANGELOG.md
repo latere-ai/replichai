@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.33.1 - 2026-10-16
+
 ### Fixed
 
 - A session started in the app no longer fails at its end with `retain
