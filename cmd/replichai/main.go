@@ -217,6 +217,9 @@ func runAudit(ctx context.Context, args []string, stdout, stderr *os.File) error
 	}
 
 	_, _ = fmt.Fprintf(stdout, "verdict:   %s\n", result.Grade())
+	if outcome := outcomeLine(result.Status); outcome != "" {
+		_, _ = fmt.Fprintf(stdout, "outcome:   %s\n", outcome)
+	}
 	_, _ = fmt.Fprintf(stdout, "artifacts: %d -> %s\n", len(result.Artifacts), result.ArtifactDir)
 	reportInstrument(stdout, result.InstrumentPresent, result.InstrumentViolations)
 	_, _ = fmt.Fprintf(stdout, "elapsed:   %s\n", time.Since(started).Round(time.Second))
@@ -490,6 +493,19 @@ func workspaceOf(rt managed.Runtime, ref managed.SessionRef) (string, error) {
 		return "", fmt.Errorf("runtime %s keeps no local workspace to push from", rt.Name())
 	}
 	return located.Workspace(ref)
+}
+
+// outcomeLine says how a session that did not succeed ended, so a failed run
+// names its reason on the terminal rather than leaving only an unknown
+// verdict. A session that succeeded needs no line.
+func outcomeLine(status managed.Status) string {
+	if status.TerminalReason == "" || status.TerminalReason == managed.ReasonSucceeded {
+		return ""
+	}
+	if status.Error == "" {
+		return string(status.TerminalReason)
+	}
+	return string(status.TerminalReason) + ": " + status.Error
 }
 
 // hostWorkspace is the local repository the host pushes a session's work

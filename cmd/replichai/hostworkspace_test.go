@@ -53,3 +53,17 @@ func TestTheHostBuildsTheWorkspaceOfAHostedSession(t *testing.T) {
 		t.Fatalf("log = %q, %v", log, err)
 	}
 }
+
+// A run that did not succeed names how it ended, beside its verdict.
+func TestAFailedRunNamesItsReason(t *testing.T) {
+	for status, want := range map[*managed.Status]string{
+		{TerminalReason: managed.ReasonSucceeded}: "",
+		{}: "",
+		{TerminalReason: managed.ReasonCancelled}:                                                   "cancelled",
+		{TerminalReason: managed.ReasonRuntimeFailed, Error: "the grader did not return a verdict"}: "runtime_failed: the grader did not return a verdict",
+	} {
+		if got := outcomeLine(*status); got != want {
+			t.Errorf("outcomeLine(%+v) = %q, want %q", *status, got, want)
+		}
+	}
+}
