@@ -22,7 +22,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { ModelTier, RuntimeOption } from "./api";
-import { type I18n } from "./i18n";
+import { countOf, type I18n } from "./i18n";
 import { Ico } from "./icons";
 import { formatUSD } from "./money";
 import { Segmented } from "./ui";
@@ -366,9 +366,7 @@ export function RuntimePick({
                   className="text rp-search"
                   type="search"
                   value={query}
-                  placeholder={t("searchModels", {
-                    count: String(runtime.models.length),
-                  })}
+                  placeholder={countOf(t, "searchModels", runtime.models.length)}
                   aria-label={t("specificModel")}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={onKey}

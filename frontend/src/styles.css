@@ -55,12 +55,9 @@
      (`--lu-brand-replichai`). */
   --azure: #2369bd;
   --azure-soft: color-mix(in srgb, var(--azure) 9%, transparent);
-  --azure-line: color-mix(in srgb, var(--azure) 34%, transparent);
 
-  /* What the operator acts on. The names predate 047, when they were the azure;
-     they are the ink now, so every screen that reads them follows the family. */
+  /* What the operator acts on: the family's ink. */
   --brand: var(--accent);
-  --brand-hover: var(--accent-hover);
   --brand-fg: var(--lu-preset-on-accent);
   --brand-soft: var(--bg-hover);
   --brand-line: var(--border-strong);
@@ -253,11 +250,6 @@ textarea {
   text-decoration-thickness: 1px;
 }
 /* An inline message and its glyph stay on one baseline. */
-.err,
-.paper-preview,
-.muted {
-  --icon-gap: 6px;
-}
 .err svg,
 .paper-preview svg,
 .publish-note svg,
@@ -845,13 +837,6 @@ textarea {
   gap: 5px;
   margin-bottom: 20px;
 }
-.screen-head.row {
-  flex-direction: row;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  cursor: default;
-}
 /* A segment between two seams (see Seams in ui.tsx). The heading's copy marks
    where it may break; this rule makes every other point unbreakable. The
    joining space sits between two of these, in the heading itself, because that
@@ -1270,12 +1255,6 @@ h1.screen-title {
   color: var(--fg-2);
   white-space: nowrap;
 }
-.badge .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
 .badge.private {
   border-color: var(--border-strong);
   background: transparent;
@@ -1284,26 +1263,6 @@ h1.screen-title {
 .badge.public {
   background: color-mix(in srgb, var(--pub) 15%, transparent);
   color: var(--pub);
-}
-.badge.running,
-.badge.resolving,
-.badge.publishing {
-  background: color-mix(in srgb, var(--run) 15%, transparent);
-  color: var(--run);
-}
-.badge.done {
-  background: color-mix(in srgb, var(--ok) 16%, transparent);
-  color: var(--ok);
-}
-.badge.failed {
-  background: color-mix(in srgb, var(--err) 15%, transparent);
-  color: var(--err);
-}
-.badge.running .dot,
-.badge.resolving .dot,
-.badge.publishing .dot,
-.badge.submitted .dot {
-  animation: om-pulse 1.6s ease-in-out infinite;
 }
 
 /* ── Pill: the rounded status mark for a tier, a role or a count ── */
@@ -2039,7 +1998,6 @@ textarea::placeholder {
   color: var(--fg-2);
 }
 .publish-note svg {
-  flex: none;
   color: var(--ok);
 }
 .attestation {
@@ -2062,16 +2020,6 @@ textarea::placeholder {
 .submit-input-row {
   display: flex;
   gap: 8px;
-}
-input.submit-input {
-  flex: 1;
-  height: 38px;
-  padding: 0 13px;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  background: var(--bg-surface);
-  color: var(--fg-1);
-  font: 500 13px/1 var(--font-mono);
 }
 .field {
   display: flex;
@@ -2312,7 +2260,6 @@ input.submit-input {
 .tx-stat-value {
   font: 500 13px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
-  font-variant-numeric: tabular-nums;
 }
 /* a pulsing "live" pill for an in-flight run's streaming transcript */
 .live-dot {
@@ -2404,7 +2351,6 @@ input.submit-input {
   font: 500 11.5px/1 var(--font-sans);
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── The scrubber (006s) ──
@@ -2427,7 +2373,6 @@ input.submit-input {
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
   flex: none;
-  font-variant-numeric: tabular-nums;
 }
 .scrub-bar {
   position: relative;
@@ -2584,7 +2529,6 @@ input.submit-input {
   margin-left: auto;
   font: 500 11px/1 var(--font-sans);
   color: var(--fg-3);
-  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums;
 }
 .tx-stream {
@@ -2862,7 +2806,6 @@ input.submit-input {
   font: 500 12px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
-  font-variant-numeric: tabular-nums;
 }
 /* Everything left of the value may shrink and wrap, so a long title wraps within
    the space it has rather than shoving the amount out of the row. */
@@ -3150,7 +3093,6 @@ input.submit-input {
 .markdown-body p,
 .markdown-body ul,
 .markdown-body ol,
-.markdown-body blockquote,
 .markdown-body table {
   margin: 0.7em 0;
 }
@@ -3183,7 +3125,7 @@ input.submit-input {
   line-height: 1.6;
 }
 /* A quotation is set in from both sides, in the quieter text tone, without a
-   bar down its left edge (047). */
+   bar down its left edge. */
 .markdown-body blockquote {
   margin: 1em 0;
   padding: 0 24px;
@@ -3573,6 +3515,7 @@ input.submit-input {
   color: var(--fg-2);
 }
 .table-caption b {
+  display: block;
   font-weight: 600;
   color: var(--fg-1);
 }
@@ -4173,9 +4116,6 @@ input.submit-input {
     flex-direction: column;
     gap: 14px;
   }
-  .findings-verdict {
-    width: auto;
-  }
   /* ── The list of projects ──
      The grid does not work at 390px: five tracks minus their fixed 171px
      leaves about 120px for a paper title, and the column headings collide
@@ -4324,19 +4264,6 @@ input.submit-input {
     min-width: 0;
     max-width: none;
   }
-
-  /* ── Tables of numbers ──
-     Read across, so they keep their columns and scroll inside their own box
-     rather than stacking into something that is no longer a table. */
-  .grid-table-wrap {
-    overflow-x: auto;
-  }
-  /* Wide enough that scrolling to a column shows a readable one. Sized to the
-     container, four columns would share 362px and clip again, which the
-     scroll was meant to fix. */
-  .grid-table {
-    min-width: 620px;
-  }
 }
 
 /* The paper a session is a run of, named by its reference at the head of the
@@ -4347,9 +4274,9 @@ input.submit-input {
   font-weight: 500;
 }
 
-/* The findings on a phone (047). A four-column table at 390px either scrolls
-   sideways, which hid the evidence and left each row a tall blank, or squeezes
-   every claim to three words a line. Each row restacks instead: the claim on
+/* The findings on a phone. A four-column table at 390px either scrolls
+   sideways and hides the evidence, or squeezes every claim to three words a
+   line. Each row restacks instead: the claim on
    its own line, its loop and outcome under it side by side, so the comparison
    the table exists for stays on one line, and the evidence under those. The
    head is dropped because every cell now says what it is. */
@@ -4380,7 +4307,6 @@ input.submit-input {
     display: block;
     padding: 0;
     border: none;
-    width: auto !important;
   }
   .grid-table td:first-child,
   .grid-table td:nth-child(4) {

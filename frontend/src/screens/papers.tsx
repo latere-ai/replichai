@@ -202,7 +202,7 @@ export function PapersCard({
         )}
         {filled !== null && !filling && (
           <span className="muted small" data-test="fill-in-result">
-            {filled > 0 ? t('fillInDone', { n: String(filled) }) : t('fillInNothing')}
+            {filled > 0 ? countOf(t, 'fillInDone', filled) : t('fillInNothing')}
           </span>
         )}
       </CardHead>

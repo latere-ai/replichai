@@ -31,7 +31,7 @@ import {
   type Reproduction,
   restoreProject,
 } from '../api'
-import { type I18n } from '../i18n'
+import { countOf, type I18n } from '../i18n'
 import { dateOnly } from '../locale'
 import { blockerTab, generic } from '../errors'
 import { Ico } from '../icons'
@@ -41,7 +41,7 @@ import { Pill, RowButton, Tip } from '../ui'
 import { isMine } from '../account'
 import { invalidateProjects } from '../projects-store'
 import { CardHead, Empty, Initials, NotReadable, Tab, VisibilityBadge } from './shared'
-import { PublishedCard, PublishPanel, PublishWizard } from './publish'
+import { PublishedCard, PublishWizard } from './publish'
 import { ProjectCreditsCard } from './wallet'
 import { Decomposition, verdictLabel } from './session'
 import { PapersCard } from './papers'
@@ -413,10 +413,8 @@ export function ProjectScreen({
               </div>
             )}
           </div>
-          {/* Publishing is an act an operator looks for on the thing they are
-              publishing, not under Collaborators, where it lived because that
-              was the tab with room (021e). The card there keeps the sign-off
-              record and the wizard stays the one path through the decision. */}
+          {/* Publishing is offered here, on the project, and only here. Once it
+              is public, the Members tab shows the sign-off record. */}
           {isOwner && project.visibility === 'private' && !project.deleted_at && (
             <button className="btn" data-test="publish-project" onClick={() => setPublishing(true)}>
               <Ico name="globe" size={13} /> {t('publishStart')}
@@ -492,11 +490,7 @@ export function ProjectScreen({
             <div className="stack">
               <Members i18n={i18n} projectID={id} />
             </div>
-            {project.visibility === 'private' ? (
-              <PublishPanel i18n={i18n} projectID={id} onPublished={changed} onOpenBlocker={openBlocker} />
-            ) : (
-              <PublishedCard i18n={i18n} project={project} signerHandle={signerHandle} onWithdrawn={changed} />
-            )}
+            {project.visibility === 'public' && <PublishedCard i18n={i18n} project={project} signerHandle={signerHandle} onWithdrawn={changed} />}
           </div>
         )}
       </div>
@@ -569,7 +563,7 @@ function LatestFindingsCard({ i18n, paper, job, onOpen }: { i18n: I18n; paper: P
         <span>
           {t('innerLoopRate')} {r !== null && <span className="findings-rate">{r.toFixed(2)}</span>}
         </span>
-        <span>{t('ofComponents', { n: String(f.components.total) })}</span>
+        <span>{countOf(t, 'ofComponents', f.components.total)}</span>
       </div>
       {scores.length > 0 && (
         <div className="stack" style={{ gap: 7, paddingTop: 4, borderTop: '1px solid var(--border)' }}>

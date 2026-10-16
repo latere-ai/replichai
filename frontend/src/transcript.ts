@@ -66,7 +66,7 @@ export function runSpan(events: Event[], phaseAt: Record<string, string> | undef
 // A phase band: one lifecycle phase, positioned and sized by the time it really
 // took. Width is a fraction of the span, not of the phase count, so a `running`
 // phase that took 99% of the session is 99% of the bar.
-export type Band = { phase: string; left: number; width: number }
+type Band = { phase: string; left: number; width: number }
 
 // PHASE_ORDER is the ordered list of lifecycle phases. The timeline strip and
 // the phase labels read it from here so this module stays free of component

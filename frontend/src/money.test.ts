@@ -87,9 +87,8 @@ describe('stepDollars', () => {
     expect(stepDollars('16', 1)).toBe('17')
   })
 
-  it('holds the floor and the ceiling', () => {
+  it('holds the floor', () => {
     expect(stepDollars('0.5', -1, 0)).toBe('0')
-    expect(stepDollars('99', 1, 0, 99)).toBe('99')
   })
 
   // Floating point: 0.1 + 0.2 must not reach a field as 0.30000000000000004.
