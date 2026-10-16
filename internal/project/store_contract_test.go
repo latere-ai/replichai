@@ -931,3 +931,44 @@ func ptr[T any](v T) *T { return &v }
 func hasID(id string) func(Project) bool {
 	return func(p Project) bool { return p.ID == id }
 }
+
+// Records stored before the paper reader decoded HTML entities showed
+// "Computers &amp; Graphics"; migration 13 decodes the ones already stored.
+// Postgres-only.
+func TestMigrationDecodesStoredEntities(t *testing.T) {
+	pool := freshDB(t)
+	defer pool.Close()
+	ctx := context.Background()
+	if err := job.Migrate(ctx, pool); err != nil {
+		t.Fatalf("job migrate: %v", err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("project migrate: %v", err)
+	}
+	s := NewPGStore(pool)
+	p, err := s.Create(ctx, "owner", "entities")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	stored := Paper{Key: "doi:10.1016/x", Ref: "r", Title: "Context &amp; &lt;Location&gt;", AddedBy: "owner",
+		Record: paper.Record{Venue: "Computers &amp; Graphics", Publisher: "O&#39;Reilly &amp;amp; Co"}}
+	if err := s.AddPaper(ctx, p.ID, stored); err != nil {
+		t.Fatalf("AddPaper: %v", err)
+	}
+	// Run 13 again over the row, as a deploy does over rows stored before it.
+	if _, err := pool.Exec(ctx, `DELETE FROM project_migrations WHERE version = 13`); err != nil {
+		t.Fatalf("forget 13: %v", err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("project migrate again: %v", err)
+	}
+	papers, err := s.ListPapers(ctx, p.ID)
+	if err != nil || len(papers) != 1 {
+		t.Fatalf("ListPapers = %v, %v", papers, err)
+	}
+	got := papers[0]
+	// &amp; goes last, so an escaped entity decodes once, not twice.
+	if got.Title != "Context & <Location>" || got.Record.Venue != "Computers & Graphics" || got.Record.Publisher != "O'Reilly &amp; Co" {
+		t.Errorf("title=%q venue=%q publisher=%q", got.Title, got.Record.Venue, got.Record.Publisher)
+	}
+}

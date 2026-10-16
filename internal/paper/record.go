@@ -90,20 +90,20 @@ func parseCrossref(body []byte) (string, Record) {
 		Volume:    strings.TrimSpace(m.Volume),
 		Issue:     strings.TrimSpace(m.Issue),
 		Pages:     strings.TrimSpace(m.Page),
-		Publisher: collapseWS(m.Publisher),
+		Publisher: plainText(m.Publisher),
 		Abstract:  plainAbstract(m.Abstract),
 	}
 	for _, a := range m.Author {
 		// A person has given and family names; an organization has one `name`.
 		// Both are rendered the way the source would print them.
-		if n := collapseWS(strings.TrimSpace(a.Given + " " + a.Family)); n != "" {
+		if n := plainText(a.Given + " " + a.Family); n != "" {
 			rec.Authors = append(rec.Authors, n)
-		} else if n := collapseWS(a.Name); n != "" {
+		} else if n := plainText(a.Name); n != "" {
 			rec.Authors = append(rec.Authors, n)
 		}
 	}
 	if len(m.ContainerTitle) > 0 {
-		rec.Venue = collapseWS(m.ContainerTitle[0])
+		rec.Venue = plainText(m.ContainerTitle[0])
 	}
 	// issued is the date the DOI's content was first made available. A work
 	// issued online in one year and printed in another keeps the earlier year,
@@ -111,7 +111,7 @@ func parseCrossref(body []byte) (string, Record) {
 	rec.Year = firstYear(m.Issued.DateParts, m.PublishedPrint.DateParts)
 	title := ""
 	if len(m.Title) > 0 {
-		title = collapseWS(m.Title[0])
+		title = plainText(m.Title[0])
 	}
 	return title, rec
 }
@@ -190,7 +190,7 @@ func recordFromBody(body []byte) Record {
 func metaContents(body []byte, re *regexp.Regexp) []string {
 	var out []string
 	for _, m := range re.FindAllSubmatch(body, -1) {
-		if s := collapseWS(captured(m)); s != "" {
+		if s := plainText(captured(m)); s != "" {
 			out = append(out, s)
 		}
 	}
@@ -243,7 +243,7 @@ func pageRange(first, last string) string {
 // changes rendering rather than meaning, because a tag such as <jats:p> is not
 // part of what the authors wrote.
 func plainAbstract(s string) string {
-	s = collapseWS(tagRe.ReplaceAllString(s, " "))
+	s = plainText(tagRe.ReplaceAllString(s, " "))
 	for _, lead := range []string{"Abstract ", "ABSTRACT ", "Summary "} {
 		if after, ok := strings.CutPrefix(s, lead); ok {
 			s = strings.TrimSpace(after)

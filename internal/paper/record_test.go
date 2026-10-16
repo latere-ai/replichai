@@ -51,6 +51,40 @@ func TestResolveDOIKeepsTheCrossrefRecord(t *testing.T) {
 	}
 }
 
+// Crossref and publisher pages carry HTML entities in plain-text fields. A
+// venue read as "Computers &amp; Graphics" was shown to readers verbatim.
+func TestEntitiesInMetadataAreDecoded(t *testing.T) {
+	fetch := &fakeFetcher{responses: map[string][]byte{"api.crossref.org": []byte(`{"message":{
+	  "title":["Context &amp; Location"],
+	  "author":[{"given":"Hans-W","family":"Gellersen"},{"name":"R&amp;D Group"}],
+	  "container-title":["Computers &amp; Graphics"],
+	  "publisher":"Elsevier &amp; Co",
+	  "issued":{"date-parts":[[1999]]}}}`)}}
+	id, err := Resolve(context.Background(), theDOI, WithFetcher(fetch))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if id.Title != "Context & Location" || id.Record.Venue != "Computers & Graphics" || id.Record.Publisher != "Elsevier & Co" {
+		t.Errorf("title=%q venue=%q publisher=%q, want the entities decoded", id.Title, id.Record.Venue, id.Record.Publisher)
+	}
+	if want := []string{"Hans-W Gellersen", "R&D Group"}; !reflect.DeepEqual(id.Record.Authors, want) {
+		t.Errorf("authors = %q, want %q", id.Record.Authors, want)
+	}
+
+	page := []byte(`<html><head>
+  <meta name="citation_author" content="O&#39;Brien, Pat">
+  <meta name="citation_journal_title" content="Computers &amp; Graphics">
+</head></html>`)
+	fetch = &fakeFetcher{responses: map[string][]byte{"example.edu": page}}
+	id, err = Resolve(context.Background(), "https://example.edu/papers/two", WithFetcher(fetch))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if id.Record.Venue != "Computers & Graphics" || len(id.Record.Authors) != 1 || id.Record.Authors[0] != "O'Brien, Pat" {
+		t.Errorf("page record = %+v, want the entities decoded", id.Record)
+	}
+}
+
 // AC1, the sparse case: a record that declares fewer fields resolves anyway,
 // and the undeclared fields are left empty rather than invented.
 func TestResolveDOIWithASparseCrossrefRecord(t *testing.T) {
@@ -301,8 +335,9 @@ func TestAnApostropheInsideAQuotedAttribute(t *testing.T) {
 	if got := recordFromBody(page).Venue; got != "CHI '24" {
 		t.Errorf("venue = %q, truncated at the apostrophe", got)
 	}
-	// A single-quoted attribute is read by its own delimiter too.
-	if got := recordFromBody(page).Authors; len(got) != 1 || got[0] != "O&#39;Hara, Kenton" {
+	// A single-quoted attribute is read by its own delimiter too, and its
+	// entity is decoded.
+	if got := recordFromBody(page).Authors; len(got) != 1 || got[0] != "O'Hara, Kenton" {
 		t.Errorf("authors = %v, want the single-quoted value whole", got)
 	}
 }
