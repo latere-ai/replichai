@@ -103,7 +103,7 @@ try {
         outerOpacity: +cs(outer).opacity,
         // The outer loop is drawn open: one arc with one gap (047), so its
         // length is short of the full circle it sits on. A closed outer ring
-        // claims the study is re-runnable and the drawing loses its meaning.
+        // claims the study already runs, which it does not yet.
         open: outer.tagName.toLowerCase() === 'path' && outer.getTotalLength() < 0.9 * 2 * Math.PI * 9.2 && inner.tagName.toLowerCase() === 'circle' && (inner.getAttribute('stroke-dasharray') || '') === '',
         // The wordmark is set in Inter, which the app ships and preloads (047).
         font: cs(document.querySelector('.wordmark')).fontFamily,
@@ -117,7 +117,7 @@ try {
       if (mark.w < 20 || mark.h < 20) fail(`the landing mark is ${mark.w}×${mark.h}px, too small to be the identity`)
       if (mark.innerStroke === 'none' || /rgba\(.*, *0\)/.test(mark.innerStroke)) fail(`the mark's inner ring does not paint (stroke: ${mark.innerStroke})`)
       if (mark.outerStroke === 'none' || mark.outerOpacity < 0.2) fail(`the mark's outer ring does not paint (stroke: ${mark.outerStroke}, opacity: ${mark.outerOpacity})`)
-      if (!mark.open) fail('the outer loop is not drawn open; a closed outer ring claims the study is re-runnable')
+      if (!mark.open) fail('the outer loop is not drawn open; a closed outer ring claims the study already runs')
       if (!/^"?Inter/.test(mark.font) || /serif/i.test(mark.font.replace(/sans-serif/gi, ''))) fail(`the wordmark asks for ${mark.font}; it is set in Inter, which the app ships`)
       if (mark.word !== 'ReplicHAI') fail(`the wordmark reads "${mark.word}"`)
       if (!mark.seam) fail('the wordmark lost its seam')
@@ -203,7 +203,7 @@ try {
     const pts = await page.evaluate(() => document.querySelectorAll('.landing-point').length)
     if (pts !== 3) fail(`the landing shows ${pts} points, want the inner loop, the outer loop, and the verdict`)
     const open_ = await page.evaluate(() => document.querySelectorAll('.landing-point.open').length)
-    if (open_ !== 1) fail(`${open_} points are drawn open; exactly one — the outer loop — is not re-runnable`)
+    if (open_ !== 1) fail(`${open_} points are drawn open; exactly one, the outer loop, does not run yet`)
     await page.close()
   }
 

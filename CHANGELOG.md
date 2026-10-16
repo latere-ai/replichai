@@ -10,6 +10,13 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- The landing page, its search and share descriptions, and the README describe
+  what ReplicHAI is for end to end: the audit re-runs the inner loop today, and
+  building a paper's experiment and running it with simulated participants is
+  coming soon. The audit itself still never simulates participants.
+
 ## v0.34.0 - 2026-10-16
 
 ### Added
