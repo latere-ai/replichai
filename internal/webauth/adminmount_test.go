@@ -259,6 +259,22 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	if w := do("PUT", "/admin/settings", `{"start_reserve":-1}`, admin); w.Code != http.StatusBadRequest {
 		t.Errorf("negative reserve = %d, want 400", w.Code)
 	}
+	// So is a price list that cannot be priced from: a negative rate would
+	// credit a project for using a model, and the card in force stays.
+	if w := do("PUT", "/admin/settings", `{"start_reserve":8000000,"rates":{"models":[{"model":"claude-opus-5-5","input":-1,"output":25000000}]}}`, admin); w.Code != http.StatusBadRequest {
+		t.Errorf("negative rate = %d, want 400", w.Code)
+	} else if !strings.Contains(w.Body.String(), "bad_card") {
+		t.Errorf("negative rate answered %s, want the bad_card code", w.Body.String())
+	}
+	// An admin adding a model to the card is what the console now does, and
+	// the card comes back with it.
+	if w := do("PUT", "/admin/settings", `{"start_reserve":8000000,"rates":{"models":[{"model":"claude-opus-5-5","input":5000000,"output":25000000,"cache_read":500000,"cache_write_5m":6250000,"cache_write_1h":10000000}]}}`, admin); w.Code != http.StatusOK {
+		t.Fatalf("a changed card = %d %s", w.Code, w.Body.String())
+	}
+	w = do("GET", "/admin/settings", "", admin)
+	if !strings.Contains(w.Body.String(), `"claude-opus-5-5"`) {
+		t.Errorf("the changed card was not stored: %s", w.Body.String())
+	}
 
 	// Credits for someone who has never signed in show up in the people table
 	// next to their grant. The wallet is keyed by email, which is what lets an

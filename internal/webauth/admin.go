@@ -426,6 +426,8 @@ func writeAdminError(w http.ResponseWriter, err error) {
 		httpapi.WriteError(w, http.StatusBadRequest, "missing_email")
 	case errors.Is(err, platform.ErrNegative), errors.Is(err, credit.ErrNotPositive):
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_amount")
+	case errors.Is(err, credit.ErrBadCard):
+		httpapi.WriteError(w, http.StatusBadRequest, "bad_card")
 	default:
 		httpapi.WriteError(w, http.StatusInternalServerError, "grant_failed")
 	}
