@@ -295,7 +295,7 @@ Built, and every acceptance criterion it set itself holds.
 | 045l | [The repository comes from the platform](045l-the-repository-comes-from-the-platform.md) | built | 045g, 045j, 045k, 009, 006f, 003 |
 | 047 | [Set like the work it audits](047-set-like-the-work-it-audits.md) | built | 017, 029, 030, 033, 034, 040 |
 
-### Half done (12)
+### Half done (13)
 
 Shipped and in use, but each is knowingly short of what its own spec asked for. The status column says which part is missing; read these before assuming the spec describes the code.
 
@@ -313,6 +313,7 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 041g | [Latere runs a session](041g-latere-runs-a-session.md) | built: the runtime, graded through a grader thread, on the command line against the live platform; studies wait on Topos read-only inputs | 041e, Topos/Lux/Cella/Auth |
 | 048 | [The runtime is a choice](048-the-runtime-is-a-choice.md) | built: runtime and model on the command line and in the app's picker, person-paid jobs, kept sign-ins; the app offers Latere since Latere Auth allows it | 041c, 041d, 041g, 031, 011 |
 | 049 | [The work is kept as it runs](049-the-work-is-kept-as-it-runs.md) | built for the command line: snapshots to the output directory and, for a hosted session that publishes, to its repository; the server's snapshots and the platform's saving during a turn designed | 041, 041b, 041g, 044, 045g, 009 |
+| 051 | [A session names its environment](051-a-session-names-its-environment.md) | built for `audit` and `run` on `latere` and `anthropic-managed`; choosing it in the app, or from the paper, not built | 041a, 041g, 046 |
 
 ### Not built (14)
 
