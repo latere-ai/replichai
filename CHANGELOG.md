@@ -40,6 +40,12 @@ committed. The commit log already holds that.
 - The ReplicHAI logo in the sidebar links home, so a reader on the registry
   can get back to the landing page. A signed-out reader is offered one sign-in,
   in the top bar.
+- Projects whose only sessions were recorded before sessions carried a paper
+  identity now list their paper, so the registry can cite it. The server
+  derives the identity from each finished session's reference when it starts.
+  The paper's title, authors, venue and year are filled in by the admin paper
+  refresh (`POST /admin/papers/refresh`) or the owner's "Fill in details" on
+  the project.
 
 ## v0.35.0 - 2026-10-16
 
