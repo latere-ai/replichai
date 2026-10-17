@@ -71,6 +71,8 @@
   --text: var(--fg-1);
   --text-secondary: var(--fg-2);
   --text-muted: var(--fg-3);
+  /* The focus ring latere-ui's controls draw: the app's own, below. */
+  --focus-outline: 2px solid var(--brand-ring);
 
   /* The ladder's radii, under the names this sheet uses. */
   --radius-sm: var(--radius-control);
@@ -1615,6 +1617,50 @@ button.quota-pill:hover {
 .tg.on .tg-knob {
   background: var(--lu-preset-on-accent);
   transform: translateX(14px);
+}
+
+/* latere-ui's GlassSelect, set as the app's text field: the same height,
+   edge, corner and ground, so a select and a field beside it read as one row.
+   Its menu opens in the top layer, so no card clips it. */
+:root[data-design='ink'] .lu-select-trigger {
+  min-height: 32px;
+  padding: 0 9px 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--fg-1);
+  font-size: 13px;
+  transition: border-color var(--dur-hover);
+}
+:root[data-design='ink'] .lu-select-trigger:hover,
+:root[data-design='ink'] .lu-select-trigger.is-open {
+  border-color: var(--brand);
+}
+:root[data-design='ink'] .lu-select-list {
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-menu);
+}
+:root[data-design='ink'] .lu-select-option {
+  padding: 7px 9px;
+  border-radius: var(--radius-control);
+  color: var(--fg-2);
+  font-size: 13px;
+}
+:root[data-design='ink'] .lu-select-option.is-active {
+  background: var(--bg-raised);
+  color: var(--fg-1);
+}
+:root[data-design='ink'] .lu-select-option.is-selected {
+  box-shadow: none;
+  background: transparent;
+  color: var(--fg-1);
+  font-weight: 600;
+}
+:root[data-design='ink'] .lu-select-option.is-selected.is-active {
+  background: var(--bg-raised);
 }
 
 .sel {

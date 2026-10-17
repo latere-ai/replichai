@@ -28,8 +28,8 @@ import { formatUSD } from '../money'
 import { Ico } from '../icons'
 import { type Choice, RuntimePick, runtimesFrom } from '../runtime-pick'
 import { citationBits, type Grouped } from '../papers'
-import { GlassModal } from 'latere-ui/react'
-import { Select, Tip } from '../ui'
+import { GlassModal, GlassSelect } from 'latere-ui/react'
+import { Tip } from '../ui'
 import { isMine } from '../account'
 import { CardHead, Empty } from './shared'
 import { DeleteSessionDialog, SessionRow } from './sessions'
@@ -651,13 +651,9 @@ function MovePaperDialog({
       ) : (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="muted small">{t('movePaperTo')}</span>
-          <Select
-            value={to}
-            options={targets.map((p) => ({ value: p.id, label: p.title }))}
-            onChange={setTo}
-            label={t('movePaperTo')}
-            width={320}
-          />
+          <div style={{ width: 320 }}>
+            <GlassSelect value={to} options={targets.map((p) => ({ value: p.id, label: p.title }))} onChange={setTo} ariaLabel={t('movePaperTo')} />
+          </div>
         </div>
       )}
       {err && <p className="err small">{err}</p>}
