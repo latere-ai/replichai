@@ -153,8 +153,8 @@ per person in **Admin → People**.
 
 ### Outbound mail
 
-A project invitation is the one message the platform sends to somebody who is
-not using the app, and it needs a transport:
+Project invitations and the account-on-hold notice are the messages the
+platform sends to somebody who is not using the app, and they need a transport:
 
 | variable | where it lives | notes |
 |---|---|---|
@@ -167,7 +167,8 @@ not using the app, and it needs a transport:
 With none of them set the server logs each message and starts normally: a
 deployment never fails to boot for want of mail, and an invitation is never
 dropped without a trace. `BASE_URL` is what every link in a message is built
-from, so a wrong value sends people to the wrong host.
+from, and where a mail app fetches the logo at the top of each message, so a
+wrong value sends people to the wrong host and shows a broken image.
 
 ## Release
 

@@ -117,7 +117,7 @@ Keeping the rubric out of the worker definition is deliberate: the rubric travel
 
 **Profiles** (`internal/profile/`) are who a principal says they are: the researcher identity a public sign-off is published under, and the handle a public page resolves. It is deliberately not part of `access`: a grant is an authorization, a profile is an assertion, and they have different lifetimes.
 
-**Notification** (`internal/notify/`) sends messages to people who are not using the app. A project invitation is the one place the platform asserts something about an absent person, and it needs a way to reach them. Sending is best-effort, because the membership is the durable thing.
+**Notification** (`internal/notify/`) sends messages to people who are not using the app: a project invitation, and the notice that a refunded payment put an account on hold. Each tells an absent person something they need to know, so it needs a way to reach them. The package writes what each message says and renders it into the shared layout from `latere.ai/x/pkg/email`, which gives every message an HTML body and a plain-text one; the logo it shows is served by the app itself. Sending is best-effort: the membership or the hold a message reports is the durable thing, and a failed send never undoes it.
 
 **Drafting** (`internal/draft/`) is one short model call: a prompt in, a paragraph and a token count out. It is deliberately not a `provider.Provider`: that contract is about sessions somebody can rejoin, and drafting a sentence is not one.
 
