@@ -881,6 +881,8 @@ func waitForDB(ctx context.Context, pool *pgxpool.Pool) error {
 // when MAILGUN_API_KEY is a real key, SMTP when SMTP_HOST is set, and a
 // log-only transport otherwise, so a local run and CI need no credentials and
 // no network, and an invitation is written to the log rather than dropped.
+// MAILGUN_FROM names who Mailgun's mail is from, noreply@ the sending domain
+// when unset.
 //
 // A misconfiguration, such as a key with no domain, is a startup error.
 // Discovering it at the first invitation instead would mean the one message
@@ -897,6 +899,7 @@ func buildNotifier(baseURL string) (*notify.Notifier, error) {
 			Password: os.Getenv("SMTP_PASSWORD"),
 			From:     envOr("SMTP_FROM", "noreply@latere.ai"),
 		},
+		xemail.WithFrom(os.Getenv("MAILGUN_FROM")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("mail: %w", err)
