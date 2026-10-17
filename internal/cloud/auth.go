@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -224,8 +225,23 @@ func (s *Session) tokenFrom(granted *oauth2.Token, previous Token) Token {
 // failure. Only an explicit invalid_grant, meaning the credential is revoked
 // or expired, clears it. A CLI that signed itself out on every transient
 // network failure could not be trusted with a long batch run.
+//
+// One refresh runs at a time in this process, and a caller that waited for
+// another's reads the credential again before refreshing. Auth spends a
+// refresh token once and answers a second presentation with invalid_grant,
+// which signs the terminal out, and the command line can hold several
+// sessions over one file at once, as a batch that runs papers at once does.
 func (s *Session) Current(ctx context.Context) (Token, error) {
 	token, err := s.Store.Load()
+	if err != nil {
+		return Token{}, err
+	}
+	if !token.Expired(s.now()) {
+		return token, nil
+	}
+	refreshing.Lock()
+	defer refreshing.Unlock()
+	token, err = s.Store.Load()
 	if err != nil {
 		return Token{}, err
 	}
@@ -251,9 +267,15 @@ func (s *Session) Current(ctx context.Context) (Token, error) {
 	return refreshed, nil
 }
 
+// refreshing makes the refresh grant one call at a time in this process, so a
+// refresh token is presented once (Current).
+var refreshing sync.Mutex
+
 // SwitchOrg moves the saved credential to another organization context through
 // the refresh grant, so switching does not need a second device login.
 func (s *Session) SwitchOrg(ctx context.Context, org string) (Token, error) {
+	refreshing.Lock()
+	defer refreshing.Unlock()
 	token, err := s.Store.Load()
 	if err != nil {
 		return Token{}, err

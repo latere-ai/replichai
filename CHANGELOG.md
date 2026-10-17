@@ -16,6 +16,10 @@ committed. The commit log already holds that.
   Outlook apps in dark mode. Those apps darken a mail without changing its
   images, so the logo disappeared; it now sits on a soft panel and reads on
   light and dark alike.
+- Several parts of one `replichai` command, such as the papers `replichai run`
+  runs at once, could refresh your stored sign-in at the same moment. Latere
+  Auth accepts a refresh token once, so the second refresh signed the
+  terminal out in the middle of the run. Refreshes now take turns.
 
 ## v0.36.3 - 2026-10-17
 

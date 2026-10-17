@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -382,5 +383,70 @@ func TestExpiryHasMargin(t *testing.T) {
 	// no expiry, and guessing one would sign a person out without cause.
 	if (Token{}).Expired(now) {
 		t.Error("a credential with no expiry was called expired")
+	}
+}
+
+// Several sessions over one credential file, as a batch that runs papers at
+// once holds, refresh an expired credential once between them. Auth spends a
+// refresh token once and answers a second presentation with invalid_grant,
+// which would sign the terminal out in the middle of the batch.
+func TestConcurrentSessionsRefreshOnce(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		refresh int
+		spent   = map[string]bool{}
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil || r.Form.Get("grant_type") != "refresh_token" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		presented := r.Form.Get("refresh_token")
+		mu.Lock()
+		reused := spent[presented]
+		spent[presented] = true
+		refresh++
+		n := refresh
+		mu.Unlock()
+		// The answer is slow enough that a refresh started without waiting
+		// for another reads the same spent token.
+		time.Sleep(50 * time.Millisecond)
+		if reused {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, map[string]string{"error": "invalid_grant", "error_description": "The refresh token was already used."})
+			return
+		}
+		writeJSON(w, map[string]any{
+			"access_token": jwt("user-1", "ada@example.org"), "token_type": "Bearer",
+			"refresh_token": fmt.Sprintf("refresh-%d", n), "expires_in": 3600,
+		})
+	}))
+	defer server.Close()
+	store := Store{Dir: t.TempDir()}
+	if err := store.Save(Token{AccessToken: jwt("user-1", "ada@example.org"), RefreshToken: "refresh-0", Expiry: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	const sessions = 4
+	errs := make(chan error, sessions)
+	var wg sync.WaitGroup
+	for range sessions {
+		wg.Go(func() {
+			s := &Session{AuthURL: server.URL, Store: store, HTTP: server.Client(), Now: time.Now}
+			_, err := s.Current(context.Background())
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("Current = %v", err)
+		}
+	}
+	if refresh != 1 {
+		t.Fatalf("the refresh token was presented %d times, want once", refresh)
+	}
+	if token, err := store.Load(); err != nil || token.RefreshToken != "refresh-1" {
+		t.Fatalf("the stored credential = %q, %v", token.RefreshToken, err)
 	}
 }
