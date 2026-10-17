@@ -10,6 +10,16 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- The rate card reads the price list with the same reader as the Latere
+  platform's model catalog, so a list in OpenRouter's format is read the
+  same way by both. The prices the card takes, and the models it takes them
+  for, are unchanged. A list at `REPLICHAI_PRICE_LIST_URL` must now also
+  write each model's name, modalities, supported parameters and price
+  overrides in OpenRouter's form where it writes them at all; a list that
+  does not is not read, and the card keeps the prices it has.
+
 ## v0.37.0 - 2026-10-17
 
 ### Changed

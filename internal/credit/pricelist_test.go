@@ -80,33 +80,6 @@ func TestFetchPriceListRefusesAnOutage(t *testing.T) {
 	}
 }
 
-// TestPerMillionIsExact checks the conversion from USD per token to micro-USD
-// per million tokens on values a float64 cannot hold exactly.
-func TestPerMillionIsExact(t *testing.T) {
-	for in, want := range map[string]int64{
-		"0.000000125":     125_000,
-		"0.000004":        4_000_000,
-		"1.25e-7":         125_000,
-		"0.0000000000005": 0, // rounds to zero: not a price
-	} {
-		got, ok := perMillion(in)
-		if want == 0 {
-			if ok {
-				t.Errorf("perMillion(%q) = %d, want refused", in, got)
-			}
-			continue
-		}
-		if !ok || got != want {
-			t.Errorf("perMillion(%q) = (%d, %v), want %d", in, got, ok, want)
-		}
-	}
-	for _, bad := range []string{"", "-0.000004", "abc", "1e999"} {
-		if _, ok := perMillion(bad); ok {
-			t.Errorf("perMillion(%q) accepted", bad)
-		}
-	}
-}
-
 // TestWithListedFollowsTheList checks the merge: a listed model's row takes the
 // listed prices and keeps its meters, a row the list does not price is kept as
 // written, a listed model the card lacks is appended in id order, and a second
