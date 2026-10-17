@@ -3,13 +3,17 @@
 
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"latere.ai/x/pkg/pricelist"
+)
 
 // TestPriceListURL checks that the card follows OpenRouter's list by default,
 // another list when one is named, and none when the deployment turns it off.
 func TestPriceListURL(t *testing.T) {
 	for value, want := range map[string]string{
-		"":                         defaultPriceListURL,
+		"":                         pricelist.DefaultURL,
 		"off":                      "",
 		" https://prices.example ": "https://prices.example",
 	} {

@@ -6,15 +6,13 @@ package credit
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"math/big"
 	"net/http"
-	"regexp"
 	"slices"
 	"strings"
+
+	"latere.ai/x/pkg/pricelist"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -40,43 +38,20 @@ import (
 // A list that prices no Anthropic model is an error, so an outage of the
 // list is never read as a list with no prices in it.
 func FetchPriceList(ctx context.Context, client *http.Client, url string) ([]Rates, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(req)
+	models, err := pricelist.Fetch(ctx, client, url)
 	if err != nil {
 		return nil, fmt.Errorf("read the price list: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("read the price list: GET %s: status %d", url, resp.StatusCode)
-	}
-	var body struct {
-		Data []struct {
-			ID      string `json:"id"`
-			Pricing struct {
-				Prompt       string `json:"prompt"`
-				Completion   string `json:"completion"`
-				CacheRead    string `json:"input_cache_read"`
-				CacheWrite   string `json:"input_cache_write"`
-				CacheWrite1h string `json:"input_cache_write_1h"`
-			} `json:"pricing"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&body); err != nil {
-		return nil, fmt.Errorf("decode the price list: %w", err)
-	}
 	var out []Rates
-	for _, m := range body.Data {
+	for _, m := range models {
 		vendor, model, ok := strings.Cut(strings.ToLower(strings.TrimSpace(m.ID)), "/")
 		if !ok || vendor != "anthropic" || model == "" || strings.Contains(model, ":") {
 			continue
 		}
 		var prices [5]int64
 		priced := true
-		for i, s := range []string{m.Pricing.Prompt, m.Pricing.Completion, m.Pricing.CacheRead, m.Pricing.CacheWrite, m.Pricing.CacheWrite1h} {
-			if prices[i], ok = perMillion(s); !ok {
+		for i, p := range []pricelist.Price{m.Prices.Prompt, m.Prices.Completion, m.Prices.InputCacheRead, m.Prices.InputCacheWrite, m.Prices.InputCacheWrite1h} {
+			if prices[i], ok = p.PerMillion(); !ok {
 				priced = false
 				break
 			}
@@ -142,43 +117,4 @@ func sameTokenPrices(a, b Rates) bool {
 	return a.Ref == b.Ref && a.Model == b.Model && a.Free == b.Free &&
 		a.Input == b.Input && a.Output == b.Output && a.CacheRead == b.CacheRead &&
 		a.CacheWrite5m == b.CacheWrite5m && a.CacheWrite1h == b.CacheWrite1h && a.CacheWrite == b.CacheWrite
-}
-
-// decimal is the form of a price in the list: a nonnegative decimal, possibly
-// in exponent notation with a short exponent. The bound on the exponent keeps
-// a hostile list from asking for a 10^huge big.Int.
-var decimal = regexp.MustCompile(`^[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]{1,2})?$`)
-
-// microPerMillion turns USD per token into micro-USD per million tokens:
-// 10^6 tokens times 10^6 micro-units.
-var microPerMillion = new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(12), nil))
-
-// perMillion reads a USD-per-token decimal string as micro-USD per million
-// tokens, rounded half-even to the micro-unit. The arithmetic is exact: the
-// list writes prices such as "0.000000125" that a float64 cannot hold. ok is
-// false for an empty, unreadable, negative or out-of-range price and for one
-// that rounds to zero.
-func perMillion(s string) (int64, bool) {
-	s = strings.TrimSpace(s)
-	if !decimal.MatchString(s) {
-		return 0, false
-	}
-	v, ok := new(big.Rat).SetString(s)
-	if !ok {
-		return 0, false
-	}
-	v.Mul(v, microPerMillion)
-	q, rem := new(big.Int).QuoRem(v.Num(), v.Denom(), new(big.Int))
-	switch rem.Lsh(rem, 1).Cmp(v.Denom()) {
-	case 1:
-		q.Add(q, big.NewInt(1))
-	case 0:
-		if q.Bit(0) == 1 {
-			q.Add(q, big.NewInt(1))
-		}
-	}
-	if q.Sign() <= 0 || !q.IsInt64() {
-		return 0, false
-	}
-	return q.Int64(), true
 }

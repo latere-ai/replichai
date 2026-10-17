@@ -38,6 +38,7 @@ import (
 	xemail "latere.ai/x/pkg/email"
 	"latere.ai/x/pkg/hostsandbox"
 	xotel "latere.ai/x/pkg/otel"
+	"latere.ai/x/pkg/pricelist"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
@@ -580,11 +581,6 @@ func (s *settingsEnvironments) read(ctx context.Context) ([]string, error) {
 	return set.LatereEnvironments, err
 }
 
-// defaultPriceListURL is OpenRouter's public model list, which states
-// Anthropic's list prices for every model, both cache-write lifetimes
-// included.
-const defaultPriceListURL = "https://openrouter.ai/api/v1/models"
-
 // priceListEvery is how often the card is brought back to the price list.
 const priceListEvery = time.Hour
 
@@ -594,7 +590,7 @@ const priceListEvery = time.Hour
 func priceListURL(getenv func(string) string) string {
 	switch v := strings.TrimSpace(getenv("REPLICHAI_PRICE_LIST_URL")); v {
 	case "":
-		return defaultPriceListURL
+		return pricelist.DefaultURL
 	case "off":
 		return ""
 	default:
