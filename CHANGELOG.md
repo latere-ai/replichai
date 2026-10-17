@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.37.0 - 2026-10-17
+
 ### Changed
 
 - Dialogs, selects, the model picker's panel, checkboxes, switches and the
