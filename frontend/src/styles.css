@@ -2548,10 +2548,12 @@ textarea::placeholder {
   overflow: hidden;
   animation: om-fade-up 0.34s var(--ease-fluid) both;
 }
-/* A card is a seek target and an inspector trigger, so it reads as a control. */
+/* A card is a seek target and an inspector trigger, so it reads as a control.
+   A seek lands it a little below the stream's top edge, not flush against it. */
 .event {
   cursor: pointer;
   text-align: left;
+  scroll-margin-top: 8px;
 }
 .event:hover {
   border-color: var(--border-strong);

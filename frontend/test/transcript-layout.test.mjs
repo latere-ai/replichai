@@ -153,7 +153,10 @@ try {
   const scrub = await page.evaluate(async () => {
     const stream = document.querySelector('.tx-stream')
     const bar = document.querySelector('.scrub-bar')
-    const before = { top: stream.scrollTop, styles: [...document.querySelectorAll('.event')].map((c) => c.getAttribute('style') ?? '') }
+    // Every scroller around the stream, which a seek must leave where it is.
+    const outer = [...document.querySelectorAll('.screen, .tx-body, .tx')].filter((e) => e.contains(stream))
+    const outerTops = () => outer.map((e) => e.scrollTop).concat(document.scrollingElement?.scrollTop ?? 0)
+    const before = { top: stream.scrollTop, outer: outerTops(), styles: [...document.querySelectorAll('.event')].map((c) => c.getAttribute('style') ?? '') }
     // The scroll is smooth: wait for it to come to rest rather than for a guess
     // at how long it takes, and give up on a drag that never scrolls.
     const rested = new Promise((r) => {
@@ -166,15 +169,24 @@ try {
     send('pointerdown', box.left + box.width * 0.5)
     send('pointermove', box.left + box.width * 0.8)
     await rested
-    const after = { top: stream.scrollTop, styles: [...document.querySelectorAll('.event')].map((c) => c.getAttribute('style') ?? '') }
+    const after = { top: stream.scrollTop, outer: outerTops(), styles: [...document.querySelectorAll('.event')].map((c) => c.getAttribute('style') ?? '') }
+    // The card the seek aimed at rests 8px under the stream's top edge, its
+    // scroll margin, unless the stream has run out of room below it.
+    const edge = stream.getBoundingClientRect().top
+    const atEnd = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 1
+    const landed = [...document.querySelectorAll('.event')].some((c) => Math.abs(c.getBoundingClientRect().top - edge - 8) <= 1.5)
     return {
       moved: after.top - before.top,
+      landed: landed || atEnd,
+      outerMoved: after.outer.some((t, i) => t !== before.outer[i]),
       restyled: after.styles.filter((s, i) => s !== before.styles[i]).length,
       cursor: !!document.querySelector('.scrub-cursor'),
     }
   })
   if (!scrub.cursor) fail('scrubbing left no cursor on the bar')
   if (scrub.moved <= 0) fail(`scrubbing moved the stream by ${scrub.moved}px, want a forward scroll`)
+  if (!scrub.landed) fail('after a seek no card rests 8px under the top of the stream')
+  if (scrub.outerMoved) fail('a seek scrolled the page around the stream, not only the stream')
   if (scrub.restyled) fail(`scrubbing rewrote the inline style of ${scrub.restyled} cards — that is the per-card work this design avoids`)
 
   // Every kind in the rail has a human label. An underscore in a
