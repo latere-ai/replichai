@@ -8,11 +8,12 @@ import { createPortal } from 'react-dom'
 import { Ico, type IconName } from './icons'
 import type { I18n, TKey } from './i18n'
 
-// The control set. Nothing here delegates to a browser-drawn widget: no native
-// checkbox, radio, select, number stepper, disclosure triangle, tooltip, or
-// prompt(). Each one is drawn by the app so it carries the app's own tokens and
-// reads the same on every platform, and each one keeps the role, state, and
-// keyboard behavior the native element has.
+// The app's own pieces, for what neither the browser nor latere-ui provides:
+// headings that break at their clauses, list rows, the money stepper, the
+// one-number prompt, the tooltip and the status pill. Checkboxes, switches,
+// selects, segmented controls, dialogs and popovers are latere-ui's, and a
+// disclosure is the browser's <details>; each keeps the role, state and
+// keyboard behavior of the native element.
 
 /* ── Type ── */
 
