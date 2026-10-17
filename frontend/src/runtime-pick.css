@@ -1,25 +1,53 @@
-/* The runtime and model choice on the papers card. The trigger, the panel and
-   its rows are the Select's (.sel-btn, .sel-list, .sel-opt) and the runtimes
-   are a Segmented; this sheet lays out only what a Select does not have:
-   sections, two-line rows, a search and a note. It names no color, radius or
-   duration of its own. Its overrides name the shared class too, so they hold
-   whichever sheet the bundle loads last. */
+/* The runtime and model choice on the papers card. The panel is latere-ui's
+   GlassPopover on its solid surface; this sheet draws the trigger, set as the
+   app's text field like a select's, and what the panel holds: sections,
+   two-line rows, a search and a note. It names no color, radius or duration
+   of its own. */
 
 .rp {
   max-width: 100%;
 }
 .rp-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 32px;
+  padding: 0 9px 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--fg-1);
+  font-size: 13px;
   font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--dur-hover);
+}
+.rp-btn:hover,
+.rp-btn.open {
+  border-color: var(--brand);
+}
+.rp-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.rp-caret {
+  flex: none;
+  color: var(--fg-3);
+  transition: transform 0.18s var(--ease-fluid);
+}
+.rp-btn.open .rp-caret {
+  transform: rotate(180deg);
+  color: inherit;
 }
 
-.sel-list.rp-pop {
+.rp .lu-pop-panel {
   width: min(360px, calc(100vw - 24px));
-  /* The script caps it to the room on the side it opens toward. */
-  max-height: calc(100vh - 24px);
-  overflow-y: auto;
-  padding: 6px;
   border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-menu);
 }
 .rp-section {
   padding: 6px 6px 8px;
@@ -43,9 +71,38 @@
   justify-content: center;
 }
 
+/* A row the cursor moves over: a level or a model. The chosen one is set in
+   the ink and ticked. */
+.rp-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--fg-2);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rp-opt.cursor {
+  background: var(--bg-raised);
+  color: var(--fg-1);
+}
+.rp-opt.on {
+  color: var(--brand);
+  font-weight: 600;
+}
+.rp-tick {
+  flex: none;
+  margin-left: 8px;
+}
+
 /* A level is two lines: its name and its price per million tokens, then the
-   model it runs. The Select's row is one line, so the row is a grid here, and
-   the price sits beside the name so a long model identifier never cuts it. */
+   model it runs. A model's row is one line, so a level's is a grid, and the
+   price sits beside the name so a long model identifier never cuts it. */
 .rp-rows,
 .rp-models {
   display: flex;
@@ -55,7 +112,7 @@
   padding: 0;
   list-style: none;
 }
-.sel-opt.rp-level {
+.rp-opt.rp-level {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
@@ -66,7 +123,7 @@
   text-align: left;
   white-space: normal;
 }
-.sel-opt.rp-level:disabled {
+.rp-opt.rp-level:disabled {
   cursor: default;
   opacity: 0.55;
 }
@@ -82,13 +139,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sel-tick.rp-tick {
+.rp-level .rp-tick {
   grid-column: 3;
   grid-row: 1 / span 2;
   margin-left: 0;
-}
-.sel-opt.rp-model {
-  border-radius: var(--radius-control);
 }
 
 /* A model is named by its identifier, which may be monospace; a price lines
@@ -123,10 +177,4 @@
   border-top: 1px solid var(--border);
   color: var(--fg-3);
   font: 400 12px/1.4 var(--font-sans);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rp-pop {
-    animation: none;
-  }
 }

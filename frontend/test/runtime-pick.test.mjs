@@ -236,7 +236,7 @@ try {
       fail(`Start sent paper_key ${JSON.stringify(started.paper_key)}`);
   }
 
-  /* ── The keys are the Select's: arrows move, Enter picks ── */
+  /* ── The keys are a select's: arrows move, Enter picks ── */
 
   await page.focus(".rp-btn");
   await page.keyboard.press("ArrowDown");
@@ -244,7 +244,7 @@ try {
   // The cursor opens on the chosen model, the second of three; Down past the
   // last model wraps to Quick, the first level, and once more is Thorough.
   const opened = await page.evaluate(
-    () => document.querySelector(".rp-pop .sel-opt.cursor")?.textContent ?? "",
+    () => document.querySelector(".rp-pop .rp-opt.cursor")?.textContent ?? "",
   );
   if (!opened.includes("openai/gpt-6.1-sol"))
     fail(
@@ -252,7 +252,7 @@ try {
     );
   for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowDown");
   const under = await page.evaluate(
-    () => document.querySelector(".rp-pop .sel-opt.cursor")?.textContent ?? "",
+    () => document.querySelector(".rp-pop .rp-opt.cursor")?.textContent ?? "",
   );
   if (!under.includes("Thorough"))
     fail(`after three Downs the cursor is on "${under}", want Thorough`);
@@ -289,10 +289,14 @@ try {
 
   /* ── Scrolling the model list keeps the panel open ── */
 
+  // Whether the page behind the panel could scroll, so the run says whether
+  // the panel was seen to follow it.
+  let followed = false;
+
   // A scroll inside the panel is the reader using it, so the panel stays open;
-  // a scroll of the page behind it closes it, because that moves the trigger
-  // out from under the panel. As many models as production lists (226), so the
-  // list overflows its box.
+  // a scroll of the page behind it moves the trigger, and the panel goes with
+  // it. As many models as production lists (226), so the list overflows its
+  // box.
   {
     const many = runtimes.map((r) =>
       r.name === "latere"
@@ -323,16 +327,47 @@ try {
     }));
     if (!scrolled.open) fail("scrolling the model list closed the panel");
     else if (!(scrolled.top > 0)) fail("the model list did not scroll under the wheel");
-    // The page behind it scrolling is the anchor moving: that closes the panel.
-    await long.evaluate(() => document.querySelector(".screen").dispatchEvent(new Event("scroll")));
-    await long
-      .waitForFunction(() => !document.querySelector(".rp-pop"), { timeout: 2000 })
-      .catch(() => fail("a scroll of the page behind the panel did not close it"));
     await long.close();
   }
 
+  /* ── A scroll of the page behind the panel carries it along ── */
+
+  {
+    // A short window, so the screen behind the panel has room to scroll.
+    const short = await h.page({ viewport: { width: 1440, height: 560 }, routes });
+    await short.open(`/p/${PROJECT}`);
+    await short.waitForSelector(".rp-btn", { timeout: 15000 });
+    await short.click(".rp-btn");
+    await short.waitForSelector(".rp-pop");
+    await settled(short);
+    // The page behind it scrolling moves the trigger: the panel stays open and
+    // stays against it.
+    const gap = () =>
+      short.evaluate(() => {
+        const pop = document.querySelector(".rp-pop")?.getBoundingClientRect();
+        const btn = document.querySelector(".rp-btn").getBoundingClientRect();
+        return pop ? Math.round(pop.top - btn.bottom) : null;
+      });
+    const resting = await gap();
+    followed = await short.evaluate(() => {
+      const screen = document.querySelector(".screen");
+      const was = screen.scrollTop;
+      screen.scrollTop += 24;
+      return screen.scrollTop !== was;
+    });
+    if (followed) {
+      await settled(short);
+      const after = await gap();
+      if (after === null) fail("a small scroll of the page behind the panel closed it");
+      else if (Math.abs(after - resting) > 1)
+        fail(`after a scroll the panel is ${after}px from its trigger, it was ${resting}px; it was left behind`);
+    }
+    await short.close();
+  }
+
   h.ok(
-    "the picker offers each runtime and level at the server's prices, Start sends the runtime and model chosen, and its model list scrolls",
+    "the picker offers each runtime and level at the server's prices, Start sends the runtime and model chosen, and its model list scrolls" +
+      (followed ? "; the panel follows a scroll of the page" : ""),
   );
 } catch (e) {
   fail(e);

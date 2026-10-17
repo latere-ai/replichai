@@ -6,18 +6,13 @@
 // platform one specific model below the levels. One trigger on the papers card
 // opens a panel that holds the whole choice, so Start stays one tap.
 //
-// The trigger and the panel take the Select's look and behavior (portalled,
-// placed from the trigger, dismissed by a scroll or a click away, arrows to
-// move, Enter to pick, Escape to close), and the runtimes are a Segmented.
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { createPortal } from "react-dom";
+// The panel is latere-ui's GlassPopover, which opens it in the top layer,
+// places it against the trigger, keeps it there as the page scrolls, and
+// closes it on a click away, on Escape, or once the trigger scrolls out of
+// sight. What it holds is this file's: the arrows move a cursor over the
+// levels and models, Enter picks, and the runtimes are a Segmented.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GlassPopover } from "latere-ui/react";
 import type { ModelTier, RuntimeOption } from "./api";
 import { countOf, type I18n } from "./i18n";
 import { Ico } from "./icons";
@@ -82,7 +77,6 @@ export function RuntimePick({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
-  const [at, setAt] = useState({ left: 0, top: 0, maxHeight: 0 });
   const btn = useRef<HTMLButtonElement>(null);
   const pop = useRef<HTMLDivElement>(null);
   const runtime =
@@ -129,57 +123,6 @@ export function RuntimePick({
     setOpen(true);
   };
 
-  // Placed like the Select's list: under the trigger, aligned to its left edge
-  // and kept on screen, and above it when there is no room below. The panel is
-  // taller than any Select's list, so where neither side has room for all of
-  // it, it opens toward the roomier side and scrolls inside that room.
-  useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => {
-      const b = btn.current?.getBoundingClientRect();
-      const p = pop.current;
-      if (!b || !p) return;
-      const width = p.offsetWidth;
-      const height = p.scrollHeight;
-      const below = window.innerHeight - b.bottom - 17;
-      const above = b.top - 17;
-      const up = height > below && above > below;
-      const maxHeight = Math.max(160, up ? above : below);
-      const top = up ? b.top - 5 - Math.min(height, maxHeight) : b.bottom + 5;
-      const left = Math.max(
-        12,
-        Math.min(b.left, window.innerWidth - width - 12),
-      );
-      setAt({ left, top, maxHeight });
-    };
-    place();
-    // A scroll of the page behind the panel moves the trigger out from under
-    // it, so it closes. A scroll inside the panel is the reader using it, so it
-    // does not. The listener is in the capture phase to hear every scroller,
-    // which is why it checks where the scroll began.
-    const dismiss = (e: Event) => {
-      if (e.target instanceof Node && pop.current?.contains(e.target)) return;
-      close(false);
-    };
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", dismiss, { capture: true });
-    return () => {
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", dismiss, { capture: true });
-    };
-  }, [open, close, runtime?.name, value.model, query]);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!btn.current?.contains(target) && !pop.current?.contains(target))
-        close(false);
-    };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
-  }, [open, close]);
-
   // A search narrows the list under the cursor, so the cursor stays on a row.
   useEffect(() => {
     setCursor((c) => Math.min(c, Math.max(0, rows.length - 1)));
@@ -189,7 +132,7 @@ export function RuntimePick({
   useEffect(() => {
     if (!open) return;
     pop.current
-      ?.querySelector(".sel-opt.cursor")
+      ?.querySelector(".rp-opt.cursor")
       ?.scrollIntoView({ block: "nearest" });
   }, [open, cursor]);
 
@@ -205,20 +148,18 @@ export function RuntimePick({
     close();
   };
 
-  // The same keys as the Select, from the trigger and from the search box.
+  // The keys of a select, from the trigger and from the search box. Escape is
+  // the popover's: it closes the panel and gives the trigger its focus back.
+  // A key handled here goes no further, so the popover does not act on it too.
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      if (!open) return;
-      e.preventDefault();
-      e.stopPropagation();
-      return close();
-    }
     if (e.key === "Enter") {
       e.preventDefault();
+      e.stopPropagation();
       return open ? pick(rows[cursor]) : show();
     }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       if (!open) return show();
       if (rows.length)
         setCursor(
@@ -251,170 +192,162 @@ export function RuntimePick({
     );
 
   return (
-    <div className="sel rp">
-      <button
-        ref={btn}
-        type="button"
-        className={"sel-btn rp-btn" + (open ? " open" : "")}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label={t("runtimePickLabel", { choice: summary })}
-        onClick={() => (open ? close() : show())}
-        onKeyDown={onKey}
+    <GlassPopover
+      className="rp"
+      surface="solid"
+      open={open}
+      onOpenChange={(next) => (next ? show() : close(false))}
+      trigger={({ open, id }) => (
+        <button
+          ref={btn}
+          type="button"
+          className={"rp-btn" + (open ? " open" : "")}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={open ? id : undefined}
+          aria-label={t("runtimePickLabel", { choice: summary })}
+          onKeyDown={onKey}
+        >
+          <span className="rp-value">{summary}</span>
+          <Ico name="chevronDown" size={13} className="rp-caret" />
+        </button>
+      )}
+    >
+      <div
+        ref={pop}
+        className="rp-pop"
+        role="dialog"
+        aria-label={t("runtimePickTitle")}
       >
-        <span className="sel-value">{summary}</span>
-        <Ico name="chevronDown" size={13} className="sel-caret" />
-      </button>
-      {open &&
-        createPortal(
+        {runtimes.length > 1 && (
+          <div className="rp-section">
+            <div className="rp-head">{t("runsOn")}</div>
+            <Segmented
+              value={runtime.name}
+              label={t("runsOn")}
+              options={runtimes.map((r) => ({
+                value: r.name,
+                label: r.label,
+              }))}
+              onChange={(name) => {
+                setQuery("");
+                setCursor(0);
+                onChange({ runtime: name, tier, model: "" });
+              }}
+            />
+          </div>
+        )}
+        <div className="rp-section">
+          <div className="rp-head">{t("effort")}</div>
           <div
-            ref={pop}
-            className="sel-list rp-pop"
-            role="dialog"
-            aria-label={t("runtimePickTitle")}
-            style={{
-              left: at.left,
-              top: at.top,
-              maxHeight: at.maxHeight || undefined,
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                close();
-              }
-            }}
+            className="rp-rows"
+            role="radiogroup"
+            aria-label={t("effort")}
           >
-            {runtimes.length > 1 && (
-              <div className="rp-section">
-                <div className="rp-head">{t("runsOn")}</div>
-                <Segmented
-                  value={runtime.name}
-                  label={t("runsOn")}
-                  options={runtimes.map((r) => ({
-                    value: r.name,
-                    label: r.label,
-                  }))}
-                  onChange={(name) => {
-                    setQuery("");
-                    setCursor(0);
-                    onChange({ runtime: name, tier, model: "" });
-                  }}
-                />
-              </div>
-            )}
-            <div className="rp-section">
-              <div className="rp-head">{t("effort")}</div>
-              <div
-                className="rp-rows"
-                role="radiogroup"
-                aria-label={t("effort")}
-              >
-                {levels.map((level) => {
-                  const offer = runtime.efforts.find((e) => e.tier === level);
-                  const on = !value.model && tier === level;
-                  const unavailable = !!offer?.error;
-                  const index = rowIndex({ kind: "level", level });
-                  const cost = price(offer?.input, offer?.output);
-                  return (
+            {levels.map((level) => {
+              const offer = runtime.efforts.find((e) => e.tier === level);
+              const on = !value.model && tier === level;
+              const unavailable = !!offer?.error;
+              const index = rowIndex({ kind: "level", level });
+              const cost = price(offer?.input, offer?.output);
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  disabled={unavailable}
+                  className={
+                    "rp-opt rp-level" +
+                    (index === cursor ? " cursor" : "") +
+                    (on ? " on" : "")
+                  }
+                  onMouseEnter={() => index >= 0 && setCursor(index)}
+                  onClick={() => pick({ kind: "level", level })}
+                >
+                  <span className="rp-level-name">{effortName(level)}</span>
+                  {!unavailable && cost && (
+                    <span className="rp-price">{cost}</span>
+                  )}
+                  <span className="rp-level-detail">
+                    {unavailable
+                      ? t("effortUnavailable")
+                      : offer?.model && (
+                          <span className="rp-id">{offer.model}</span>
+                        )}
+                  </span>
+                  {on && (
+                    <Ico
+                      name="check"
+                      size={13}
+                      w={2.2}
+                      className="rp-tick"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {!!runtime.models?.length && (
+          <div className="rp-section">
+            <div className="rp-head">{t("specificModel")}</div>
+            <input
+              className="text rp-search"
+              type="search"
+              value={query}
+              placeholder={countOf(t, "searchModels", runtime.models.length)}
+              aria-label={t("specificModel")}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onKey}
+              spellCheck={false}
+            />
+            <ul
+              className="rp-models"
+              role="listbox"
+              aria-label={t("specificModel")}
+            >
+              {matches.length === 0 && (
+                <li className="rp-empty">{t("noModelMatch")}</li>
+              )}
+              {matches.map((m) => {
+                const index = rowIndex({ kind: "model", model: m });
+                return (
+                  <li key={m}>
                     <button
-                      key={level}
                       type="button"
-                      role="radio"
-                      aria-checked={on}
-                      disabled={unavailable}
+                      role="option"
+                      aria-selected={m === value.model}
                       className={
-                        "sel-opt rp-level" +
+                        "rp-opt rp-model" +
                         (index === cursor ? " cursor" : "") +
-                        (on ? " on" : "")
+                        (m === value.model ? " on" : "")
                       }
-                      onMouseEnter={() => index >= 0 && setCursor(index)}
-                      onClick={() => pick({ kind: "level", level })}
+                      onMouseEnter={() => setCursor(index)}
+                      onClick={() => pick({ kind: "model", model: m })}
                     >
-                      <span className="rp-level-name">{effortName(level)}</span>
-                      {!unavailable && cost && (
-                        <span className="rp-price">{cost}</span>
-                      )}
-                      <span className="rp-level-detail">
-                        {unavailable
-                          ? t("effortUnavailable")
-                          : offer?.model && (
-                              <span className="rp-id">{offer.model}</span>
-                            )}
-                      </span>
-                      {on && (
+                      <span className="rp-value rp-id">{m}</span>
+                      {m === value.model && (
                         <Ico
                           name="check"
                           size={13}
                           w={2.2}
-                          className="sel-tick rp-tick"
+                          className="rp-tick"
                         />
                       )}
                     </button>
-                  );
-                })}
-              </div>
-            </div>
-            {!!runtime.models?.length && (
-              <div className="rp-section">
-                <div className="rp-head">{t("specificModel")}</div>
-                <input
-                  className="text rp-search"
-                  type="search"
-                  value={query}
-                  placeholder={countOf(t, "searchModels", runtime.models.length)}
-                  aria-label={t("specificModel")}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={onKey}
-                  spellCheck={false}
-                />
-                <ul
-                  className="rp-models"
-                  role="listbox"
-                  aria-label={t("specificModel")}
-                >
-                  {matches.length === 0 && (
-                    <li className="rp-empty">{t("noModelMatch")}</li>
-                  )}
-                  {matches.map((m) => {
-                    const index = rowIndex({ kind: "model", model: m });
-                    return (
-                      <li key={m}>
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={m === value.model}
-                          className={
-                            "sel-opt rp-model" +
-                            (index === cursor ? " cursor" : "") +
-                            (m === value.model ? " on" : "")
-                          }
-                          onMouseEnter={() => setCursor(index)}
-                          onClick={() => pick({ kind: "model", model: m })}
-                        >
-                          <span className="sel-value rp-id">{m}</span>
-                          {m === value.model && (
-                            <Ico
-                              name="check"
-                              size={13}
-                              w={2.2}
-                              className="sel-tick"
-                            />
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-            <p className="rp-note">
-              {runtime.payer === "person"
-                ? t("paidByPerson")
-                : t("paidByProject")}
-            </p>
-          </div>,
-          document.body,
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
-    </div>
+        <p className="rp-note">
+          {runtime.payer === "person"
+            ? t("paidByPerson")
+            : t("paidByProject")}
+        </p>
+      </div>
+    </GlassPopover>
   );
 }
