@@ -158,7 +158,7 @@ textarea {
 }
 /* One focus ring for every control, the family's 2px ink outline, so keyboard
    focus is the same across the app rather than styled per widget. */
-:where(input, button, select, a, [tabindex]):focus-visible {
+:where(input, button, select, summary, a, [tabindex]):focus-visible {
   outline: 2px solid var(--brand-ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
@@ -1719,6 +1719,8 @@ button.quota-pill:hover {
   background: var(--bg-code);
   overflow: hidden;
 }
+/* A disclosure is the browser's <details>, with its marker hidden and the
+   app's caret drawn in its place, so it reads the same on every engine. */
 .disc-head {
   display: flex;
   align-items: center;
@@ -1731,6 +1733,10 @@ button.quota-pill:hover {
   font: 500 11.5px/1 var(--font-sans);
   cursor: pointer;
   text-align: left;
+  list-style: none;
+}
+.disc-head::-webkit-details-marker {
+  display: none;
 }
 .disc-head:hover {
   color: var(--brand);
@@ -1739,7 +1745,7 @@ button.quota-pill:hover {
   flex: none;
   transition: transform 0.18s var(--ease-fluid);
 }
-.disc.open .disc-caret {
+.disc[open] .disc-caret {
   transform: rotate(90deg);
 }
 .disc-body {

@@ -28,7 +28,7 @@ import { countOf, type I18n } from '../i18n'
 import { dateOnly } from '../locale'
 import { Ico, type IconName } from '../icons'
 import { type SessionTab } from '../routes'
-import { Disclosure, Pill, RowButton, Tip } from '../ui'
+import { Pill, RowButton, Tip } from '../ui'
 import { stoppedByHand, terminal } from '../session-stop'
 import { failureParts, sessionFailureText } from '../errors'
 import { useJobStream } from '../job-stream'
@@ -648,9 +648,15 @@ function SessionFailure({ i18n, cause }: { i18n: I18n; cause: string }) {
         <span className="fail-label">{t('failReported')}</span> <span data-test="failure-cause">{summary}</span>
       </p>
       {detail && (
-        <Disclosure summary={countOf(t, 'failMore', lines)}>
-          <pre data-test="failure-detail">{detail}</pre>
-        </Disclosure>
+        <details className="disc">
+          <summary className="disc-head">
+            <Ico name="chevronRight" size={12} w={2} className="disc-caret" />
+            <span>{countOf(t, 'failMore', lines)}</span>
+          </summary>
+          <div className="disc-body">
+            <pre data-test="failure-detail">{detail}</pre>
+          </div>
+        </details>
       )}
     </section>
   )

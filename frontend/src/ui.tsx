@@ -287,23 +287,6 @@ export function PromptDialog({
   )
 }
 
-/* ── Disclosure ── */
-
-// Disclosure is the app's own <details>, whose native marker is drawn by the
-// browser and differs on every engine.
-export function Disclosure({ summary, children }: { summary: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className={'disc' + (open ? ' open' : '')}>
-      <button type="button" className="disc-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <Ico name="chevronRight" size={12} w={2} className="disc-caret" />
-        <span>{summary}</span>
-      </button>
-      {open && <div className="disc-body">{children}</div>}
-    </div>
-  )
-}
-
 /* ── Tooltip ── */
 
 // Tip is the app's own tooltip; the `title` attribute is drawn by the browser,

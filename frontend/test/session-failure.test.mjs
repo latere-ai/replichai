@@ -78,7 +78,8 @@ try {
     await settled(page)
     const note = await page.evaluate(() => ({
       cause: document.querySelector('[data-test="failure-cause"]')?.textContent,
-      detail: !!document.querySelector('[data-test="failure-detail"]'),
+      // Shown, not present: a closed disclosure keeps its content in the page.
+      detail: !!document.querySelector('[data-test="failure-detail"]')?.checkVisibility(),
       select: getComputedStyle(document.querySelector('[data-test="failure-cause"]')).userSelect,
     }))
     if (note.cause !== FIRST) fail(`the session's failure reads "${note.cause}", want the run's first line`)
@@ -102,7 +103,7 @@ try {
     if (copied !== FIRST) fail(`selecting the failure copies "${copied}"`)
 
     await page.click('[data-test="session-failure"] .disc-head')
-    await page.waitForSelector('[data-test="failure-detail"]')
+    await page.waitForSelector('[data-test="failure-detail"]', { visible: true })
     const box = await page.evaluate(() => {
       const pre = document.querySelector('[data-test="failure-detail"]')
       const note = document.querySelector('[data-test="session-failure"]')
@@ -147,7 +148,7 @@ try {
     await page.waitForSelector('[data-test="session-failure"]', { timeout: 15000 })
     await settled(page)
     await page.click('[data-test="session-failure"] .disc-head')
-    await page.waitForSelector('[data-test="failure-detail"]')
+    await page.waitForSelector('[data-test="failure-detail"]', { visible: true })
     const spill = await page.evaluate(() => {
       const note = document.querySelector('[data-test="session-failure"]')
       return { doc: document.documentElement.scrollWidth - window.innerWidth, right: note.getBoundingClientRect().right - window.innerWidth }
