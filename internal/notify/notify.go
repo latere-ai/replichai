@@ -49,8 +49,8 @@ const (
 	logoPath     = "/email/lockup-replichai-ink.png"
 	logoDarkPath = "/email/lockup-replichai-paper.png"
 	logoAlt      = "Latere ReplicHAI"
-	logoWidth    = 190
-	logoHeight   = 38
+	logoWidth    = 214
+	logoHeight   = 50
 )
 
 // Transport delivers one rendered message. It is the subset of

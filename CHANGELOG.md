@@ -10,6 +10,13 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- The ReplicHAI logo at the top of an email stays visible in the Gmail and
+  Outlook apps in dark mode. Those apps darken a mail without changing its
+  images, so the logo disappeared; it now sits on a soft panel and reads on
+  light and dark alike.
+
 ## v0.36.3 - 2026-10-17
 
 ### Changed
