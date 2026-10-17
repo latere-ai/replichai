@@ -21,8 +21,7 @@ import { type I18n } from '../i18n'
 import { dateOnly } from '../locale'
 import { deleteSessionErrLabel, publishBlockers, publishBlockerText, publishErrText } from '../errors'
 import { Ico } from '../icons'
-import { GlassModal } from 'latere-ui/react'
-import { Check } from '../ui'
+import { GlassCheckbox, GlassModal } from 'latere-ui/react'
 import { ProfileFields, SignerRows, type TextField } from './shared'
 
 // PublishWizard walks the three commitments of going public: what becomes
@@ -156,12 +155,8 @@ export function PublishWizard({
             {t('publishStep2Body')}
           </p>
           <ProfileFields i18n={i18n} p={p} set={set} />
-          <Check on={!!p.public} onChange={(on) => setP((cur) => ({ ...cur, public: on }))}>
-            {t('publishPublicProfile')}
-          </Check>
-          <Check on={toProfile} onChange={setToProfile}>
-            {t('publishSaveToProfile')}
-          </Check>
+          <GlassCheckbox value={!!p.public} onChange={(on) => setP((cur) => ({ ...cur, public: on }))} label={t('publishPublicProfile')} />
+          <GlassCheckbox value={toProfile} onChange={setToProfile} label={t('publishSaveToProfile')} />
           {!hasContact && (
             <p className="muted small" style={{ margin: 0 }}>
               <Ico name="info" size={12} /> {t('publishContactRequired')}
@@ -180,12 +175,8 @@ export function PublishWizard({
           <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
             {t('publishAttestation')}
           </p>
-          <Check on={affirmed} onChange={setAffirmed}>
-            {t('publishAffirm')}
-          </Check>
-          <Check on={flipRepo} onChange={setFlipRepo}>
-            {t('flipRepoLabel')}
-          </Check>
+          <GlassCheckbox value={affirmed} onChange={setAffirmed} label={t('publishAffirm')} />
+          <GlassCheckbox value={flipRepo} onChange={setFlipRepo} label={t('flipRepoLabel')} />
           <span className="attestation">{t('attestationNote')}</span>
         </>
       )}

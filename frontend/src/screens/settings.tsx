@@ -11,7 +11,8 @@ import { type I18n } from '../i18n'
 import { profileSaveErrText } from '../errors'
 import { Ico } from '../icons'
 import { type Navigate, type SettingsTab } from '../routes'
-import { Seams, Toggle } from '../ui'
+import { GlassSwitch } from 'latere-ui/react'
+import { Seams } from '../ui'
 import { useTheme } from '../theme'
 import { Avatar, ProfileFields, type TextField, ThemeSwitcher, TierPill } from './shared'
 
@@ -154,9 +155,7 @@ function ProfileCard({ i18n }: { i18n: I18n }) {
           sign-off; it publishes the aggregation, and that is its owner's call
           to make. */}
       <div className="stack" style={{ gap: 8 }}>
-        <Toggle on={!!p.public} onChange={setPublic}>
-          {t('profilePublicLabel')}
-        </Toggle>
+        <GlassSwitch value={!!p.public} onChange={setPublic} label={t('profilePublicLabel')} />
         <span className="muted small" style={{ lineHeight: 1.6 }}>
           {t('profilePublicHint')}
         </span>

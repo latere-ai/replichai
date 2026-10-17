@@ -1539,90 +1539,92 @@ button.quota-pill:hover {
   border-color: transparent;
   background: color-mix(in srgb, var(--err) 15%, transparent);
 }
-/* ── The control set: checkbox, switch, select, stepper, disclosure ──
-   Each one is drawn here rather than by the browser, so it carries the same
-   tokens as everything around it and looks identical on every platform. */
+/* ── The control set ──
+   The checkbox, switch, select and dialog are latere-ui's, set here in the
+   app's sizes and on the ink ladder: each drops its glass for the solid
+   ground the rest of the app is drawn on. The number stepper and the
+   disclosure are the app's own. */
 
-.ck,
-.tg {
-  display: inline-flex;
+/* GlassCheckbox: a 16px box on the field's edge, filled with the ink when
+   ticked, beside a label that may wrap under its own first line. */
+:root[data-design='ink'] .lu-check {
   align-items: flex-start;
   gap: 9px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  color: var(--fg-1);
-  font: inherit;
-  font-size: 12.5px;
-  line-height: 1.5;
 }
-.ck:disabled,
-.tg:disabled {
-  opacity: 0.5;
+:root[data-design='ink'] .lu-check.is-disabled {
   cursor: default;
 }
-.ck-label {
-  min-width: 0;
-}
-.ck-box {
+:root[data-design='ink'] .lu-check-box {
   width: 16px;
   height: 16px;
-  flex: none;
   margin-top: 1px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   border: 1.5px solid var(--border-strong);
   border-radius: 5px;
   background: var(--bg-surface);
-  color: var(--brand-fg);
-  transition: background var(--dur-hover), border-color var(--dur-hover);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
-.ck:hover .ck-box {
+:root[data-design='ink'] .lu-check:hover .lu-check-box {
   border-color: var(--brand);
 }
-.ck.on .ck-box {
+:root[data-design='ink'] .lu-check-native:checked + .lu-check-box {
+  border-color: var(--brand);
   background: var(--brand);
-  border-color: var(--brand);
 }
-.tg {
-  align-items: center;
+:root[data-design='ink'] .lu-check-native:checked + .lu-check-box .lu-check-tick {
+  color: var(--brand-fg);
 }
-.tg-track {
-  width: 34px;
-  height: 20px;
-  flex: none;
-  padding: 2px;
-  display: flex;
+:root[data-design='ink'] .lu-check-label {
+  min-width: 0;
+  color: var(--fg-1);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* GlassSwitch: a quiet track with a gray knob, the ink track with a knob in
+   the color made for content on the accent once on, so it shows in either
+   theme. */
+:root[data-design='ink'] .lu-switch {
+  gap: 9px;
+  color: var(--fg-1);
+}
+:root[data-design='ink'] .lu-switch-track,
+:root[data-design='ink'] .lu-switch:not(.is-on) .lu-switch-track {
+  width: 32px;
+  height: 18px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
-  transition: background var(--dur-hover), border-color var(--dur-hover);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
-.tg-knob {
+:root[data-design='ink'] .lu-switch.is-on .lu-switch-track {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+:root[data-design='ink'] .lu-switch-thumb {
   width: 14px;
   height: 14px;
-  border-radius: 50%;
   background: var(--fg-3);
-  transition: transform 0.18s var(--ease-fluid), background var(--dur-hover);
+  box-shadow: none;
 }
-.tg.on .tg-track {
-  background: var(--brand);
-  border-color: var(--brand);
-}
-/* The knob takes the color made for content on the accent, so it shows on
-   the ink track in either theme. */
-.tg.on .tg-knob {
+:root[data-design='ink'] .lu-switch.is-on .lu-switch-thumb {
   background: var(--lu-preset-on-accent);
   transform: translateX(14px);
+}
+:root[data-design='ink'] .lu-switch-label {
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 /* latere-ui's GlassSelect, set as the app's text field: the same height,
    edge, corner and ground, so a select and a field beside it read as one row.
    Its menu opens in the top layer, so no card clips it. */
 :root[data-design='ink'] .lu-select-trigger {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   min-height: 32px;
   padding: 0 9px 0 11px;
   border: 1px solid var(--border-strong);
@@ -1637,6 +1639,8 @@ button.quota-pill:hover {
   border-color: var(--brand);
 }
 :root[data-design='ink'] .lu-select-list {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   padding: 4px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-panel);
@@ -3180,6 +3184,8 @@ textarea::placeholder {
   backdrop-filter: none;
 }
 :root[data-design='ink'] .lu-modal {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-card);
   background: var(--bg);

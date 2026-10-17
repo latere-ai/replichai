@@ -29,7 +29,8 @@ import {
   totalOf,
 } from '../transcript'
 import { Ico, type IconName } from '../icons'
-import { RowButton, Toggle } from '../ui'
+import { GlassSwitch } from 'latere-ui/react'
+import { RowButton } from '../ui'
 import { duration } from '../when'
 import { terminal } from '../session-stop'
 import { phaseClass, phaseLabel } from '../phase'
@@ -262,15 +263,14 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
               ))}
             </div>
           )}
-          <Toggle
-            on={hidePlumbing}
+          <GlassSwitch
+            value={hidePlumbing}
             onChange={(v) => {
               setHidePlumbing(v)
               setSel(null)
             }}
-          >
-            {t('hideLifecycle')}
-          </Toggle>
+            label={t('hideLifecycle')}
+          />
         </aside>
 
         <main className="tx-stream" ref={streamRef}>
