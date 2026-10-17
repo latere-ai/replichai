@@ -10,14 +10,13 @@
 // places it against the trigger, keeps it there as the page scrolls, and
 // closes it on a click away, on Escape, or once the trigger scrolls out of
 // sight. What it holds is this file's: the arrows move a cursor over the
-// levels and models, Enter picks, and the runtimes are a Segmented.
+// levels and models, Enter picks, and the runtimes are a GlassSegmented.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GlassPopover } from "latere-ui/react";
+import { GlassPopover, GlassSegmented } from "latere-ui/react";
 import type { ModelTier, RuntimeOption } from "./api";
 import { countOf, type I18n } from "./i18n";
 import { Ico } from "./icons";
 import { formatUSD } from "./money";
-import { Segmented } from "./ui";
 import "./runtime-pick.css";
 
 // Choice is what the next Start sends. tier is the stored preference (best,
@@ -222,9 +221,9 @@ export function RuntimePick({
         {runtimes.length > 1 && (
           <div className="rp-section">
             <div className="rp-head">{t("runsOn")}</div>
-            <Segmented
+            <GlassSegmented
               value={runtime.name}
-              label={t("runsOn")}
+              ariaLabel={t("runsOn")}
               options={runtimes.map((r) => ({
                 value: r.name,
                 label: r.label,

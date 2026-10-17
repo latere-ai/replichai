@@ -1195,53 +1195,43 @@ h1.screen-title {
   transform: translateX(2px);
 }
 
-/* ── Segmented control / tabs ── */
-/* The platform's segmented control: a quiet track, and the chosen item in
-   solid ink. */
-.segmented {
-  display: inline-flex;
+/* ── Segmented control ── */
+/* latere-ui's GlassSegmented, as the platform draws it on the ink ladder: a
+   quiet track, and the chosen item in solid ink. */
+:root[data-design='ink'] .lu-seg {
   gap: 2px;
   padding: 2px;
-  background: var(--bg-raised);
   border: none;
   border-radius: var(--radius-action);
+  background: var(--bg-raised);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
-.seg-btn {
+:root[data-design='ink'] .lu-seg-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   height: 28px;
   padding: 0 12px;
-  border: none;
   border-radius: var(--radius-control);
-  background: transparent;
   color: var(--fg-2);
   font-size: 13px;
   font-weight: 500;
-  cursor: pointer;
-  transition: background var(--dur-hover), color var(--dur-hover);
 }
-.seg-btn:hover {
+:root[data-design='ink'] .lu-seg-item:hover {
   color: var(--fg-1);
 }
-.seg-btn.on {
+:root[data-design='ink'] .lu-seg-item.is-active {
   background: var(--fg-1);
   color: var(--bg);
+  box-shadow: none;
 }
-/* The appearance switcher chooses a mode, not a filter, and sits on every
-   screen's bar, so its choice is marked quietly: the page's own ground with a
-   hairline, rather than the solid ink a filter's choice takes. */
-.segmented.compact .seg-btn.on {
-  background: var(--bg);
-  color: var(--fg-1);
-  box-shadow: 0 0 0 1px var(--border-strong);
-}
-/* The icon-only form, used by the appearance switcher, needs square hit targets. */
-.segmented.compact .seg-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  justify-content: center;
+
+/* The top bar's appearance control is latere-ui's ThemeMenu: an icon button
+   for the current appearance, opening all three on the solid menu surface. */
+.topbar-actions .lu-pref-trigger {
+  color: var(--fg-2);
 }
 
 /* ── Badges ── */
@@ -3995,9 +3985,10 @@ textarea::placeholder {
   }
   /* The controls stay `flex: none`: shrinking a box whose children cannot
      shrink only moves the overflow inside it. Instead the bar carries less: the
-     appearance switcher is removed, since it is also on /settings, the button
-     drops its label, and the crumb, which already truncates, absorbs the rest. */
-  .topbar-actions .segmented {
+     appearance menu is removed, since the same choice is on /settings, the
+     button drops its label, and the crumb, which already truncates, absorbs
+     the rest. */
+  .topbar-actions .lu-theme-menu {
     display: none;
   }
   .btn-topbar .btn-label {

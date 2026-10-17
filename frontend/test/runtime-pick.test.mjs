@@ -158,20 +158,20 @@ try {
   await page.click(".rp-btn");
   await page.waitForSelector(".rp-pop", { timeout: 5000 });
   const seg = await page.evaluate(() =>
-    [...document.querySelectorAll(".rp-pop .seg-btn")].map((b) =>
+    [...document.querySelectorAll(".rp-pop [role='radiogroup'][aria-label='Runs on'] [role='radio']")].map((b) =>
       b.textContent.trim(),
     ),
   );
   if (seg.join(",") !== "Anthropic,Latere")
     fail(`the runtimes offered are ${seg}, want Anthropic and Latere`);
   await page.evaluate(() =>
-    [...document.querySelectorAll(".rp-pop .seg-btn")]
+    [...document.querySelectorAll(".rp-pop [role='radiogroup'][aria-label='Runs on'] [role='radio']")]
       .find((b) => b.textContent.trim() === "Latere")
       .click(),
   );
   await page.waitForFunction(
     () =>
-      document.querySelector(".rp-pop .seg-btn.on")?.textContent.trim() ===
+      document.querySelector(".rp-pop [role='radiogroup'][aria-label='Runs on'] [role='radio'][aria-checked='true']")?.textContent.trim() ===
       "Latere",
   );
   const levels = await page.evaluate(() =>
@@ -309,7 +309,7 @@ try {
     await long.click(".rp-btn");
     await long.waitForSelector(".rp-pop");
     await long.evaluate(() =>
-      [...document.querySelectorAll(".rp-pop .seg-btn")].find((b) => /latere/i.test(b.textContent))?.click(),
+      [...document.querySelectorAll(".rp-pop [role='radiogroup'][aria-label='Runs on'] [role='radio']")].find((b) => /latere/i.test(b.textContent))?.click(),
     );
     await long.waitForSelector(".rp-pop .rp-models");
     const list = await long.evaluate(() => {

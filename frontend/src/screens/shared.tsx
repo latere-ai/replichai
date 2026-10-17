@@ -12,8 +12,9 @@ import { LatereMark } from '../brand'
 import { type Me, type Profile, type Project } from '../api'
 import { type I18n, type TKey } from '../i18n'
 import { Ico, type IconName } from '../icons'
-import { Pill, Seams, Segmented, Tip } from '../ui'
-import { THEME_MODES, type ThemeMode, useTheme } from '../theme'
+import { GlassSegmented, ThemeMenu } from 'latere-ui/react'
+import { Pill, Seams, Tip } from '../ui'
+import { readMode, THEME_MODES, type ThemeMode, useTheme } from '../theme'
 import { hueOf, initials, showsPicture } from '../account'
 
 // signerOf names the person who published a project: the name recorded at
@@ -73,22 +74,34 @@ export function SignerRows({ i18n, signer, contact, orcid, scholar }: { i18n: I1
   )
 }
 
-// How each appearance is drawn. THEME_MODES fixes which ones exist and in what
-// order; this fixes what they look like, so adding a fourth is a type error here
-// until it is drawn.
-const THEME_FACE: Record<ThemeMode, { icon: IconName; label: TKey; hint: TKey }> = {
-  auto: { icon: 'monitor', label: 'themeAuto', hint: 'themeAutoHint' },
-  light: { icon: 'sun', label: 'themeLight', hint: 'themeLight' },
-  dark: { icon: 'moon', label: 'themeDark', hint: 'themeDark' },
+// How each appearance is named. THEME_MODES fixes which ones exist and in what
+// order; this fixes what they are called, so adding a fourth is a type error
+// here until it is named.
+const THEME_LABEL: Record<ThemeMode, TKey> = {
+  auto: 'themeAuto',
+  light: 'themeLight',
+  dark: 'themeDark',
 }
 
 // ThemeSwitcher offers the three appearances directly rather than cycling
 // through them: "auto" is a real choice, not the absence of one, and a person
-// who has pinned light should be able to see that they have.
+// who has pinned light should be able to see that they have. On the top bar,
+// where it sits on every screen, it is latere-ui's ThemeMenu, the one the
+// platform's header carries: an icon button for the current appearance that
+// opens all three, the current one checked.
 export function ThemeSwitcher({ i18n, theme, compact }: { i18n: I18n; theme: ReturnType<typeof useTheme>; compact?: boolean }) {
   const { t } = i18n
-  const options = THEME_MODES.map((value) => ({ value, icon: THEME_FACE[value].icon, label: t(THEME_FACE[value].label), hint: t(THEME_FACE[value].hint) }))
-  return <Segmented value={theme.mode} options={options} onChange={theme.setMode} label={t('theme')} compact={compact} />
+  if (compact) {
+    return (
+      <ThemeMenu
+        theme={theme.mode}
+        onThemeChange={theme.setMode}
+        labels={{ theme: t('theme'), light: t(THEME_LABEL.light), dark: t(THEME_LABEL.dark), system: t(THEME_LABEL.auto) }}
+      />
+    )
+  }
+  const options = THEME_MODES.map((value) => ({ value, label: t(THEME_LABEL[value]) }))
+  return <GlassSegmented value={theme.mode} options={options} onChange={(v) => theme.setMode(readMode(v))} ariaLabel={t('theme')} />
 }
 
 // Meter is a proportion drawn as a bar. It is never the only thing said about a

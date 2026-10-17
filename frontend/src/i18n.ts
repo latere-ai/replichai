@@ -355,7 +355,6 @@ const en = {
     // system, and the other two pin it regardless of what the machine does.
     theme: 'Appearance',
     themeAuto: 'Auto',
-    themeAutoHint: 'Auto · follow the system',
     themeDark: 'Dark',
     themeLight: 'Light',
     // projects

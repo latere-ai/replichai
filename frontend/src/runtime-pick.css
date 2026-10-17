@@ -63,12 +63,11 @@
 }
 
 /* The runtimes fill the panel's width, one equal segment each. */
-.rp-section .segmented {
+.rp-section .lu-seg {
   display: flex;
 }
-.rp-section .seg-btn {
+.rp-section .lu-seg-item {
   flex: 1;
-  justify-content: center;
 }
 
 /* A row the cursor moves over: a level or a model. The chosen one is set in

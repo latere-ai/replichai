@@ -128,10 +128,11 @@ try {
   // pulled back inside rather than hang off the screen.
   const wallet = await hover('.quota-pill', 'wallet pill')
 
-  // The appearance switcher's radios carry `data-tip` as a plain attribute
-  // rather than a wrapper, because a radiogroup owns its radios directly. That
-  // path has to raise the same bubble.
-  const radio = await hover('.segmented.compact button[role="radio"][data-tip]', 'appearance radio')
+  // A control can carry `data-tip` as a plain attribute rather than a wrapper,
+  // for an element a wrapper would break, such as a row of the rail. The rail's
+  // fold button does, and asks for its bubble to the side; that path has to
+  // raise the same bubble.
+  const bare = await hover('.rail-fold-btn[data-tip]', 'rail fold button')
 
   // A trigger inside a dialog. The dialog covers the page, so a bubble drawn
   // anywhere but the top layer is painted under it. The fee line of the top-up
@@ -184,7 +185,7 @@ try {
 
   h.ok(
     `remove-paper tip "${remove?.text}" painted at ${Math.round(remove?.rect.left)},${Math.round(remove?.rect.top)} inside its card; ` +
-      `wallet tip "${wallet?.text}" clamped to the viewport; appearance radio tip "${radio?.text}" without a wrapper; ` +
+      `wallet tip "${wallet?.text}" clamped to the viewport; fold button tip "${bare?.text}" without a wrapper; ` +
       `fee tip "${fee?.text}" above its dialog; ` +
       `focus raises it, pointer-out and scroll dismiss it`,
   )

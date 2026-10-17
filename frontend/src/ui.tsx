@@ -80,49 +80,6 @@ export function RowButton({
   )
 }
 
-type Option<T extends string> = { value: T; label: string; icon?: IconName }
-
-/* ── Segmented ── */
-
-// Segmented is the small exclusive picker used for icon-sized choices, such as
-// the appearance switcher or a two-way list filter.
-export function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-  compact,
-}: {
-  value: T
-  options: (Option<T> & { hint?: string })[]
-  onChange: (v: T) => void
-  label?: string
-  compact?: boolean
-}) {
-  return (
-    <div className={'segmented' + (compact ? ' compact' : '')} role="radiogroup" aria-label={label}>
-      {options.map((o) => (
-        // The tooltip is styled onto the button rather than wrapped around it:
-        // a radiogroup owns its radios directly, and a wrapper span between
-        // them breaks that relationship for a screen reader.
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={value === o.value}
-          aria-label={compact ? o.label : undefined}
-          {...(compact ? tipAttrs(o.hint ?? o.label) : {})}
-          className={'seg-btn' + (value === o.value ? ' on' : '') + (compact ? ' tip' : '')}
-          onClick={() => onChange(o.value)}
-        >
-          {o.icon && <Ico name={o.icon} size={13} />}
-          {!compact && <span>{o.label}</span>}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 /* ── Number field ── */
 
 // NumberField is a plain text box with its own steppers. The native number
