@@ -1084,6 +1084,7 @@ h1.screen-title {
   flex-direction: column;
 }
 .row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--gap-row);
@@ -1091,6 +1092,36 @@ h1.screen-title {
   border-top: 1px solid var(--border);
   cursor: pointer;
   transition: background 0.15s var(--ease-fluid);
+}
+/* A row with an address opens through the link on its title, whose hit area
+   is stretched over the whole row, so the row is one link to the pointer, to
+   a middle-click and to the context menu. What else the row holds is drawn
+   above that area: its controls and links keep their own clicks, and a figure
+   that carries a tooltip can be hovered. The focus ring goes round the row,
+   since the row is what the link opens. */
+/* The link is the box the title truncates in, so its own edge is the
+   title's rather than the end of a long name. */
+.row-link {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.row-link:focus-visible {
+  outline: none;
+}
+.row:has(.row-link:focus-visible) {
+  outline: 2px solid var(--brand-ring);
+  outline-offset: -2px;
+}
+.row :is(a, button, input, .tip, [data-tip]):not(.row-link) {
+  position: relative;
+  z-index: 1;
 }
 .rows > .row:first-child {
   border-top: none;
@@ -1140,9 +1171,6 @@ h1.screen-title {
   width: 1px;
   height: 100%;
   background: var(--border);
-}
-.row-nested {
-  position: relative;
 }
 .group-head {
   padding: 11px 14px;

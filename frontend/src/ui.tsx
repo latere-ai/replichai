@@ -43,17 +43,53 @@ export function Seams({ i18n, k }: { i18n: I18n; k: TKey }) {
   return <>{out}</>
 }
 
-/* ── RowButton ── */
+/* ── Rows ── */
 
-// RowButton is a list row that opens something: a project, a file, a session.
-// It is a div rather than a <button> because a row holds buttons of its own,
-// such as Stop and Remove, and a button may not contain a button; the role, the
-// tab stop and the key handling make it one to the keyboard and to a screen
-// reader. Every clickable row goes through here, so every one is reachable from
-// the keyboard.
+// RowLink is the link a list row opens through, for a row whose place has an
+// address of its own: a project, a registry entry, a session. It wraps the
+// row's title, and `.row-link::after` stretches its hit area over the whole
+// row, so a click anywhere on the row follows it, and a middle-click, a
+// modified click, open in a new tab and copy link all treat the row as the
+// link it is. The row itself stays a block, because it holds controls and
+// links of its own, which may not sit inside a link; they are drawn above the
+// stretched area and keep their own clicks.
 //
-// A key pressed on a control inside the row is that control's, not the row's:
-// Enter on Stop stops the session, and does not also open it.
+// A plain click is taken by the app, which opens the place without a page load
+// and with what it already knows, such as the title. Any other click is left
+// to the browser.
+export function RowLink({ href, onOpen, children }: { href: string; onOpen: () => void; children: ReactNode }) {
+  return (
+    <a
+      className="row-link"
+      href={href}
+      onClick={(e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        onOpen()
+      }}
+    >
+      {children}
+    </a>
+  )
+}
+
+// openFromRow is the click handler of a row that opens through a RowLink. A
+// figure that carries a tooltip sits above the row's link, so it can be
+// hovered, and a click on it would otherwise do nothing; it opens the row as a
+// click on the link would. A click on a control is the control's.
+export function openFromRow(e: React.MouseEvent<HTMLElement>) {
+  const target = e.target instanceof Element ? e.target : null
+  if (!target || target.closest('a, button, input, select, textarea, summary, label')) return
+  e.currentTarget.querySelector<HTMLAnchorElement>('a.row-link')?.click()
+}
+
+// RowButton is a list row that picks something within the screen and has no
+// address of its own: an event in a transcript, a file in a session. It is a
+// div rather than a <button> because a row holds controls of its own, and a
+// button may not contain one; the role, the tab stop and the key handling make
+// it one to the keyboard and to a screen reader.
+//
+// A key pressed on a control inside the row is that control's, not the row's.
 export function RowButton({
   onOpen,
   selected,
