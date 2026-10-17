@@ -141,10 +141,18 @@ Your home directory is denied, with named exceptions:
 
 | Allowed | Why |
 |---|---|
-| the harness's own configuration (`~/.claude` and `~/.claude.json`, or `~/.codex`) | it holds your existing login. It is granted only to a session actually running on that login, never to one you handed an API key, and the grant is written into the run's environment record as `config_read_allowed` |
-| `~/Library/Keychains`, read-only, macOS only | Claude Code keeps its login there rather than in a file, and only a session actually using that login is granted it |
+| your harness login, and nothing around it: `~/.claude.json` for Claude Code, read-only, or `~/.codex/auth.json` for codex, writable so a refreshed token is saved | it is your existing login. It is granted only to a session actually running on that login, never to one you handed an API key, and the grant is written into the run's environment record as `config_read_allowed` |
+| `~/Library/Keychains`, read-only, macOS only | Claude Code keeps its credential there rather than in a file (on Linux, `~/.claude/.credentials.json` instead), and only a session actually using that login is granted it |
 | `/tmp/codex-<your user id>`, for codex only | codex keeps a scratch area there |
-| `~/.codex`, writable, for codex only, except `~/.codex/shell_snapshots` | codex writes its own state back and will not start otherwise |
+| `~/.codex/packages`, read-only, for codex only | codex's own installer puts the program there |
+
+The rest of `~/.claude` and `~/.codex` is denied, so a run cannot read your
+own conversation history there (`projects/` and `history.jsonl`, codex's
+`sessions/`, `archived_sessions/`, memories and logs). Codex writes its own
+state into a configuration folder inside the run, with your token linked in.
+`~/.claude.json` is your account file: it holds your account and the folders
+you used Claude Code in, with their settings, but no conversation. A session
+that must not see it should carry its own API key instead of your login.
 
 Explicitly denied, and tested: `~/.ssh`, `~/.aws`, `~/.config/gcloud`,
 `~/.kube`, `~/.netrc`, `~/.gnupg`, `~/.docker/config.json`,
@@ -437,9 +445,10 @@ terminal's sign-in needs from that deployment's identity provider is in
 different things of the machine, and the code declares them rather than
 assuming them:
 
-- Its login is a file in `~/.codex`, so no keychain is involved.
-- It writes its own state back into `~/.codex`, so that directory is writable
-  for a codex run; a Claude Code run gets it read-only.
+- Its login is one file, `~/.codex/auth.json`, so no keychain is involved.
+- It keeps its configuration and session records in a folder inside the run,
+  with that file linked in. Only the token file is writable, so a token codex
+  refreshes during the run is saved where your own codex reads it.
 - It refuses a directory it has not been told to trust, and a session's
   workspace is a repository it has never seen, so the trust check is skipped.
   The sandbox is the boundary; Codex's own prompt is not.

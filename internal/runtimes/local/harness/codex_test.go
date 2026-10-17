@@ -158,6 +158,40 @@ func TestCodexConfigCarriesTheGatewayNotTheKey(t *testing.T) {
 	}
 }
 
+// TestCodexOnTheOperatorsLoginReadsOnlyTheToken checks that a run on the
+// operator's own login keeps its configuration in the session and carries in
+// the token file alone, as a link, so a refreshed token reaches the operator's
+// own Codex. The operator's configuration directory holds their conversation
+// history, archived sessions, memories and logs.
+func TestCodexOnTheOperatorsLoginReadsOnlyTheToken(t *testing.T) {
+	request := Request{
+		Task:    "reproduce it",
+		Paths:   Paths{Workspace: "/s/workspace", Home: "/s/home"},
+		Gateway: Gateway{Name: "harness-login", Auth: AuthHarness},
+		Machine: Machine{Platform: "darwin", Home: "/Users/x"},
+	}
+	env, secrets, err := NewCodex().Env(StageWorker, request)
+	if err != nil || len(secrets) != 0 {
+		t.Fatalf("Env = %v, %v, %v", env, secrets, err)
+	}
+	if env["CODEX_HOME"] != "/s/home" {
+		t.Errorf("CODEX_HOME = %q, want the session's own directory", env["CODEX_HOME"])
+	}
+	files, err := NewCodex().Files(StageWorker, request)
+	if err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	want := File{Path: "/s/home/auth.json", Link: "/Users/x/.codex/auth.json"}
+	if len(files) != 1 || files[0].Path != want.Path || files[0].Link != want.Link {
+		t.Fatalf("files = %+v, want the token linked into the session: %+v", files, want)
+	}
+	// The link names exactly the file the login grant opens.
+	grant := NewCodex().Needs(request.Machine).Login
+	if len(grant) != 1 || grant[0].Path != want.Link {
+		t.Errorf("the link %s and the grant %+v disagree", want.Link, grant)
+	}
+}
+
 // TestCodexSkipsItsOwnTrustCheck checks that Codex's trust prompt is skipped.
 // Codex refuses a directory it has not been told to trust, and a session's
 // workspace is a repository it has never seen. The sandbox is the boundary, so
@@ -205,17 +239,20 @@ func TestCodexSpeaksTheOpenAIDialects(t *testing.T) {
 	}
 }
 
-// TestCodexLoginProfile checks the login grant. Codex keeps its token in its
-// own configuration directory and writes its own state there, including its
-// aliases, its app-server and its session records, so the login grant is that
-// directory, writable. It is a login grant rather than a standing one: a
-// session that carries its own credential has CODEX_HOME redirected into the
-// session and never touches the operator's directory. The operator's standing
-// instructions are withheld for the same reason as for every harness.
+// TestCodexLoginProfile checks the login grant: the token file alone,
+// writable because Codex refreshes it in place. The operator's configuration
+// directory around it holds their conversation history, and a run is granted
+// none of it.
 func TestCodexLoginProfile(t *testing.T) {
 	login := NewCodex().Needs(Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501})
-	if len(login.Login) != 1 || login.Login[0].Path != "/Users/x/.codex" || !login.Login[0].Write {
-		t.Fatalf("login = %+v, want the configuration directory, writable", login.Login)
+	if len(login.Login) != 1 || login.Login[0].Path != "/Users/x/.codex/auth.json" || !login.Login[0].Write {
+		t.Fatalf("login = %+v, want the token file alone, writable", login.Login)
+	}
+	// The standalone installer keeps the program under ~/.codex/packages and
+	// links to it from there, so every stage may read that folder. It holds
+	// no data of the operator's.
+	if !slices.Equal(login.Reads, []string{"/Users/x/.codex/packages"}) {
+		t.Errorf("standing reads = %v, want the installation alone", login.Reads)
 	}
 	// The operator's shell snapshots hold every variable the operator's shell
 	// exports, so they are withheld beside the standing instructions.
@@ -238,26 +275,23 @@ func TestCodexLoginProfile(t *testing.T) {
 }
 
 // TestCodexCarriesItsRoleWhenNoFileCan checks that the role reaches the agent
-// when no file can carry it. Codex reads a role from AGENTS.md under
-// CODEX_HOME and has no flag for it, and a run on the operator's own login
-// leaves CODEX_HOME to the operator, so Files writes nothing there. Three runs
-// of the real method showed the cost: with no standing instructions the agent
-// wrote its reproduction into a subdirectory, committed nothing, and the
-// graded work could not be published. The instructions therefore travel with
-// the task instead.
+// when no file carries it. On the operator's own login Files writes only the
+// login link, so the instructions travel with the task. Without them an agent
+// writes its reproduction into a subdirectory and commits nothing.
 func TestCodexCarriesItsRoleWhenNoFileCan(t *testing.T) {
 	request := Request{
 		Task:         "reproduce it",
 		Instructions: "Commit your progress as you finish each part.",
 		Paths:        Paths{Workspace: "/s/workspace", Home: "/s/home"},
 		Gateway:      Gateway{Name: "harness-login", Auth: AuthHarness},
+		Machine:      Machine{Home: "/Users/x"},
 	}
 	files, err := NewCodex().Files(StageWorker, request)
 	if err != nil {
 		t.Fatalf("Files: %v", err)
 	}
-	if len(files) != 0 {
-		t.Fatalf("the operator's own configuration directory was written to: %+v", files)
+	if len(files) != 1 || files[0].Link == "" || len(files[0].Body) != 0 {
+		t.Fatalf("on the operator's login the session gets the login link and nothing else: %+v", files)
 	}
 	argv, err := NewCodex().Argv(StageWorker, request)
 	if err != nil {

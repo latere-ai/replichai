@@ -216,3 +216,145 @@ func TestACodexStageUnderSrtSharesNoTemporaryDirectoryAndReadsNoSnapshot(t *test
 		t.Errorf("codex was not told to take no shell snapshot:\n%s", output)
 	}
 }
+
+// A stage on the operator's own login reads that login and none of the
+// operator's conversation history, which sits beside the login in the same
+// configuration directory: Codex's sessions, archived sessions and
+// history.jsonl under ~/.codex, and Claude Code's projects/ and history.jsonl
+// under ~/.claude. A Codex stage also writes a refreshed token through to the
+// operator's own file, so the run does not leave the operator signed out. The
+// harness binaries are stand-ins that report what they can reach, and the home
+// directory is a fake one, so no real login, model or credential is involved.
+//
+// It runs where srt is installed and is skipped elsewhere.
+func TestALoginStageUnderSrtReadsTheLoginAndNoHistory(t *testing.T) {
+	if _, err := exec.LookPath("srt"); err != nil {
+		t.Skipf("the host sandbox is not installed here: %v", err)
+	}
+	const token, history = "dummy-login-token", "dummy-history-line"
+	cases := map[string]struct {
+		agent  harness.Harness
+		file   local.CatalogFile
+		login  string   // relative to home, readable
+		denied []string // relative to home, unreadable
+		script string   // the stand-in's body; HOME is the fake home
+	}{
+		"codex": {
+			agent: harness.NewCodex(), file: codexLoginCatalog(),
+			login:  ".codex/auth.json",
+			denied: []string{".codex/history.jsonl", ".codex/sessions/rollout.jsonl", ".codex/archived_sessions/old.jsonl"},
+			script: "cat \"$CODEX_HOME/auth.json\" 2>/dev/null || echo 'login: denied'\n" +
+				"echo refreshed >> \"$CODEX_HOME/auth.json\" 2>/dev/null || echo 'refresh: denied'\n",
+		},
+		"claude code": {
+			agent: harness.NewClaudeCode(), file: local.DefaultCatalogFile(),
+			login:  ".claude.json",
+			denied: []string{".claude/history.jsonl", ".claude/projects/p/session.jsonl"},
+			script: "cat \"$HOME/.claude.json\" 2>/dev/null || echo 'login: denied'\n",
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			root, err := os.MkdirTemp("/tmp", "rh")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.RemoveAll(root) })
+			if root, err = filepath.EvalSymlinks(root); err != nil {
+				t.Fatal(err)
+			}
+			home := filepath.Join(root, "home")
+			plant := func(rel, body string) {
+				path := filepath.Join(home, rel)
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(body+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			plant(c.login, token)
+			script := "#!/bin/sh\n" +
+				"[ \"$1\" = --version ] && echo '0.0.0' && exit 0\n" + c.script
+			for _, rel := range c.denied {
+				plant(rel, history)
+				script += "cat \"$HOME/" + rel + "\" 2>/dev/null || echo 'history: denied'\n"
+			}
+			bin := filepath.Join(root, "bin")
+			if err := os.MkdirAll(bin, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(bin, c.agent.Binary()), []byte(script), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+			driver := host.New(host.Config{Home: home, HarnessBinary: c.agent.Binary(), Lookup: os.LookupEnv})
+			if err := driver.Preflight(context.Background()); err != nil {
+				t.Skipf("the host sandbox is not installed here:\n%v", err)
+			}
+			registry, err := harness.NewRegistry(c.agent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			catalog, err := local.NewCatalog(c.file, registry, noCredentials)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runtime, err := local.New(local.Config{
+				Sandbox: driver, Harness: c.agent, Catalog: catalog,
+				Root: filepath.Join(root, "sessions"), Lookup: os.LookupEnv,
+				Machine: harness.Machine{Platform: goruntime.GOOS, Home: home, TempDir: "/tmp", UID: os.Getuid()},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ref := start(t, runtime, managed.SessionSpec{
+				Model:        managed.ModelSelector{Preference: "best"},
+				Instructions: "Follow the method.",
+				Task:         "Reproduce the result.",
+				Sandbox:      managed.SandboxSpec{Network: managed.NetworkPolicy{Mode: managed.NetworkNone}},
+			})
+			var status managed.Status
+			for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+				if status, err = runtime.Poll(context.Background(), ref); err != nil {
+					t.Fatalf("Poll: %v", err)
+				}
+				if ref = status.Ref; status.State.Terminal() {
+					break
+				}
+			}
+			if !status.State.Terminal() {
+				t.Fatalf("the session never finished: %+v", status)
+			}
+			events, err := runtime.Events(context.Background(), ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var lines []string
+			for _, event := range events {
+				lines = append(lines, event.Content)
+			}
+			output := strings.Join(lines, "\n")
+
+			if !strings.Contains(output, token) || strings.Contains(output, "login: denied") {
+				t.Errorf("the stage could not read the operator's login:\n%s", output)
+			}
+			if strings.Contains(output, history) {
+				t.Errorf("the stage read the operator's conversation history:\n%s", output)
+			}
+			if got := strings.Count(output, "history: denied"); got != len(c.denied) {
+				t.Errorf("%d of %d history files were denied:\n%s", got, len(c.denied), output)
+			}
+			if name == "codex" {
+				body, err := os.ReadFile(filepath.Join(home, c.login))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(string(body), "refreshed") || strings.Contains(output, "refresh: denied") {
+					t.Errorf("a token refreshed in the run did not reach the operator's file:\n%s", output)
+				}
+			}
+		})
+	}
+}

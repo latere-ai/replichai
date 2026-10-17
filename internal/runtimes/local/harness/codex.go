@@ -76,17 +76,11 @@ func (CodexHarness) Argv(stage Stage, request Request) ([]string, error) {
 // no file carries them.
 //
 // Codex reads a role from AGENTS.md under CODEX_HOME and has no flag for one.
-// A run on the operator's own login keeps the operator's own CODEX_HOME, and
-// replichai does not write into it, so Files writes nothing and the
-// instructions have no file to arrive in. Three runs showed the consequence:
-// with no standing instructions the agent never learned the workspace
-// protocol, wrote its reproduction into a subdirectory, committed nothing, and
-// left an empty repository behind a session that the rubric had passed.
-//
-// Codex documents the prompt argument as the agent's initial instructions, so
-// that is where they go. The role is the same text either way; only the
-// channel differs, because the two harnesses read a role from different
-// places.
+// On the operator's own login Files writes only the login link, so the
+// instructions arrive in the prompt, which Codex documents as the agent's
+// initial instructions. Without standing instructions an agent never learns
+// the workspace protocol: it writes its reproduction into a subdirectory,
+// commits nothing, and leaves an empty repository behind a passing grade.
 func codexTask(request Request, task string) string {
 	instructions := strings.TrimSpace(request.Instructions)
 	if instructions == "" || request.Gateway.Auth != AuthHarness {
@@ -97,16 +91,13 @@ func codexTask(request Request, task string) string {
 
 // Env points Codex at its session-scoped configuration and supplies the
 // gateway credential under the fixed name the provider block reads.
+//
+// CODEX_HOME is the session's directory on every login. The operator's own
+// holds their conversation history, archived sessions, memories and logs, and
+// a run reads none of it. On the operator's login the one file it needs, the
+// token, is linked in (Files).
 func (CodexHarness) Env(_ Stage, request Request) (map[string]string, []string, error) {
-	env := map[string]string{}
-	// Codex keeps its token in a file under CODEX_HOME. Redirecting
-	// CODEX_HOME to a session-scoped directory gives a session an isolated
-	// configuration, but it also loses the login, because an empty directory
-	// holds no token and the endpoint answers 401. The redirect therefore
-	// happens only when a credential is supplied instead.
-	if request.Gateway.Auth != AuthHarness {
-		env["CODEX_HOME"] = request.Paths.Home
-	}
+	env := map[string]string{"CODEX_HOME": request.Paths.Home}
 	switch request.Gateway.Auth {
 	case AuthHarness, AuthNone:
 		return env, nil, nil
@@ -126,10 +117,17 @@ func (CodexHarness) Env(_ Stage, request Request) (map[string]string, []string, 
 // CODEX_HOME, outside the workspace, so that neither is committed by the agent
 // and published as part of the reproduction.
 func (CodexHarness) Files(_ Stage, request Request) ([]File, error) {
-	// When the login is the operator's own, so is the configuration. The
-	// session writes none, because nothing would read it.
+	// On the operator's own login the session's configuration directory gets
+	// the operator's token file, as a link, so a token Codex refreshes during
+	// the run is written back where the operator's own Codex reads it.
 	if request.Gateway.Auth == AuthHarness {
-		return nil, nil
+		if request.Machine.Home == "" {
+			return nil, nil
+		}
+		return []File{{
+			Path: filepath.Join(request.Paths.Home, codexAuthFile),
+			Link: filepath.Join(request.Machine.Home, ".codex", codexAuthFile),
+		}}, nil
 	}
 	files := []File{{
 		Path: filepath.Join(request.Paths.Home, "config.toml"),
@@ -169,20 +167,22 @@ wire_api = %q
 %s`, gateway.BaseURL, wire, key)
 }
 
-// Needs reports what Codex requires of the machine: its configuration
-// directory, and a scratch area under the temporary root. The configuration
-// directory holds its token, and Codex writes its own state there, including
-// its aliases, its app-server and its session records; it fails to start when
-// it cannot.
+// codexAuthFile is the file under CODEX_HOME that holds Codex's login.
+const codexAuthFile = "auth.json"
+
+// Needs reports what Codex requires of the machine: its installation, the
+// operator's token file, and a scratch area under the temporary root.
 //
-// The configuration directory is a login grant, not a standing one. A session
-// that carries its own credential has CODEX_HOME redirected into the session
-// and never touches the operator's directory, so it is granted nothing there.
+// The token file is the whole login grant, writable because Codex refreshes
+// the token in place. Codex writes the rest of its state, its session records
+// among it, into CODEX_HOME, which is the session's own directory, so the
+// operator's configuration directory is not granted. A session that carries
+// its own credential is granted nothing of the operator's.
 //
-// The operator's standing instructions are denied for the same reason as for
-// every harness: they are not the method. The operator's shell snapshots are
-// denied because they hold every variable the operator's shell exports,
-// credentials included.
+// The operator's standing instructions and shell snapshots stay denied even
+// though nothing grants their directory, so a later grant cannot reopen them:
+// the instructions are not the method, and the snapshots hold every variable
+// the operator's shell exports, credentials included.
 func (CodexHarness) Needs(machine Machine) Needs {
 	// Codex is a Rust binary and does not read an injected certificate
 	// authority, so a sandbox that terminates TLS to inspect egress breaks
@@ -196,7 +196,11 @@ func (CodexHarness) Needs(machine Machine) Needs {
 			filepath.Join(machine.TempDir, fmt.Sprintf("codex-%d", machine.UID)))
 	}
 	if machine.Home != "" {
-		needs.Login = []Grant{{Path: filepath.Join(machine.Home, ".codex"), Write: true}}
+		// Codex's standalone installer puts the program itself under
+		// ~/.codex/packages and reaches it through links there. It holds the
+		// program and its resources, none of the operator's data.
+		needs.Reads = []string{filepath.Join(machine.Home, ".codex", "packages")}
+		needs.Login = []Grant{{Path: filepath.Join(machine.Home, ".codex", codexAuthFile), Write: true}}
 		needs.Denies = []string{
 			filepath.Join(machine.Home, ".codex", "AGENTS.md"),
 			filepath.Join(machine.Home, ".codex", "shell_snapshots"),

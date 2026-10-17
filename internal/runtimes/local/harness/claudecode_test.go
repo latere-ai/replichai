@@ -249,10 +249,10 @@ func TestClaudeCodeDisablesNonEssentialTraffic(t *testing.T) {
 // and a plugin is code the method never asked for.
 func TestClaudeCodesLoginProfile(t *testing.T) {
 	login := NewClaudeCode().Needs(Machine{Platform: "darwin", Home: "/Users/x", TempDir: "/tmp", UID: 501})
-	// The login is the configuration directory and file, and on macOS the
-	// keychain as well, because the credential is not in a file there. All
-	// of it is read-only; nothing in the operator's account is written.
-	want := []string{"/Users/x/.claude", "/Users/x/.claude.json", "/Users/x/Library/Keychains"}
+	// The login is the account file and, on macOS, the keychain, where the
+	// credential is. The configuration directory is not opened: it holds the
+	// operator's conversation history. All of it is read-only.
+	want := []string{"/Users/x/.claude.json", "/Users/x/Library/Keychains"}
 	if got := LoginPaths(login); !slices.Equal(got, want) {
 		t.Fatalf("macOS login = %v, want %v", got, want)
 	}
@@ -261,10 +261,10 @@ func TestClaudeCodesLoginProfile(t *testing.T) {
 			t.Errorf("%s is writable: the login is read, never written", grant.Path)
 		}
 	}
-	// On other platforms the credential is a file inside the configuration
-	// directory, so only that directory and file are opened.
+	// On other platforms the credential is one file inside the configuration
+	// directory, and only that file is opened.
 	linux := LoginPaths(NewClaudeCode().Needs(Machine{Platform: "linux", Home: "/home/x"}))
-	if !slices.Equal(linux, []string{"/home/x/.claude", "/home/x/.claude.json"}) {
+	if !slices.Equal(linux, []string{"/home/x/.claude.json", "/home/x/.claude/.credentials.json"}) {
 		t.Errorf("linux login = %v", linux)
 	}
 	// Everything Claude Code loads at startup that belongs to the operator
