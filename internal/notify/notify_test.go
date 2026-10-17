@@ -4,8 +4,13 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	_ "image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -288,7 +293,7 @@ func TestLogoIsFetchedFromTheApp(t *testing.T) {
 			`src="https://replichai.example.org/email/lockup-replichai-ink.png"`,
 			`src="https://replichai.example.org/email/lockup-replichai-paper.png"`,
 			`alt="Latere ReplicHAI"`,
-			`width="190" height="38"`,
+			`width="214" height="50"`,
 		} {
 			if !strings.Contains(tx.msg.HTML, want) {
 				t.Errorf("base %q: HTML lacks %s", base, want)
@@ -338,4 +343,24 @@ func TestAnUnwiredNotifierIsSilent(t *testing.T) {
 
 func TestLogFailureDoesNotPanic(t *testing.T) {
 	LogFailure("project invitation", "a@b.com", errors.New("boom"))
+}
+
+// The logos the layout links are the frontend's own files, at twice the size
+// the layout shows them, so a new image cannot drift from its stated size.
+func TestLogoFilesMatchTheirSize(t *testing.T) {
+	l := newLayout("https://replichai.latere.ai")
+	for _, img := range []email.Image{l.Logo, l.LogoDark} {
+		path := filepath.Join("..", "..", "frontend", "public", strings.TrimPrefix(img.Src, "https://replichai.latere.ai/"))
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s is not a file of the frontend: %v", path, err)
+		}
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(b))
+		if err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+		if format != "png" || cfg.Width != 2*img.Width || cfg.Height != 2*img.Height {
+			t.Errorf("%s is a %dx%d %s, want a %dx%d png", path, cfg.Width, cfg.Height, format, 2*img.Width, 2*img.Height)
+		}
+	}
 }
