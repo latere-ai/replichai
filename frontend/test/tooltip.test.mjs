@@ -33,6 +33,8 @@ const routes = [
   [/^\/projects\/[^/]+\/members$/, []],
   [/^\/projects\/[^/]+\/credits$/, { wallet: 20, start_reserve: 5 }],
   [/^\/(public|shared)$/, []],
+  // The top-up dialog's quote, whose fee line carries a tooltip.
+  ['/me/credits', { balance: 42_500_000, spread_bps: 500, spread_fixed_micro: 300_000, min_topup_micro: 5_000_000, entries: [] }],
 ]
 
 // How many bubbles are up, read in the page: the bubble fades in from opacity 0.
@@ -131,6 +133,18 @@ try {
   // path has to raise the same bubble.
   const radio = await hover('.segmented.compact button[role="radio"][data-tip]', 'appearance radio')
 
+  // A trigger inside a dialog. The dialog covers the page, so a bubble drawn
+  // anywhere but the top layer is painted under it. The fee line of the top-up
+  // dialog's quote carries one; the wallet pill opens that dialog.
+  await page.mouse.move(700, 860)
+  await bubbles(0)
+  await page.click('.quota-pill')
+  await page.waitForSelector('[role="dialog"] .usage-line[data-tip]')
+  await settled(page)
+  const fee = await hover('[role="dialog"] .usage-line[data-tip]', 'top-up fee line')
+  await page.keyboard.press('Escape')
+  await page.waitForSelector('[role="dialog"]', { hidden: true })
+
   // focusRemove parks the pointer, takes focus off whatever holds it, and hands
   // it to the remove button from an unfocused state, so `focusin` fires even
   // when the button had it already, then waits for the bubble that focus raises.
@@ -171,6 +185,7 @@ try {
   h.ok(
     `remove-paper tip "${remove?.text}" painted at ${Math.round(remove?.rect.left)},${Math.round(remove?.rect.top)} inside its card; ` +
       `wallet tip "${wallet?.text}" clamped to the viewport; appearance radio tip "${radio?.text}" without a wrapper; ` +
+      `fee tip "${fee?.text}" above its dialog; ` +
       `focus raises it, pointer-out and scroll dismiss it`,
   )
 } catch (e) {
