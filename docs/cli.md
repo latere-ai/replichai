@@ -35,7 +35,7 @@ A **runtime** is where the agent session runs. Four ship:
 |---|---|---|
 | `memory` | in the process, with no model behind it; it produces a fake audit | nothing. Use it to try a command without spending anything |
 | `anthropic-managed` | on Anthropic's Managed Agents backend | `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` for a non-default endpoint |
-| `latere` | on the Latere platform, as a hosted agent session, on any model the platform serves you; your own Latere wallet pays for it | `LATERE_API_KEY`, a personal access token from the Latere console (Keys, for Agents). `LATERE_TOKEN_COMMAND` can stand in for it: a command you supply that prints a bearer addressed to `api.latere.ai`. `latere print-token` is not one: it prints the Latere CLI's login token, which only Latere Auth accepts, so the platform answers 401. Your Latere network preference must be open for an audit |
+| `latere` | on the Latere platform, as a hosted agent session, on any model the platform serves you; your own Latere wallet pays for it | your sign-in from `replichai login` ([Signing in and the app](#signing-in-and-the-app)): the session runs as the account `replichai whoami` shows, in its organization context. To run as another credential, set `LATERE_API_KEY` to a personal access token from the Latere console (Keys, for Agents), or `LATERE_TOKEN_COMMAND` to a command you supply that prints a bearer addressed to `api.latere.ai`; either one, when set, is used instead of the sign-in. `latere print-token` is not such a command: it prints the Latere CLI's login token, which only Latere Auth accepts, so the platform answers 401. Your Latere network preference must be open for an audit |
 | `local` | on this machine: a coding agent (Claude Code or Codex) inside a sandbox | the agent installed and logged in, and the sandbox. [`local-runs.md`](local-runs.md) is the guide |
 
 The model is chosen with `--model`, as an **Effort** level or as one exact model:
@@ -269,7 +269,11 @@ they talk to the hosted one.
 | `replichai push <project-file> --project <id>` | files the sessions of a local `run` in a project. Nothing is charged; pushing again updates the same rows |
 
 The credential is stored in `~/.config/replichai/auth.json`, readable only by
-you. `audit --publish --project` also goes through this sign-in.
+you. `audit --publish --project` also goes through this sign-in, and so does
+the `latere` runtime when neither `LATERE_API_KEY` nor `LATERE_TOKEN_COMMAND`
+is set: before its calls to the Latere platform it asks Latere Auth for a
+token that lasts a few minutes and is addressed to the platform, so the
+stored credential itself is never sent there.
 
 ### Using your own deployment
 
@@ -277,7 +281,7 @@ Two variables point the terminal at a deployment other than the hosted one:
 
 | Variable | Default | Read by |
 |---|---|---|
-| `REPLICHAI_AUTH_URL` | `https://auth.latere.ai` | `login`, `org`, and the token refresh and short-lived token request in `project`, `push` and `audit --publish --project` |
+| `REPLICHAI_AUTH_URL` | `https://auth.latere.ai` | `login`, `org`, and the token refresh and short-lived token request in `project`, `push`, `audit --publish --project` and the `latere` runtime. A sign-in made anywhere but Latere Auth cannot reach the Latere platform; set `LATERE_API_KEY` for that runtime instead |
 | `REPLICHAI_API_URL` | `https://replichai.latere.ai` | `project`, `push` and `audit --publish --project` |
 
 `whoami` and `logout` read only the stored credential and use neither.
@@ -287,7 +291,8 @@ does, so whether these commands work against a given deployment depends on the
 provider it runs with; [`self-hosting.md`](self-hosting.md#the-terminals-sign-in)
 lists what it needs. The commands that need no app (`audit` without
 `--project`, `run`, `resolve`, `publish`, `finish`, `sessions`, `providers`,
-`rates`) are unaffected.
+`rates`) are unaffected, except that on the `latere` runtime they use the
+sign-in as described above.
 
 ## Housekeeping
 
@@ -349,5 +354,6 @@ Every variable the CLI reads is listed, with what it is for, in
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` | the `anthropic-managed` runtime |
 | `REPLICHAI_GITHUB_TOKEN`, `REPLICHAI_GITHUB_OWNER`, `REPLICHAI_GITHUB_API_URL` | publishing |
 | `REPLICHAI_AUTH_URL`, `REPLICHAI_API_URL` | signing in and the app |
+| `LATERE_API_KEY`, `LATERE_TOKEN_COMMAND`, `LATERE_API_URL`, `LATERE_AUTH_URL` | the `latere` runtime, when it should not use your sign-in, and the platform's addresses |
 | `REPLICHAI_SANDBOX`, `REPLICHAI_HARNESS`, `REPLICHAI_CONTAINER_ENGINE`, `REPLICHAI_HARNESS_IMAGE`, `REPLICHAI_MODELS_FILE`, `REPLICHAI_SESSION_ROOT`, `REPLICHAI_SESSION_RETENTION` | the local runtime |
 | `DATABASE_URL` | `rates --database-url` |

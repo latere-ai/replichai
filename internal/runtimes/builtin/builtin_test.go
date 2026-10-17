@@ -10,7 +10,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"latere.ai/x/pkg/hostsandbox"
 
@@ -51,9 +53,10 @@ func namesOf(names []managed.RuntimeName) []string {
 }
 
 // The Latere runtime is composed with the person it acts as on the command
-// line: a personal access token, exchanged at Auth, or a command that prints
-// a bearer. With neither it still builds, for a server that names the person
-// per session, and a call with no person is refused with what to set.
+// line: a personal access token, exchanged at Auth, a command that prints a
+// bearer, or the operator's own sign-in. With none it still builds, for a
+// server that names the person per session, and a call with no person is
+// refused with what to do.
 func TestLatereIsComposedWithThePersonItActsAs(t *testing.T) {
 	var exchanged string
 	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,16 +66,22 @@ func TestLatereIsComposedWithThePersonItActsAs(t *testing.T) {
 	}))
 	defer auth.Close()
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer from-pat" && r.Header.Get("Authorization") != "Bearer from-command" && r.Header.Get("Authorization") != "Bearer from-context" {
+		switch r.Header.Get("Authorization") {
+		case "Bearer from-pat", "Bearer from-command", "Bearer from-context", "Bearer from-sign-in":
+		default:
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		_, _ = w.Write([]byte(`{"network":{"mode":"open"}}`))
 	}))
 	defer api.Close()
+	signIn := func(context.Context) (string, time.Time, error) {
+		return "from-sign-in", time.Now().Add(5 * time.Minute), nil
+	}
 	for name, config := range map[string]LatereConfig{
 		"a personal access token": {BaseURL: api.URL, AuthURL: auth.URL, APIKey: "pat_secret"},
 		"a token command":         {BaseURL: api.URL, TokenCommand: "printf from-command"},
+		"a sign-in":               {BaseURL: api.URL, SignIn: signIn},
 	} {
 		catalog, err := Catalog(Config{Latere: config})
 		if err != nil {
@@ -97,12 +106,56 @@ func TestLatereIsComposedWithThePersonItActsAs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.Capabilities(context.Background()); err == nil || !strings.Contains(err.Error(), "LATERE_API_KEY") {
+	if _, err := runtime.Capabilities(context.Background()); err == nil || !strings.Contains(err.Error(), "LATERE_API_KEY") || !strings.Contains(err.Error(), "replichai login") {
 		t.Fatalf("a call with no person = %v", err)
 	}
 	ctx := WithLatereSignIn(context.Background(), func(context.Context) (string, error) { return "from-context", nil })
 	if _, err := runtime.Capabilities(ctx); err != nil {
 		t.Fatalf("a call with the person on its context = %v", err)
+	}
+}
+
+// A setting the operator wrote wins over the sign-in they already have: with
+// LATERE_API_KEY or LATERE_TOKEN_COMMAND set, the runtime acts with it and
+// never asks the sign-in, so a run meant for one account cannot quietly
+// charge another.
+func TestAnExplicitLatereCredentialWinsOverTheSignIn(t *testing.T) {
+	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"from-pat","expires_in":900}`))
+	}))
+	defer auth.Close()
+	var seen string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"network":{"mode":"open"}}`))
+	}))
+	defer api.Close()
+	var asked atomic.Int32
+	signIn := func(context.Context) (string, time.Time, error) {
+		asked.Add(1)
+		return "from-sign-in", time.Now().Add(5 * time.Minute), nil
+	}
+	for name, test := range map[string]struct {
+		config LatereConfig
+		want   string
+	}{
+		"a personal access token": {LatereConfig{BaseURL: api.URL, AuthURL: auth.URL, APIKey: "pat_secret", TokenCommand: "printf from-command", SignIn: signIn}, "Bearer from-pat"},
+		"a token command":         {LatereConfig{BaseURL: api.URL, TokenCommand: "printf from-command", SignIn: signIn}, "Bearer from-command"},
+	} {
+		catalog, err := Catalog(Config{Latere: test.config})
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtime, err := catalog.Build(context.Background(), "latere")
+		if err != nil {
+			t.Fatalf("%s: Build = %v", name, err)
+		}
+		if _, err := runtime.Capabilities(context.Background()); err != nil || seen != test.want {
+			t.Fatalf("%s: the platform saw %q, %v", name, seen, err)
+		}
+	}
+	if asked.Load() != 0 {
+		t.Fatalf("the sign-in was asked %d times beside an explicit credential", asked.Load())
 	}
 }
 

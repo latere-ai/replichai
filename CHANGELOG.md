@@ -10,6 +10,15 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- `--runtime latere` runs as you through `replichai login`, so you no longer
+  create a personal access token and export it as `LATERE_API_KEY`. Before
+  each call to the Latere platform the command line asks Latere Auth, with
+  your sign-in, for a token that lasts a few minutes and is addressed to the
+  platform. `LATERE_API_KEY` or `LATERE_TOKEN_COMMAND`, when set, is still
+  used instead of the sign-in.
+
 ### Fixed
 
 - The ReplicHAI logo at the top of an email stays visible in the Gmail and

@@ -35,6 +35,10 @@ type provider struct {
 	noActor    bool
 	tokenCalls int
 	lastForm   string
+	// refuseActor answers a mint the way Auth refuses an audience the
+	// client may not mint for; audiences records each audience asked for.
+	refuseActor bool
+	audiences   []string
 }
 
 func (p *provider) serve(t *testing.T) *httptest.Server {
@@ -83,7 +87,17 @@ func (p *provider) serve(t *testing.T) *httptest.Server {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, map[string]string{"actor_token": "actor-1"})
+		var asked struct {
+			Audience string `json:"audience"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&asked)
+		p.audiences = append(p.audiences, asked.Audience)
+		if p.refuseActor {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, map[string]string{"error": "invalid_target", "message": "audience " + asked.Audience + " is not one this client may mint for"})
+			return
+		}
+		writeJSON(w, map[string]any{"actor_token": "actor-1", "expires_in": 300})
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -383,6 +397,52 @@ func TestExpiryHasMargin(t *testing.T) {
 	// no expiry, and guessing one would sign a person out without cause.
 	if (Token{}).Expired(now) {
 		t.Error("a credential with no expiry was called expired")
+	}
+}
+
+// A token for another service, such as the Latere platform's API, is minted
+// for the audience asked for and carries the expiry Auth gave it. Where Auth
+// refuses the mint there is no fallback to the stored credential, which is
+// addressed to Auth alone and which the other service would refuse: the
+// refusal is reported with Auth's reason.
+func TestAnActorTokenForAnotherServiceNeverFallsBack(t *testing.T) {
+	p := &provider{approved: true}
+	s := session(t, p)
+	if _, err := s.Login(context.Background(), nil); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	bearer, expiry, err := s.ActorToken(context.Background(), "api.latere.ai", ActorTTL)
+	if err != nil || bearer != "actor-1" || !expiry.Equal(now.Add(300*time.Second)) {
+		t.Fatalf("ActorToken = %q, %v, %v", bearer, expiry, err)
+	}
+	if len(p.audiences) != 1 || p.audiences[0] != "api.latere.ai" {
+		t.Fatalf("Auth was asked for %v", p.audiences)
+	}
+
+	p.refuseActor = true
+	bearer, _, err = s.ActorToken(context.Background(), "api.latere.ai", ActorTTL)
+	if err == nil || bearer != "" {
+		t.Fatalf("a refused mint gave %q, %v", bearer, err)
+	}
+	for _, want := range []string{"api.latere.ai", "invalid_target", "not one this client may mint for"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q: %v", want, err)
+		}
+	}
+	if stored, _ := s.Store.Load(); strings.Contains(err.Error(), stored.AccessToken) {
+		t.Fatal("the refusal carries the stored credential")
+	}
+
+	// Bearer, for replichai's own API, still falls back; only it may.
+	if _, minted, err := s.Bearer(context.Background(), ActorTTL); err != nil || minted {
+		t.Fatalf("Bearer = %v, %v", minted, err)
+	}
+
+	signedOut := &Session{AuthURL: "http://127.0.0.1:1", Store: Store{Dir: t.TempDir()}, HTTP: http.DefaultClient}
+	if _, _, err := signedOut.ActorToken(context.Background(), "api.latere.ai", ActorTTL); !errors.Is(err, ErrSignedOut) {
+		t.Fatalf("signed out = %v", err)
 	}
 }
 

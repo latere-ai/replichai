@@ -7,7 +7,7 @@ status: built
 
 > **Rewritten 2026-10-15** against the platform as it runs today (Topos v0.41.0 behind `api.latere.ai/v1/agents`). The first design, of 2026-09, embedded Topos's agent loop in ReplicHAI's own process and composed Lux and Cella itself, and was blocked until that embedded loop could survive a crash. The platform now runs the loop as a hosted service, so the adapter is a client of it, the blocking question is answered by the platform, and most of the first design's machinery is gone. Where this text and the first design disagree, this text holds.
 
-**Status:** built. The runtime passes the shared conformance suite against a stub of the platform, and runs graded sessions on the live platform from the command line (an opt-in test, `REPLICHAI_LATERE_E2E=1`, runs a small one). The app's half waits on Auth (048, Price and charge). A study's runs, which are handed read-only inputs (046), wait on Topos delivering a read-only input (the public Topos repository's spec 075); until it is built the runtime refuses them, and a study that fixes its runs' network waits on the platform letting a session's agent narrow it, a change written up on the platform's side.
+**Status:** built. The runtime passes the shared conformance suite against a stub of the platform, and runs graded sessions on the live platform from the command line (an opt-in test, `REPLICHAI_LATERE_E2E=1`, runs a small one). The command line acts as the person signed in with `replichai login`, and the app as the person through their kept sign-in (048, Price and charge). A study's runs, which are handed read-only inputs (046), wait on Topos delivering a read-only input (the public Topos repository's spec 075); until it is built the runtime refuses them, and a study that fixes its runs' network waits on the platform letting a session's agent narrow it, a change written up on the platform's side.
 
 **Scope:** `latere`, a managed runtime that runs one ReplicHAI session as a hosted Topos session on the Latere platform, on any model the platform serves, charged to the person who starts it. It satisfies `managed.Runtime` and passes the shared conformance suite. Choosing it is [048](048-the-runtime-is-a-choice.md).
 
@@ -103,8 +103,10 @@ The platform charges the person's wallet for every call (048). ReplicHAI does no
 
 Every call to the platform carries a token for `api.latere.ai` that acts as the person who started the session, minted fresh for each call from their own sign-in:
 
-- **On the command line**, from the person's personal access token (`LATERE_API_KEY`), exchanged at Auth for a fifteen-minute token; later from `replichai login` once the CLI's client may mint for `api.latere.ai`.
-- **On the server**, from the person's stored refresh token, as 048 describes, once Auth allows it.
+- **On the command line**, from the person's own `replichai login`: Auth mints, from that sign-in, a five-minute token addressed to `api.latere.ai`, kept until a minute before it expires. A personal access token in `LATERE_API_KEY`, exchanged at Auth for a fifteen-minute token, or a command in `LATERE_TOKEN_COMMAND` that prints a bearer, is used instead when set, so a credential the person wrote down wins over the one they hold.
+- **On the server**, from the person's stored refresh token, as 048 describes.
+
+The login's own access token is addressed to Auth alone, and the platform refuses it. So where Auth will not mint, the command line reports Auth's reason rather than presenting the stored token, unlike the token for ReplicHAI's own API, which falls back to it (045i).
 
 A token never enters a locator, an event, a log line or a job row.
 
@@ -118,8 +120,8 @@ A token never enters a locator, an event, a log line or a job row.
 |---|---|
 | `LATERE_API_URL` | the platform's API root, `https://api.latere.ai` by default |
 | `LATERE_AUTH_URL` | Latere Auth, `https://auth.latere.ai` by default |
-| `LATERE_API_KEY` | command line only: the person's personal access token |
-| `LATERE_IMAGE_PACKAGES` | optional: the `pip` packages the machine image provides, when it is not the base image |
+| `LATERE_API_KEY` | command line only: the person's personal access token, used instead of their `replichai login` |
+| `LATERE_TOKEN_COMMAND` | command line only: a command that prints a bearer addressed to `api.latere.ai`, used instead of their `replichai login` when `LATERE_API_KEY` is not set |
 
 ## Acceptance criteria
 

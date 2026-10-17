@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -520,6 +521,42 @@ func TestAPersonalAccessTokenIsExchangedAndKept(t *testing.T) {
 	}
 	if _, err := PersonalAccessToken("http://127.0.0.1:1", "pat_x", server.Client()).Token(context.Background()); err == nil {
 		t.Error("an unreachable Auth gave a bearer")
+	}
+}
+
+// A sign-in's bearer is kept until a minute before the expiry its mint
+// reports, so a five-minute actor token is asked for once every four minutes
+// rather than on every call, and a failed mint is reported, never a stale
+// bearer.
+func TestAnExpiringBearerIsKeptUntilItIsDue(t *testing.T) {
+	start := time.Now()
+	var mints atomic.Int32
+	var fail atomic.Bool
+	source := Expiring(func(context.Context) (string, time.Time, error) {
+		if fail.Load() {
+			return "", time.Time{}, errors.New("Auth refused the mint")
+		}
+		n := mints.Add(1)
+		return fmt.Sprintf("actor-%d", n), start.Add(5 * time.Minute), nil
+	})
+	for range 3 {
+		if bearer, err := source.Token(context.Background()); err != nil || bearer != "actor-1" {
+			t.Fatalf("Token = %q, %v", bearer, err)
+		}
+	}
+	kept := source.(*cache)
+	kept.now = func() time.Time { return start.Add(3*time.Minute + 59*time.Second) }
+	if bearer, _ := source.Token(context.Background()); bearer != "actor-1" || mints.Load() != 1 {
+		t.Fatalf("a fresh bearer was replaced: %q after %d mints", bearer, mints.Load())
+	}
+	kept.now = func() time.Time { return start.Add(4 * time.Minute) }
+	if bearer, err := source.Token(context.Background()); err != nil || bearer != "actor-2" {
+		t.Fatalf("a bearer due to expire was not replaced: %q, %v", bearer, err)
+	}
+	fail.Store(true)
+	kept.now = func() time.Time { return start.Add(10 * time.Minute) }
+	if bearer, err := source.Token(context.Background()); err == nil || bearer != "" {
+		t.Fatalf("a failed mint gave %q, %v", bearer, err)
 	}
 }
 
