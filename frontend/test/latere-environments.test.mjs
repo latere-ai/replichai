@@ -48,8 +48,8 @@ try {
   await settled(page)
 
   const checks = () =>
-    page.$$eval('[data-test="latere-environments"] [role="checkbox"]', (boxes) =>
-      boxes.map((b) => ({ label: b.textContent.trim(), on: b.getAttribute('aria-checked') === 'true', disabled: b.disabled })),
+    page.$$eval('[data-test="latere-environments"] input[type="checkbox"]', (boxes) =>
+      boxes.map((b) => ({ label: b.labels[0]?.textContent.trim() ?? '', on: b.checked, disabled: b.disabled })),
     )
   const first = await checks()
   if (first.length !== 3) fail(`the console offers ${first.length} environments, want the runtime's three`)
@@ -74,7 +74,7 @@ try {
 
   /* ── Turning one on sends the whole list ── */
 
-  await page.evaluate(() => [...document.querySelectorAll('[data-test="latere-environments"] [role="checkbox"]')].find((b) => b.textContent.trim().startsWith('GUI'))?.click())
+  await page.evaluate(() => [...document.querySelectorAll('[data-test="latere-environments"] input[type="checkbox"]')].find((b) => b.labels[0]?.textContent.trim().startsWith('GUI'))?.click())
   if (!(await page.$eval('[data-test="save-policy"]', (b) => !b.disabled))) fail('turning on gui does not enable Save')
   await page.click('[data-test="save-policy"]')
   await page.waitForFunction(() => document.querySelector('[data-test="save-policy"]')?.disabled === true, { timeout: 5000 }).catch(() => {})

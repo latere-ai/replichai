@@ -27,8 +27,8 @@ import { formatUSD, parseUSD, toDollars } from '../money'
 import { Ico } from '../icons'
 import { followsList, listName, listedKeys } from '../price-list'
 import { absoluteTime, relativeTime } from '../when'
-import { GlassSelect } from 'latere-ui/react'
-import { Check, NumberField, Pill, PromptDialog, Seams, Tip } from '../ui'
+import { GlassCheckbox, GlassSelect } from 'latere-ui/react'
+import { NumberField, Pill, PromptDialog, Seams, Tip } from '../ui'
 import { CardHead, Empty, Initials, TierPill } from './shared'
 
 // AdminScreen is the console: who may sign in, at what tier, with how much
@@ -293,9 +293,13 @@ function PlatformPolicy({
           </div>
           <div className="policy-checks" data-test="latere-environments">
             {known.map((name) => (
-              <Check key={name} on={name === 'base' || environments.includes(name)} disabled={name === 'base'} onChange={(on) => toggleEnvironment(name, on)}>
-                {environmentLabel(t, name)}
-              </Check>
+              <GlassCheckbox
+                key={name}
+                value={name === 'base' || environments.includes(name)}
+                disabled={name === 'base'}
+                onChange={(on) => toggleEnvironment(name, on)}
+                label={environmentLabel(t, name)}
+              />
             ))}
           </div>
         </div>

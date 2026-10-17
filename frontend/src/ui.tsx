@@ -43,40 +43,6 @@ export function Seams({ i18n, k }: { i18n: I18n; k: TKey }) {
   return <>{out}</>
 }
 
-/* ── Choice controls ── */
-
-// Check is a checkbox: a button that owns the checked state and paints its own
-// box. Space and Enter come from the <button>; role and aria-checked tell a
-// screen reader it is still a checkbox.
-export function Check({ on, onChange, disabled, children }: { on: boolean; onChange: (next: boolean) => void; disabled?: boolean; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={on}
-      disabled={disabled}
-      className={'ck' + (on ? ' on' : '')}
-      onClick={() => onChange(!on)}
-    >
-      <span className="ck-box">{on && <Ico name="check" size={11} w={3} />}</span>
-      <span className="ck-label">{children}</span>
-    </button>
-  )
-}
-
-// Toggle is the switch form of the same choice, for a setting that takes effect
-// at once rather than an affirmation that is submitted with a form.
-export function Toggle({ on, onChange, children }: { on: boolean; onChange: (next: boolean) => void; children?: ReactNode }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} className={'tg' + (on ? ' on' : '')} onClick={() => onChange(!on)}>
-      <span className="tg-track">
-        <span className="tg-knob" />
-      </span>
-      {children && <span className="ck-label">{children}</span>}
-    </button>
-  )
-}
-
 /* ── RowButton ── */
 
 // RowButton is a list row that opens something: a project, a file, a session.
