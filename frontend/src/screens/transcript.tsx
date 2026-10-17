@@ -122,9 +122,9 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
 
   // seek scrolls the stream to the first rendered card at or after an instant.
   // The list it searches is what the filters left standing, so scrubbing never
-  // aims at an event that is not on screen. Positions come off the DOM rather
-  // than from tracked heights, because a card is as tall as its content and
-  // nothing here knows that in advance.
+  // aims at an event that is not on screen. The browser places the card, at
+  // the stream's top less the card's scroll margin, because a card is as tall
+  // as its content and nothing here knows that in advance.
   const seek = useCallback((at: number, list: Card[]) => {
     const stream = streamRef.current
     if (!stream) return
@@ -134,7 +134,7 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
     })
     if (!hit) return
     const card = stream.querySelector<HTMLElement>(`.event[data-i="${hit.n}"]`)
-    if (card) stream.scrollTo({ top: card.offsetTop - stream.offsetTop - 8, behavior: 'smooth' })
+    card?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }, [])
 
   if (state !== 'ready' || !tr) {
