@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.36.2 - 2026-10-17
+
 ### Security
 
 - A local run on your own Codex or Claude Code login can no longer read your
