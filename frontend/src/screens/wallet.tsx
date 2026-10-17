@@ -23,7 +23,8 @@ import { dateOnly } from '../locale'
 import { checkoutErrLabel, creditMoveErrLabel } from '../errors'
 import { creditedMicro, formatUSD, MICRO, parseUSD } from '../money'
 import { Ico } from '../icons'
-import { Modal, NumberField, Seams, Tip } from '../ui'
+import { GlassModal } from 'latere-ui/react'
+import { NumberField, Seams, Tip } from '../ui'
 import { ledgerLabel } from '../ledger'
 
 // WalletPill shows what this person has to spend, next to the button that
@@ -112,11 +113,11 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
   }
 
   return (
-    <Modal
+    <GlassModal
+      open
       title={t('topUpTitle')}
-      icon="wallet"
       onClose={onClose}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={onClose}>
             {t('cancel')}
@@ -178,7 +179,7 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
       <p className="muted small" style={{ margin: '14px 0 0', lineHeight: 1.6 }}>
         {t('topUpSecure')}
       </p>
-    </Modal>
+    </GlassModal>
   )
 }
 

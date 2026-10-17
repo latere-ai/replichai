@@ -81,7 +81,7 @@ try {
   const press = async (label) => {
     const btn = await page.waitForFunction(
       (re) => {
-        const b = [...document.querySelectorAll('.modal button')].find((b) => new RegExp(re, 'i').test(b.textContent))
+        const b = [...document.querySelectorAll('[role="dialog"][aria-modal="true"] button')].find((b) => new RegExp(re, 'i').test(b.textContent))
         return b && !b.disabled ? b : null
       },
       { timeout: 5000 },
@@ -95,21 +95,21 @@ try {
   await page.open(`/p/${PROJECT}`)
   await page.waitForSelector('[data-test="publish-project"]', { timeout: 15000 })
   await page.click('[data-test="publish-project"]')
-  await page.waitForSelector('.modal', { timeout: 5000 })
+  await page.waitForSelector('[role="dialog"][aria-modal="true"]', { timeout: 5000 })
   // Three steps: what becomes public, who stands behind it, responsibility. The
   // profile is prefilled and publishable, so both Continues come live; each
   // step is waited for by the dot it lights.
   for (let step = 2; step <= 3; step++) {
     await press('Continue')
-    await page.waitForFunction((n) => document.querySelectorAll('.modal .step-dot.on').length === n, { timeout: 5000 }, step)
+    await page.waitForFunction((n) => document.querySelectorAll('[role="dialog"][aria-modal="true"] .step-dot.on').length === n, { timeout: 5000 }, step)
   }
-  await page.evaluate(() => document.querySelector('.modal .check, .modal [role="checkbox"]')?.click())
+  await page.evaluate(() => document.querySelector('[role="dialog"][aria-modal="true"] input[type="checkbox"], [role="dialog"][aria-modal="true"] [role="checkbox"]')?.click())
   await press('Sign off')
 
   await page.waitForSelector('[data-test="publish-blockers"]', { timeout: 8000 })
 
   const refused = await page.evaluate(() => ({
-    message: document.querySelector('.modal .err')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+    message: document.querySelector('[role="dialog"][aria-modal="true"] .err')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
     rows: [...document.querySelectorAll('.blocker-row')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()),
   }))
 

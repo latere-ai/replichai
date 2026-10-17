@@ -28,7 +28,8 @@ import { formatUSD } from '../money'
 import { Ico } from '../icons'
 import { type Choice, RuntimePick, runtimesFrom } from '../runtime-pick'
 import { citationBits, type Grouped } from '../papers'
-import { Modal, Select, Tip } from '../ui'
+import { GlassModal } from 'latere-ui/react'
+import { Select, Tip } from '../ui'
 import { isMine } from '../account'
 import { CardHead, Empty } from './shared'
 import { DeleteSessionDialog, SessionRow } from './sessions'
@@ -537,12 +538,11 @@ function EditPaperDialog({
   )
 
   return (
-    <Modal
+    <GlassModal
+      open
       title={t('editPaperTitle')}
-      icon="pencil"
-      eyebrow={paper.ref}
       onClose={onClose}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
             {t('cancel')}
@@ -553,6 +553,7 @@ function EditPaperDialog({
         </>
       }
     >
+      <span className="attestation">{paper.ref}</span>
       <p className="muted">{t('editPaperBody')}</p>
       <div className="field-grid">
         {field(t('paperFieldTitle'), title, setTitle, 'paper-title')}
@@ -574,7 +575,7 @@ function EditPaperDialog({
         </label>
       </div>
       {err && <p className="err small">{err}</p>}
-    </Modal>
+    </GlassModal>
   )
 }
 
@@ -626,12 +627,11 @@ function MovePaperDialog({
 
   const nowhere = targets !== null && targets.length === 0
   return (
-    <Modal
+    <GlassModal
+      open
       title={t('movePaperTitle')}
-      icon="fileText"
-      eyebrow={paper.title || paper.ref}
       onClose={onClose}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
             {t('cancel')}
@@ -642,6 +642,7 @@ function MovePaperDialog({
         </>
       }
     >
+      <span className="attestation">{paper.title || paper.ref}</span>
       <p className="muted">{t('movePaperBody')}</p>
       {targets === null ? (
         <p className="muted small">{t('loading')}</p>
@@ -660,6 +661,6 @@ function MovePaperDialog({
         </div>
       )}
       {err && <p className="err small">{err}</p>}
-    </Modal>
+    </GlassModal>
   )
 }

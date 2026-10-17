@@ -23,7 +23,8 @@ import { generic, purgeErrLabel, trashErrLabel } from '../errors'
 import { formatUSD } from '../money'
 import { Ico } from '../icons'
 import { listCitation } from '../papers'
-import { Modal, Pill, RowButton, Seams, Segmented, Tip, tipAttrs } from '../ui'
+import { GlassModal } from 'latere-ui/react'
+import { Pill, RowButton, Seams, Segmented, Tip, tipAttrs } from '../ui'
 import { absoluteTime, relativeTime } from '../when'
 import { isMine } from '../account'
 import { phaseLabel } from '../phase'
@@ -319,12 +320,11 @@ function TrashDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
     }
   }
   return (
-    <Modal
+    <GlassModal
+      open
       title={t('trashTitle')}
-      icon="trash"
-      eyebrow={p.title}
       onClose={onClose}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
             {t('cancel')}
@@ -335,10 +335,11 @@ function TrashDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
         </>
       }
     >
+      <span className="attestation">{p.title}</span>
       <p className="muted">{t('trashBody')}</p>
       {p.visibility === 'public' && <p className="warn small">{t('trashPublicNote')}</p>}
       {err && <p className="err small">{err}</p>}
-    </Modal>
+    </GlassModal>
   )
 }
 
@@ -446,12 +447,11 @@ function PurgeDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
     }
   }
   return (
-    <Modal
+    <GlassModal
+      open
       title={t('purgeTitle')}
-      icon="alert"
-      eyebrow={p.title}
       onClose={onClose}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
             {t('cancel')}
@@ -462,10 +462,11 @@ function PurgeDialog({ i18n, p, onClose, onDone }: { i18n: I18n; p: ProjectView;
         </>
       }
     >
+      <span className="attestation">{p.title}</span>
       <p className="muted">{t('purgeBody')}</p>
       <p className="muted small">{t('purgeKeepsRepos')}</p>
       {err && <p className="err small">{err}</p>}
-    </Modal>
+    </GlassModal>
   )
 }
 

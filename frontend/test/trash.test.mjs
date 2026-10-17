@@ -88,17 +88,16 @@ try {
 
   // The row action opens the app's own dialog, not a native confirm.
   await page.click('[data-test="trash-project"]')
-  await page.waitForSelector('.modal-backdrop [data-test="trash-confirm"]')
+  await page.waitForSelector('[role="dialog"][aria-modal="true"] [data-test="trash-confirm"]')
   const dialog = await page.evaluate(() => {
-    const m = document.querySelector('.modal')
-    return {
-      inBody: document.body.contains(m) && m.closest('.modal-backdrop')?.parentElement === document.body,
-      text: m.textContent,
-    }
+    const m = document.querySelector('[role="dialog"][aria-modal="true"]')
+    // What a pointer on the rail would land on while the dialog is up.
+    const onRail = document.elementFromPoint(8, innerHeight / 2)
+    return { railLive: !!onRail?.closest('.rail'), text: m.textContent }
   })
-  // The backdrop must portal to body: a promoted ancestor would confine it to
-  // the content column and leave the rail live behind a "modal".
-  if (!dialog.inBody) fail('the confirmation is not portalled to the body')
+  // The dim layer covers the whole window: a promoted ancestor would confine it
+  // to the content column and leave the rail live behind a "modal".
+  if (dialog.railLive) fail('the rail can still be clicked behind the confirmation')
   if (!/restore it from the trash/i.test(dialog.text)) fail('the confirmation does not say the step is reversible')
   if (!/withdraws the publication/i.test(dialog.text)) fail('the confirmation does not warn that a public project is withdrawn')
 
@@ -145,13 +144,13 @@ try {
 
   // The permanent delete says what it does not remove.
   await page.click('[data-test="purge"]')
-  await page.waitForSelector('.modal-backdrop [data-test="purge-confirm"]')
-  const purgeText = await page.evaluate(() => document.querySelector('.modal').textContent)
+  await page.waitForSelector('[role="dialog"][aria-modal="true"] [data-test="purge-confirm"]')
+  const purgeText = await page.evaluate(() => document.querySelector('[role="dialog"][aria-modal="true"]').textContent)
   if (!/cannot be brought back/i.test(purgeText)) fail('the permanent-delete dialog does not say it is irreversible')
   if (!/made private, not deleted/i.test(purgeText)) fail('the permanent-delete dialog does not say the repositories survive')
-  // Escape, not a click on the backdrop: the backdrop's center is the dialog.
+  // Escape, not a click on the dim layer: the layer's center is the dialog.
   await page.keyboard.press('Escape')
-  await page.waitForFunction(() => !document.querySelector('.modal-backdrop'))
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-modal="true"]'))
 
   // A trashed project keeps its address, and the screen behind it has to
   // explain itself and offer nothing that can only fail: every owner control is

@@ -115,7 +115,7 @@ html:has(.landing) {
 .tx-side,
 .tx-stream,
 .tx-body,
-.modal,
+.lu-modal,
 .markdown-body,
 .event-io,
 .ev-detail-body,
@@ -2538,8 +2538,7 @@ textarea::placeholder {
    is handled by scrolling, never by shrinking. */
 .tx-stream > *,
 .tx-side > *,
-.rail-nav > *,
-.modal > * {
+.rail-nav > * {
   flex: none;
 }
 /* Every event carries its kind's tone on the kind label. The stream is read by
@@ -3200,69 +3199,40 @@ textarea::placeholder {
   font-weight: 600;
 }
 
-/* ── Publish wizard ── */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: color-mix(in srgb, var(--bg) 68%, transparent);
-  backdrop-filter: blur(3px);
-  animation: om-fade-in 0.16s ease both;
+/* ── Dialogs ──
+   latere-ui's GlassModal, set the way the platform console sets it on the ink
+   ladder: the page color inside an emphasis edge, over the ladder's scrim. The
+   body is a column with one gap, so a dialog's paragraphs, fields and notes
+   need no margins of their own. */
+:root[data-design='ink'] .lu-modal-scrim {
+  background: var(--scrim);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
-.modal {
-  width: 100%;
-  max-width: 480px;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 18px;
+:root[data-design='ink'] .lu-modal {
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-pop);
-  animation: om-fade-up 0.2s var(--ease-fluid) both;
+  border-radius: var(--radius-card);
+  background: var(--bg);
+  box-shadow: var(--shadow-dialog);
 }
-.modal-head {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+:root[data-design='ink'] .lu-modal-head {
+  padding: 20px 20px 0;
 }
-.modal-title {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 0;
-  font-size: 15px;
+:root[data-design='ink'] .lu-modal-title {
+  font-size: var(--text-heading);
   font-weight: 600;
   color: var(--fg-1);
 }
-.modal-icon {
-  display: flex;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: var(--brand-soft);
-  color: var(--brand);
-}
-.modal-body {
+:root[data-design='ink'] .lu-modal-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 12px 20px;
+  font-size: var(--text-ui);
+  color: var(--fg-1);
 }
-.modal-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 2px;
+:root[data-design='ink'] .lu-modal-foot {
+  padding: 4px 20px 20px;
 }
 
 /* The signer line on a published project, styled as an attestation rather than
