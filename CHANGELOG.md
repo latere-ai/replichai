@@ -14,6 +14,10 @@ committed. The commit log already holds that.
 
 ### Changed
 
+- Project invitations and the account-on-hold email have a new design with a
+  ReplicHAI header, and each now has a plain-text version for mail apps that
+  do not show HTML. A reply to the account-on-hold email now reaches
+  billing@latere.ai.
 - The landing page's header and footer read "ReplicHAI | by Latere", as the
   platform's read "Latere | Platform". On a phone the header's sign-in reads
   "Sign in" so the lockup and the button fit.
@@ -30,13 +34,6 @@ committed. The commit log already holds that.
   Claude Code is granted only `~/.claude.json` and the macOS Keychain (or
   `~/.claude/.credentials.json` on Linux). Codex's installation under
   `~/.codex/packages` is readable, because the program lives there.
-
-### Changed
-
-- Project invitations and the account-on-hold email have a new design with a
-  ReplicHAI header, and each now has a plain-text version for mail apps that
-  do not show HTML. A reply to the account-on-hold email now reaches
-  billing@latere.ai.
 
 ### Fixed
 
