@@ -9,7 +9,7 @@ status: draft
 
 **Scope:** what ReplicHAI is for, end to end: from a paper to a replication of its whole study, the human part included, run with simulated participants. The four stages, the gate between the inner and the outer loop, the experiment the agent builds, the simulated participants and their population profiles, what a simulated replication establishes and how it is calibrated, the benchmark the runs yield, and the copy that states it. It reverses one principle of [007](007-from-reproduction-to-replication.md), [007c](007c-the-synthetic-pilot.md) and [023](023-the-outer-loop-as-a-product.md), and keeps the rest of their design.
 
-**Depends on:** [046](046-one-run-is-one-draw.md) (k runs per paper, the run record, the construct), [007a](007a-the-study-protocol-as-an-artifact.md) (`instrument.json`), [007b](007b-experiments-over-instruments.md) and [007c](007c-the-synthetic-pilot.md) (the experiment engine and the indelible label), [007d](007d-hosting-a-study.md) (the `study/` bundle and its isolated origin), the dispersion model in replichai-experiments (`docs/dispersion-model.md`).
+**Depends on:** [046](046-one-run-is-one-draw.md) (k runs per paper, the run record, the construct), [007a](007a-the-study-protocol-as-an-artifact.md) (`instrument.json`), [007b](007b-experiments-over-instruments.md) and [007c](007c-the-synthetic-pilot.md) (the experiment engine and the indelible label), [007d](007d-hosting-a-study.md) (the `study/` bundle and its isolated origin), and the dispersion model of repeated runs, a study document kept with the experiment materials outside this repository.
 
 ## Problem
 
@@ -116,7 +116,7 @@ The landing page and the search and share descriptions describe the audit, which
 
 ## First corpus
 
-Three papers from the calibration set, chosen to exercise every stage and to give each stage a known answer: designs that differ (a survey vignette, a choice task, a timed or interactive task), analyses that differ (Python and R), and at least one study that did not replicate with people, so the pipeline is tested on reproducing a null as well as an effect. The selection and its reasons are recorded in replichai-experiments.
+Three papers from the calibration set, chosen to exercise every stage and to give each stage a known answer: designs that differ (a survey vignette, a choice task, a timed or interactive task), analyses that differ (Python and R), and at least one study that did not replicate with people, so the pipeline is tested on reproducing a null as well as an effect. The selection and its reasons are recorded with the experiment materials, outside this repository.
 
 ## Dependencies outside this spec
 
