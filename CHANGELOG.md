@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.36.1 - 2026-10-17
+
 ### Changed
 
 - Project invitations come from `Latere <noreply@latere.ai>`, where they
