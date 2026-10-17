@@ -8,25 +8,32 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"latere.ai/x/pkg/email"
 )
 
 var ctx = context.Background()
 
 // capture is a transport that keeps the last message instead of sending it.
 type capture struct {
-	to, subject, body string
-	calls             int
-	err               error
+	msg   email.Message
+	calls int
+	err   error
 }
 
-func (c *capture) Send(_ context.Context, to, subject, htmlBody string) error {
+func (c *capture) Send(_ context.Context, m email.Message) error {
 	c.calls++
 	if c.err != nil {
 		return c.err
 	}
-	c.to, c.subject, c.body = to, subject, htmlBody
+	c.msg = m
 	return nil
 }
+
+// footer is the last line of every text part: the copyright and the legal
+// pages.
+const footer = "© 2026 Latere AI · Privacy https://latere.ai/legal/privacy · " +
+	"Terms https://latere.ai/legal/terms · Impressum https://latere.ai/legal/impressum\n"
 
 // The freeze notice says the account is on hold and links to the wallet,
 // where a top-up lifts the hold (022d). A nil Notifier sends nothing, so a
@@ -38,22 +45,25 @@ func TestAccountFrozenLinksToTheWalletAndIsSilentWhenUnwired(t *testing.T) {
 	if err := n.AccountFrozen(ctx, "debtor@x.com"); err != nil {
 		t.Fatalf("AccountFrozen: %v", err)
 	}
-	if tx.to != "debtor@x.com" {
-		t.Errorf("to = %q", tx.to)
+	if tx.msg.To != "debtor@x.com" {
+		t.Errorf("to = %q", tx.msg.To)
 	}
-	if !strings.Contains(tx.subject, "on hold") {
-		t.Errorf("subject = %q, want it to say the account is on hold", tx.subject)
+	if !strings.Contains(tx.msg.Subject, "on hold") {
+		t.Errorf("subject = %q, want it to say the account is on hold", tx.msg.Subject)
 	}
-	if !strings.Contains(tx.body, "https://replichai.latere.ai/wallet") {
-		t.Errorf("body = %q, want a link to the wallet", tx.body)
+	if !strings.Contains(tx.msg.HTML, "https://replichai.latere.ai/wallet") {
+		t.Errorf("body = %q, want a link to the wallet", tx.msg.HTML)
 	}
-	// The mail comes from a no-reply address, so a reply bounces. The way to
-	// dispute the hold is the billing contact, named in the body.
-	if strings.Contains(strings.ToLower(tx.body), "reply to this") {
-		t.Errorf("body = %q, asks for a reply that cannot arrive", tx.body)
+	// The mail comes from a no-reply address. The way to dispute the hold is
+	// the billing contact, named in the body as an address to write to rather
+	// than as a request to reply.
+	for _, body := range []string{tx.msg.HTML, tx.msg.Text} {
+		if strings.Contains(strings.ToLower(body), "reply to this") {
+			t.Errorf("body = %q, asks for a reply", body)
+		}
 	}
-	if !strings.Contains(tx.body, `href="mailto:`+BillingContact+`"`) {
-		t.Errorf("body = %q, want a mailto link to %s", tx.body, BillingContact)
+	if !strings.Contains(tx.msg.HTML, `href="mailto:`+BillingContact+`"`) {
+		t.Errorf("body = %q, want a mailto link to %s", tx.msg.HTML, BillingContact)
 	}
 
 	// A nil Notifier reports success and sends nothing.
@@ -74,34 +84,34 @@ func TestProjectInvitationNamesEverybodyAndLinksToTheProject(t *testing.T) {
 	if err := n.ProjectInvitation(ctx, "collab@x.com", "p-1", "Reproducing Study 1", "Ada Lovelace"); err != nil {
 		t.Fatalf("ProjectInvitation: %v", err)
 	}
-	if tx.to != "collab@x.com" {
-		t.Errorf("to = %q", tx.to)
+	if tx.msg.To != "collab@x.com" {
+		t.Errorf("to = %q", tx.msg.To)
 	}
-	if !strings.Contains(tx.subject, "Reproducing Study 1") {
-		t.Errorf("subject = %q, want the project named", tx.subject)
+	if !strings.Contains(tx.msg.Subject, "Reproducing Study 1") {
+		t.Errorf("subject = %q, want the project named", tx.msg.Subject)
 	}
 	for _, want := range []string{"Ada Lovelace", "Reproducing Study 1", "https://replichai.latere.ai/p/p-1"} {
-		if !strings.Contains(tx.body, want) {
-			t.Errorf("body is missing %q: %s", want, tx.body)
+		if !strings.Contains(tx.msg.HTML, want) {
+			t.Errorf("body is missing %q: %s", want, tx.msg.HTML)
 		}
 	}
 	// The API path is never used, because it answers a browser with JSON.
-	if strings.Contains(tx.body, "/projects/p-1") {
-		t.Errorf("the invitation links at the gated API: %s", tx.body)
+	if strings.Contains(tx.msg.HTML, "/projects/p-1") {
+		t.Errorf("the invitation links at the gated API: %s", tx.msg.HTML)
 	}
 }
 
 // A trailing slash on the configured base must not produce a double slash in
-// the link people click.
+// the link people click, nor in the logo's address.
 func TestProjectURLHasNoDoubleSlash(t *testing.T) {
 	tx := &capture{}
 	n := New(tx, "https://replichai.latere.ai/")
 	_ = n.ProjectInvitation(ctx, "a@b.com", "p-1", "Proj", "Ada")
-	if strings.Contains(tx.body, "latere.ai//projects") {
-		t.Errorf("link is malformed: %s", tx.body)
+	if strings.Contains(tx.msg.HTML, "latere.ai//") || strings.Contains(tx.msg.Text, "latere.ai//") {
+		t.Errorf("link is malformed: %s", tx.msg.HTML)
 	}
-	if !strings.Contains(tx.body, "https://replichai.latere.ai/p/p-1") {
-		t.Errorf("link missing from body: %s", tx.body)
+	if !strings.Contains(tx.msg.HTML, "https://replichai.latere.ai/p/p-1") {
+		t.Errorf("link missing from body: %s", tx.msg.HTML)
 	}
 }
 
@@ -112,19 +122,19 @@ func TestInvitationPromisesNothingItCannotKeep(t *testing.T) {
 	n := New(tx, "https://replichai.latere.ai")
 	_ = n.ProjectInvitation(ctx, "a@b.com", "p-1", "Proj", "Ada")
 
-	body := strings.ToLower(tx.body)
+	body := strings.ToLower(tx.msg.HTML)
 	for _, forbidden := range []string{"accept invitation", "platform invitation from an admin", "wait for"} {
 		if strings.Contains(body, forbidden) {
-			t.Errorf("body says %q, which is not true of a project invitation: %s", forbidden, tx.body)
+			t.Errorf("body says %q, which is not true of a project invitation: %s", forbidden, tx.msg.HTML)
 		}
 	}
 	if !strings.Contains(body, "nothing to accept") {
-		t.Errorf("body should say the access already exists: %s", tx.body)
+		t.Errorf("body should say the access already exists: %s", tx.msg.HTML)
 	}
 	// It must say how a session is funded, since budget is what actually
 	// limits taking part (006q).
 	if !strings.Contains(body, "budget") {
-		t.Errorf("body should explain that running a session needs budget: %s", tx.body)
+		t.Errorf("body should explain that running a session needs budget: %s", tx.msg.HTML)
 	}
 }
 
@@ -136,14 +146,15 @@ func TestInvitationEscapesUntrustedInput(t *testing.T) {
 	_ = n.ProjectInvitation(ctx, "a@b.com", "p-1",
 		`<script>alert(1)</script>`, `<img src=x onerror=alert(2)>`)
 
-	for _, raw := range []string{"<script>", "<img src"} {
-		if strings.Contains(tx.body, raw) {
-			t.Errorf("body carries unescaped %q: %s", raw, tx.body)
+	// The layout's own logo is an <img>, so the check is for the payload.
+	for _, raw := range []string{"<script>", "<img src=x"} {
+		if strings.Contains(tx.msg.HTML, raw) {
+			t.Errorf("body carries unescaped %q: %s", raw, tx.msg.HTML)
 		}
 	}
-	for _, escaped := range []string{"&lt;script&gt;", "&lt;img"} {
-		if !strings.Contains(tx.body, escaped) {
-			t.Errorf("body is missing the escaped form %q: %s", escaped, tx.body)
+	for _, escaped := range []string{"&lt;script&gt;", "&lt;img src=x"} {
+		if !strings.Contains(tx.msg.HTML, escaped) {
+			t.Errorf("body is missing the escaped form %q: %s", escaped, tx.msg.HTML)
 		}
 	}
 }
@@ -154,8 +165,8 @@ func TestProjectLinkIsEscaped(t *testing.T) {
 	tx := &capture{}
 	n := New(tx, "https://replichai.latere.ai")
 	_ = n.ProjectInvitation(ctx, "a@b.com", `p-1"onmouseover="alert(1)`, "Proj", "Ada")
-	if strings.Contains(tx.body, `"onmouseover="`) {
-		t.Errorf("href allows an attribute breakout: %s", tx.body)
+	if strings.Contains(tx.msg.HTML, `"onmouseover="`) {
+		t.Errorf("href allows an attribute breakout: %s", tx.msg.HTML)
 	}
 }
 
@@ -166,14 +177,136 @@ func TestInvitationFallsBackOnMissingNames(t *testing.T) {
 	n := New(tx, "https://replichai.latere.ai")
 	_ = n.ProjectInvitation(ctx, "a@b.com", "p-1", "   ", "")
 
-	if strings.Contains(tx.body, "<strong></strong>") {
-		t.Errorf("body renders empty emphasis: %s", tx.body)
+	if strings.Contains(tx.msg.HTML, `"></strong>`) {
+		t.Errorf("body renders empty emphasis: %s", tx.msg.HTML)
 	}
-	if !strings.Contains(tx.body, "A colleague") || !strings.Contains(tx.body, "a replication project") {
-		t.Errorf("body = %s, want readable fallbacks", tx.body)
+	if !strings.Contains(tx.msg.HTML, "A colleague") || !strings.Contains(tx.msg.HTML, "a replication project") {
+		t.Errorf("body = %s, want readable fallbacks", tx.msg.HTML)
 	}
-	if !strings.Contains(tx.subject, "a replication project") {
-		t.Errorf("subject = %q", tx.subject)
+	if tx.msg.Subject != "You've been added to a replication project on ReplicHAI" {
+		t.Errorf("subject = %q", tx.msg.Subject)
+	}
+	// Each fallback is worded for where it sits: the project is not called
+	// "the project a replication project", and the inviter is lowercase
+	// mid-sentence.
+	for _, want := range []string{
+		"You've been added to a replication project\n",
+		"A colleague added you to a replication project on ReplicHAI.",
+		"You received this because a colleague added a@b.com to a ReplicHAI project.",
+	} {
+		if !strings.Contains(tx.msg.Text, want) {
+			t.Errorf("text part lacks %q:\n%s", want, tx.msg.Text)
+		}
+	}
+}
+
+// The text part is what a client that does not show HTML displays, so it
+// carries the whole invitation: the title, the sentence naming who added the
+// reader, the link, the funding note and why the mail came.
+func TestProjectInvitationTextPart(t *testing.T) {
+	tx := &capture{}
+	n := New(tx, "https://replichai.latere.ai")
+	if err := n.ProjectInvitation(ctx, "collab@x.com", "p-1", "Reproducing Study 1", "Ada Lovelace"); err != nil {
+		t.Fatalf("ProjectInvitation: %v", err)
+	}
+	want := "You've been added to Reproducing Study 1\n\n" +
+		"Ada Lovelace added you to the project Reproducing Study 1 on ReplicHAI. " +
+		"You already have access, so there's nothing to accept.\n\n" +
+		"Open the project: https://replichai.latere.ai/p/p-1\n\n" +
+		"Replication sessions are paid from the project's budget, which the project owner funds. " +
+		"You don't pay anything yourself.\n\n" +
+		"--\nYou received this because Ada Lovelace added collab@x.com to a ReplicHAI project. " +
+		"If you weren't expecting it, you can ignore this email.\n" + footer
+	if tx.msg.Text != want {
+		t.Errorf("text part:\n%s\nwant:\n%s", tx.msg.Text, want)
+	}
+	if tx.msg.Subject != "You've been added to Reproducing Study 1 on ReplicHAI" {
+		t.Errorf("subject = %q", tx.msg.Subject)
+	}
+	if !strings.Contains(tx.msg.HTML, "You already have access. Nothing to accept.") {
+		t.Errorf("HTML lacks the preheader: %s", tx.msg.HTML)
+	}
+}
+
+// The hold notice's text part says what the reader can and cannot do, links
+// to the wallet, and names the billing contact.
+func TestAccountFrozenTextPart(t *testing.T) {
+	tx := &capture{}
+	n := New(tx, "https://replichai.latere.ai")
+	if err := n.AccountFrozen(ctx, "debtor@x.com"); err != nil {
+		t.Fatalf("AccountFrozen: %v", err)
+	}
+	want := "Your account is on hold\n\n" +
+		"A recent payment was refunded or charged back, so your balance is now negative " +
+		"and your account is view-only.\n\n" +
+		"You can: open your projects and download your work\n" +
+		"You can't: start new sessions until the balance is settled\n\n" +
+		"Topping up lifts the hold automatically.\n\n" +
+		"Top up your account: https://replichai.latere.ai/wallet\n\n" +
+		"If you think this is a mistake, write to " + BillingContact + " and we'll look into it.\n\n" +
+		"--\nYou received this because a payment on the ReplicHAI account debtor@x.com " +
+		"was refunded or charged back.\n" + footer
+	if tx.msg.Text != want {
+		t.Errorf("text part:\n%s\nwant:\n%s", tx.msg.Text, want)
+	}
+	if tx.msg.Subject != "Your ReplicHAI account is on hold" {
+		t.Errorf("subject = %q", tx.msg.Subject)
+	}
+}
+
+// A reply to the hold notice is most likely a dispute, so it goes to billing.
+// The invitation sets no Reply-To: there is nobody to answer.
+func TestOnlyTheHoldNoticeRepliesToBilling(t *testing.T) {
+	tx := &capture{}
+	n := New(tx, "https://replichai.latere.ai")
+	if err := n.AccountFrozen(ctx, "debtor@x.com"); err != nil {
+		t.Fatalf("AccountFrozen: %v", err)
+	}
+	if tx.msg.ReplyTo != BillingContact {
+		t.Errorf("hold notice Reply-To = %q, want %q", tx.msg.ReplyTo, BillingContact)
+	}
+	if err := n.ProjectInvitation(ctx, "a@b.com", "p-1", "Proj", "Ada"); err != nil {
+		t.Fatalf("ProjectInvitation: %v", err)
+	}
+	if tx.msg.ReplyTo != "" {
+		t.Errorf("invitation Reply-To = %q, want none", tx.msg.ReplyTo)
+	}
+}
+
+// The logo is served by the app itself, so a mail client fetches it from the
+// configured address: the ink lockup for a light background, the paper one
+// for a dark background. A trailing slash on the address must not double the
+// slash in either.
+func TestLogoIsFetchedFromTheApp(t *testing.T) {
+	for _, base := range []string{"https://replichai.example.org", "https://replichai.example.org/"} {
+		tx := &capture{}
+		n := New(tx, base)
+		if err := n.AccountFrozen(ctx, "a@b.com"); err != nil {
+			t.Fatalf("AccountFrozen: %v", err)
+		}
+		for _, want := range []string{
+			`src="https://replichai.example.org/email/lockup-replichai-ink.png"`,
+			`src="https://replichai.example.org/email/lockup-replichai-paper.png"`,
+			`alt="Latere ReplicHAI"`,
+			`width="190" height="38"`,
+		} {
+			if !strings.Contains(tx.msg.HTML, want) {
+				t.Errorf("base %q: HTML lacks %s", base, want)
+			}
+		}
+	}
+}
+
+// With no base address there is nowhere to fetch the logo from, so the
+// message has none rather than an image a mail client cannot load.
+func TestNoLogoWithoutABaseAddress(t *testing.T) {
+	tx := &capture{}
+	n := New(tx, "")
+	if err := n.ProjectInvitation(ctx, "a@b.com", "p-1", "Proj", "Ada"); err != nil {
+		t.Fatalf("ProjectInvitation: %v", err)
+	}
+	if strings.Contains(tx.msg.HTML, "<img") {
+		t.Errorf("HTML carries a logo with no address to load it from: %s", tx.msg.HTML)
 	}
 }
 

@@ -23,6 +23,13 @@ committed. The commit log already holds that.
   `~/.claude/.credentials.json` on Linux). Codex's installation under
   `~/.codex/packages` is readable, because the program lives there.
 
+### Changed
+
+- Project invitations and the account-on-hold email have a new design with a
+  ReplicHAI header, and each now has a plain-text version for mail apps that
+  do not show HTML. A reply to the account-on-hold email now reaches
+  billing@latere.ai.
+
 ### Fixed
 
 - The account-on-hold email asked you to reply if the hold was a mistake,
