@@ -21,6 +21,12 @@ committed. The commit log already holds that.
   `~/.claude/.credentials.json` on Linux). Codex's installation under
   `~/.codex/packages` is readable, because the program lives there.
 
+### Fixed
+
+- The account-on-hold email asked you to reply if the hold was a mistake,
+  but it comes from a no-reply address, so a reply bounced. It now names
+  billing@latere.ai to write to instead.
+
 ## v0.36.1 - 2026-10-17
 
 ### Changed

@@ -47,6 +47,14 @@ func TestAccountFrozenLinksToTheWalletAndIsSilentWhenUnwired(t *testing.T) {
 	if !strings.Contains(tx.body, "https://replichai.latere.ai/wallet") {
 		t.Errorf("body = %q, want a link to the wallet", tx.body)
 	}
+	// The mail comes from a no-reply address, so a reply bounces. The way to
+	// dispute the hold is the billing contact, named in the body.
+	if strings.Contains(strings.ToLower(tx.body), "reply to this") {
+		t.Errorf("body = %q, asks for a reply that cannot arrive", tx.body)
+	}
+	if !strings.Contains(tx.body, `href="mailto:`+BillingContact+`"`) {
+		t.Errorf("body = %q, want a mailto link to %s", tx.body, BillingContact)
+	}
 
 	// A nil Notifier reports success and sends nothing.
 	var nilN *Notifier
