@@ -95,7 +95,7 @@ try {
   // control filters by state, which the reader picks, never by ownership,
   // which they did not.
   const segs = await page.evaluate(() =>
-    [...document.querySelectorAll('.screen .segmented')].map((g) => [...g.querySelectorAll('.seg-btn')].map((b) => b.textContent.trim())),
+    [...document.querySelectorAll('.screen [role="radiogroup"]')].map((g) => [...g.querySelectorAll('[role="radio"]')].map((b) => b.textContent.trim())),
   )
   if (segs.length !== 1) fail(`the projects screen renders ${segs.length} segmented controls, want just the state filter`)
   for (const g of segs) {

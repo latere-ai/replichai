@@ -23,8 +23,8 @@ import { generic, purgeErrLabel, trashErrLabel } from '../errors'
 import { formatUSD } from '../money'
 import { Ico } from '../icons'
 import { listCitation } from '../papers'
-import { GlassModal } from 'latere-ui/react'
-import { Pill, RowButton, Seams, Segmented, Tip, tipAttrs } from '../ui'
+import { GlassModal, GlassSegmented } from 'latere-ui/react'
+import { Pill, RowButton, Seams, Tip, tipAttrs } from '../ui'
 import { absoluteTime, relativeTime } from '../when'
 import { isMine } from '../account'
 import { phaseLabel } from '../phase'
@@ -142,15 +142,15 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
           </label>
           {/* A narrowing the reader picks and can undo. The list is not split
               by owner, which is a fact the reader did not choose. */}
-          <Segmented
+          <GlassSegmented
             value={filter}
             options={[
-              { value: 'all' as const, label: t('filterAll') },
-              { value: 'running' as const, label: t('filterRunning') },
-              { value: 'published' as const, label: t('filterPublished') },
+              { value: 'all', label: t('filterAll') },
+              { value: 'running', label: t('filterRunning') },
+              { value: 'published', label: t('filterPublished') },
             ]}
-            onChange={setFilter}
-            label={t('colStatus')}
+            onChange={(v) => setFilter(v === 'running' || v === 'published' ? v : 'all')}
+            ariaLabel={t('colStatus')}
           />
         </div>
       )}
