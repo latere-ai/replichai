@@ -44,13 +44,13 @@ try {
       Object.fromEntries(
         [...document.querySelectorAll('.tx-stream .event')]
           .filter((c) => c.querySelector('.disc'))
-          .map((c) => [c.textContent.includes('alpha') ? 'alpha' : c.textContent.includes('beta') ? 'beta' : '?', c.querySelector('.disc').classList.contains('open')]),
+          .map((c) => [c.textContent.includes('alpha') ? 'alpha' : c.textContent.includes('beta') ? 'beta' : '?', c.querySelector('details.disc').open]),
       ),
     )
 
   // Open alpha's disclosure and nothing else.
   await page.evaluate(() => [...document.querySelectorAll('.tx-stream .event')].find((c) => c.textContent.includes('alpha')).querySelector('.disc-head').click())
-  await page.waitForFunction(() => [...document.querySelectorAll('.tx-stream .disc')].some((d) => d.classList.contains('open')))
+  await page.waitForFunction(() => [...document.querySelectorAll('.tx-stream details.disc')].some((d) => d.open))
   const before = await disclosures()
   if (!check(before.alpha === true && before.beta === false, `the test needs alpha open and beta shut to start, got ${JSON.stringify(before)}`)) throw new Error('setup')
 

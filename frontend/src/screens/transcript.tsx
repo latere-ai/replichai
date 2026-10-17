@@ -29,7 +29,7 @@ import {
   totalOf,
 } from '../transcript'
 import { Ico, type IconName } from '../icons'
-import { Disclosure, RowButton, Toggle } from '../ui'
+import { RowButton, Toggle } from '../ui'
 import { duration } from '../when'
 import { terminal } from '../session-stop'
 import { phaseClass, phaseLabel } from '../phase'
@@ -521,9 +521,7 @@ function EventCard({
               <span className="event-title">{t('toolResult')}</span>
               <EventCost u={e.usage} />
             </div>
-            <Disclosure summary={title || t('noContent')}>
-              <pre>{e.content || t('noContent')}</pre>
-            </Disclosure>
+            <ToolOutput summary={title || t('noContent')} text={e.content || t('noContent')} />
           </>
         ) : (
           <>
@@ -536,6 +534,26 @@ function EventCard({
         )}
       </div>
     </RowButton>
+  )
+}
+
+// ToolOutput is what a tool returned, behind its first line. It is drawn only
+// once opened: a long run returns megabytes of output across its calls, and a
+// transcript holds every one of them closed.
+function ToolOutput({ summary, text }: { summary: string; text: string }) {
+  const [shown, setShown] = useState(false)
+  return (
+    <details className="disc" onToggle={(e) => setShown(e.currentTarget.open)}>
+      <summary className="disc-head">
+        <Ico name="chevronRight" size={12} w={2} className="disc-caret" />
+        <span>{summary}</span>
+      </summary>
+      {shown && (
+        <div className="disc-body">
+          <pre>{text}</pre>
+        </div>
+      )}
+    </details>
   )
 }
 
