@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.36.3 - 2026-10-17
+
 ### Changed
 
 - The landing page's header and footer read "ReplicHAI | by Latere", as the
