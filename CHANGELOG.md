@@ -10,6 +10,12 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- The landing page's header and footer read "ReplicHAI | by Latere", as the
+  platform's read "Latere | Platform". On a phone the header's sign-in reads
+  "Sign in" so the lockup and the button fit.
+
 ## v0.36.2 - 2026-10-17
 
 ### Security

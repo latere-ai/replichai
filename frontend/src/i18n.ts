@@ -213,6 +213,7 @@ const en = {
       'You are signed in as {email}, but this account cannot use ReplicHAI right now. Sign out and back in. If that does not help, a platform admin has revoked access and can restore it.',
     // shell
     home: 'ReplicHAI home',
+    byLatere: 'by Latere',
     workspace: 'Workspace',
     navProjects: 'Projects',
     navPublic: 'Public registry',

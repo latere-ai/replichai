@@ -56,6 +56,17 @@
   align-items: center;
   gap: 6px;
 }
+.lp-signin-short {
+  display: none;
+}
+@media (max-width: 480px) {
+  .lp-signin-long {
+    display: none;
+  }
+  .lp-signin-short {
+    display: inline;
+  }
+}
 /* A navigation link: never underlined, a tint on hover, as on the platform. */
 .lp-bar-link {
   display: inline-flex;

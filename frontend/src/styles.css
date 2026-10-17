@@ -439,6 +439,14 @@ textarea {
   line-height: 1;
   color: var(--fg-1);
 }
+.lockup-by {
+  margin-left: 0.2em;
+  padding: 0.15em 0 0.15em 0.6em;
+  border-left: 1px solid var(--border-strong);
+  font-weight: 500;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
 /* The logo and the name, one link home. */
 .rail-brand {
   display: inline-flex;

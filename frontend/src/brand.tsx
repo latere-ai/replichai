@@ -107,11 +107,13 @@ export function LatereMark({ height = 11 }: { height?: number }) {
 
 // Lockup is the pair at a fixed optical relationship, so no caller has to
 // re-derive how big the mark is beside the name.
-export function Lockup({ size = 22, className }: { size?: number; className?: string }) {
+export function Lockup({ size = 22, className, by }: { size?: number; className?: string; by?: string }) {
   return (
     <span className={className ? `lockup ${className}` : 'lockup'} style={{ fontSize: size * 0.82 }}>
       <Mark size={size} />
       <Wordmark />
+      {/* The maker, after a hairline, as the platform sets "Latere | Platform". */}
+      {by && <span className="lockup-by">{by}</span>}
     </span>
   )
 }
