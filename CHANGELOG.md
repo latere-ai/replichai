@@ -10,6 +10,15 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- Dialogs, selects, the model picker's panel, checkboxes, switches and the
+  segmented controls are the shared Latere controls, as in the platform's
+  console, and the appearance control in the top bar is a menu. Disclosures
+  are the browser's own. Rows for projects, the registry, sessions and
+  verdicts are links, so middle-click, open in a new tab and copy link work.
+  Tooltips show above dialogs instead of behind them.
+
 ### Added
 
 - `--runtime latere` runs as you through `replichai login`, so you no longer
