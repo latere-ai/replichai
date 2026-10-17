@@ -77,7 +77,7 @@ entry takes precedence over the same key arriving through `envFrom`, so a
 policy value put in the secret is not an override; it is ignored. The base
 sets what every environment shares: `DATABASE_URL` and `DATABASE_POOL_URL`
 (from the separately provisioned `replichai-db` secret), `ADDR`, `REPLICHAI_RUNTIME`,
-`AUTH_ISSUER`, `AUTH_AUDIENCE`, `MAILGUN_DOMAIN`, `MAILGUN_REGION`. Each overlay sets what is its own:
+`AUTH_ISSUER`, `AUTH_AUDIENCE`, `MAILGUN_DOMAIN`, `MAILGUN_REGION`, `MAILGUN_FROM`. Each overlay sets what is its own:
 `BASE_URL`, `AUTH_CLIENT_ID`, `AUTH_REDIRECT_URL`, `REPLICHAI_RUNTIMES`, `ADMIN_EMAILS`. Change those
 in the overlay, where the change is reviewed, not in `.env`.
 
@@ -161,6 +161,7 @@ not using the app, and it needs a transport:
 | `MAILGUN_API_KEY` | `.env` → `replichai-config` secret | a credential; the literal `test` and an empty value both select the log transport |
 | `MAILGUN_DOMAIN` | the manifest | policy, not a secret; **required** when a key is set. A key with no domain fails at startup, deliberately |
 | `MAILGUN_REGION` | the manifest | `eu` selects the EU API host; anything else selects the US one |
+| `MAILGUN_FROM` | the manifest | who the mail is from, `Latere <noreply@latere.ai>`; blank sends from `noreply@` the domain, and one that is not an address fails at startup |
 | `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_FROM` | `.env` | used only when no Mailgun key is set; port 587 (STARTTLS) is the default and 465 selects implicit TLS |
 
 With none of them set the server logs each message and starts normally: a

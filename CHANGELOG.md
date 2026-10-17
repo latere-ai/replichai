@@ -10,6 +10,14 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- Project invitations come from `Latere <noreply@latere.ai>`, where they
+  came from `noreply@mg.latere.ai`. Mailgun still sends them through
+  `mg.latere.ai`, whose signature passes DMARC for `latere.ai`. The
+  manifest names the address in `MAILGUN_FROM`; one that is not an address
+  stops the start.
+
 ## v0.36.0 - 2026-10-17
 
 ### Changed

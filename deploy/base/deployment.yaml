@@ -110,15 +110,19 @@ spec:
             # or for the issuer itself, is refused.
             - name: AUTH_AUDIENCE
               value: replichai.latere.ai
-            # Outbound mail (006p): the project invitation. The sending domain
-            # and region are policy and live here; MAILGUN_API_KEY is a
-            # credential and comes from the replichai-config secret. With no key
+            # Outbound mail (006p): the project invitation. The sending domain,
+            # region and From address are policy and live here; MAILGUN_API_KEY
+            # is a credential and comes from the replichai-config secret. The
+            # From is on latere.ai, which mg.latere.ai's signature passes DMARC
+            # for under its relaxed alignment. With no key
             # in that secret the server logs invitations instead of sending
             # them, so they appear in the pod log and an invite never fails.
             - name: MAILGUN_DOMAIN
               value: mg.latere.ai
             - name: MAILGUN_REGION
               value: eu
+            - name: MAILGUN_FROM
+              value: "Latere <noreply@latere.ai>"
             # No OTEL_EXPORTER_OTLP_ENDPOINT here on purpose. The Dash0 operator
             # injects it, pointing at the node-local collector, and skips any
             # container that already sets it, emitting only a Warning event. A

@@ -51,11 +51,26 @@ func TestBuildNotifierWithMailgun(t *testing.T) {
 	t.Setenv("MAILGUN_API_KEY", "a-real-looking-key")
 	t.Setenv("MAILGUN_DOMAIN", "mg.latere.ai")
 	t.Setenv("MAILGUN_REGION", "eu")
+	t.Setenv("MAILGUN_FROM", "Latere <noreply@latere.ai>")
 	t.Setenv("SMTP_HOST", "")
 
 	n, err := buildNotifier("https://replichai.latere.ai")
 	if err != nil || n == nil {
 		t.Fatalf("buildNotifier = %v, %v", n, err)
+	}
+}
+
+// TestBuildNotifierRefusesABadFrom checks that a from address that does not
+// parse stops the start, as a key with no domain does.
+func TestBuildNotifierRefusesABadFrom(t *testing.T) {
+	t.Setenv("MAILGUN_API_KEY", "a-real-looking-key")
+	t.Setenv("MAILGUN_DOMAIN", "mg.latere.ai")
+	t.Setenv("MAILGUN_REGION", "eu")
+	t.Setenv("MAILGUN_FROM", "not an address")
+	t.Setenv("SMTP_HOST", "")
+
+	if _, err := buildNotifier("https://replichai.latere.ai"); err == nil {
+		t.Fatal("expected a startup error for a from address that does not parse")
 	}
 }
 
