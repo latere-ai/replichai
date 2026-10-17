@@ -35,9 +35,9 @@ import { countOf, type I18n } from '../i18n'
 import { dateOnly } from '../locale'
 import { blockerTab, generic } from '../errors'
 import { Ico } from '../icons'
-import { type ProjectTab, type SessionTab } from '../routes'
+import { pathOf, type ProjectTab, type SessionTab } from '../routes'
 import { gradeable, groupByPaper, type Grouped, type PaperGroup } from '../papers'
-import { Pill, RowButton, Tip } from '../ui'
+import { openFromRow, Pill, RowLink, Tip } from '../ui'
 import { isMine } from '../account'
 import { invalidateProjects } from '../projects-store'
 import { CardHead, Empty, Initials, NotReadable, Tab, VisibilityBadge } from './shared'
@@ -469,7 +469,9 @@ export function ProjectScreen({
             </div>
           </div>
         )}
-        {tab === 'verdict' && <ProjectVerdicts i18n={i18n} grouped={grouped} onOpen={(s) => onOpenSession(s.id, s.ref, project.title, 'verdict')} />}
+        {tab === 'verdict' && (
+          <ProjectVerdicts i18n={i18n} projectId={project.id} grouped={grouped} onOpen={(s) => onOpenSession(s.id, s.ref, project.title, 'verdict')} />
+        )}
         {tab === 'people' && isOwner && (
           <div className="detail-grid">
             <div className="stack">
@@ -593,7 +595,7 @@ function CountLine({ tone, label, n, total }: { tone: string; label: string; n: 
 // repository, under the paper it is a run of, each row opening that session's
 // own verdict. Every graded run has its own row and reads its own manifest, so
 // one paper never hides another's result.
-function ProjectVerdicts({ i18n, grouped, onOpen }: { i18n: I18n; grouped: Grouped; onOpen: (job: Job) => void }) {
+function ProjectVerdicts({ i18n, projectId, grouped, onOpen }: { i18n: I18n; projectId: string; grouped: Grouped; onOpen: (job: Job) => void }) {
   const { t } = i18n
   const rows = useMemo(() => gradeable(grouped), [grouped])
   if (rows.length === 0)
@@ -607,7 +609,14 @@ function ProjectVerdicts({ i18n, grouped, onOpen }: { i18n: I18n; grouped: Group
       <CardHead label={t('verdict')} icon="gauge" tone="var(--ok)" />
       <div className="rows">
         {rows.map(({ paper, session }) => (
-          <VerdictRow key={session.id} i18n={i18n} paper={paper} job={session} onOpen={() => onOpen(session)} />
+          <VerdictRow
+            key={session.id}
+            i18n={i18n}
+            paper={paper}
+            job={session}
+            href={pathOf({ name: 'session', projectId, jobId: session.id, tab: 'verdict' })}
+            onOpen={() => onOpen(session)}
+          />
         ))}
       </div>
     </div>
@@ -617,7 +626,7 @@ function ProjectVerdicts({ i18n, grouped, onOpen }: { i18n: I18n; grouped: Group
 // VerdictRow reads one session's manifest. Each row fetches its own, so a slow
 // forge delays a row rather than the page, and a repository that cannot be read
 // says so where it is rather than emptying the view.
-function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGroup['paper']; job: Job; onOpen: () => void }) {
+function VerdictRow({ i18n, paper, job, href, onOpen }: { i18n: I18n; paper: PaperGroup['paper']; job: Job; href: string; onOpen: () => void }) {
   const { t } = i18n
   const [repro, setRepro] = useState<Reproduction | null>(null)
   const [missing, setMissing] = useState(false)
@@ -639,8 +648,12 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
   }, [job.id])
   const tone = findings ? verdictTone(findings.verdict) : 'var(--fg-3)'
   return (
-    <RowButton className="row file-row" onOpen={onOpen}>
-      <span className="row-title">{paper.title || paper.ref}</span>
+    <div className="row file-row" onClick={openFromRow}>
+      <span className="row-title">
+        <RowLink href={href} onOpen={onOpen}>
+          {paper.title || paper.ref}
+        </RowLink>
+      </span>
       <span className="muted small">{job.created_at ? dateOnly(i18n.lang, job.created_at) : ''}</span>
       {repro?.review && <Pill tone={repro.review === 'clear' ? 'ok' : 'warn'}>{repro.review}</Pill>}
       <span className="verdict-cell" style={{ color: tone }} data-test="paper-verdict">
@@ -662,7 +675,7 @@ function VerdictRow({ i18n, paper, job, onOpen }: { i18n: I18n; paper: PaperGrou
           '…'
         )}
       </span>
-    </RowButton>
+    </div>
   )
 }
 

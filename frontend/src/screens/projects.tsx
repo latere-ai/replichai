@@ -24,7 +24,8 @@ import { formatUSD } from '../money'
 import { Ico } from '../icons'
 import { listCitation } from '../papers'
 import { GlassModal, GlassSegmented } from 'latere-ui/react'
-import { Pill, RowButton, Seams, Tip, tipAttrs } from '../ui'
+import { openFromRow, Pill, RowLink, Seams, Tip, tipAttrs } from '../ui'
+import { pathOf } from '../routes'
 import { absoluteTime, relativeTime } from '../when'
 import { isMine } from '../account'
 import { phaseLabel } from '../phase'
@@ -180,9 +181,13 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
               <span />
             </div>
             {shown.map((p) => (
-              <RowButton key={p.id} className="row" onOpen={() => onOpen(p.id, p.title)}>
+              <div key={p.id} className="row" onClick={openFromRow}>
                 <div className="row-main">
-                  <div className="row-title">{p.title}</div>
+                  <div className="row-title">
+                    <RowLink href={pathOf({ name: 'project', id: p.id })} onOpen={() => onOpen(p.id, p.title)}>
+                      {p.title}
+                    </RowLink>
+                  </div>
                   {/* Which paper the project is about, directly under its
                       title, as the registry sets it. Two projects can share a
                       title; the citation tells them apart at a glance. */}
@@ -276,7 +281,7 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
                   <span className="row-slot" />
                 )}
                 <Ico name="chevronRight" size={15} className="chev" />
-              </RowButton>
+              </div>
             ))}
           </div>
         )}
@@ -549,9 +554,13 @@ export function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string
               signed, so a visibility badge would repeat on every line. */}
           <div className="rows" data-test="registry-rows">
             {list.map((p) => (
-              <RowButton key={p.id} className="row" onOpen={() => onOpen(p.id, p.title)}>
+              <div key={p.id} className="row" onClick={openFromRow}>
                 <div className="row-main">
-                  <div className="row-title">{p.title}</div>
+                  <div className="row-title">
+                    <RowLink href={pathOf({ name: 'project', id: p.id })} onOpen={() => onOpen(p.id, p.title)}>
+                      {p.title}
+                    </RowLink>
+                  </div>
                   <RowCitation i18n={i18n} papers={p.papers} />
                   {p.description && (
                     <div className="row-desc" data-test="row-description">
@@ -577,7 +586,7 @@ export function PublicScreen({ i18n, onOpen }: { i18n: I18n; onOpen: (id: string
                 </div>
                 <StatusBadge i18n={i18n} p={p} />
                 <Ico name="chevronRight" size={15} className="chev" />
-              </RowButton>
+              </div>
             ))}
           </div>
         </div>

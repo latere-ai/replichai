@@ -12,7 +12,7 @@ import { deleteSessionErrLabel, failureTip, sessionFailureText } from '../errors
 import { formatUSD } from '../money'
 import { Ico } from '../icons'
 import { GlassModal } from 'latere-ui/react'
-import { Pill, RowButton, Tip } from '../ui'
+import { openFromRow, Pill, RowLink, Tip } from '../ui'
 import { elapsed } from '../when'
 import { freshest, stopPending, stoppedByHand, terminal } from '../session-stop'
 import { useJobStream } from '../job-stream'
@@ -24,6 +24,7 @@ export function SessionRow({
   job,
   nested,
   canDelete,
+  href,
   onOpen,
   onChanged,
   onDelete,
@@ -35,12 +36,15 @@ export function SessionRow({
   // Whether this reader may remove a finished session. Only the owner may; the
   // server refuses everybody else.
   canDelete?: boolean
+  // The session's address, which the row links to.
+  href: string
   onOpen: () => void
   onChanged: () => void
   // Where a delete is confirmed. The dialog is the card's, not the row's: it is
-  // one dialog for the list rather than one per row, and because Modal portals
-  // to <body> but a React portal still bubbles its clicks through the React
-  // tree, a dialog inside this row would open the session on every click in it.
+  // one dialog for the list rather than one per row, and because the dialog
+  // portals to <body> but a React portal still bubbles its clicks through the
+  // React tree, a dialog inside this row would open the session on every click
+  // in it.
   onDelete?: (j: Job) => void
 }) {
   const { t } = i18n
@@ -91,7 +95,7 @@ export function SessionRow({
   const stopped = stoppedByHand(j.phase, j.error)
   const phaseTxt = stopped ? t('stopped') : phaseLabel(t, j.phase)
   return (
-    <RowButton className={nested ? 'row row-nested' : 'row'} onOpen={onOpen}>
+    <div className={nested ? 'row row-nested' : 'row'} onClick={openFromRow}>
       <span className="phase-slot">
         <Pill
           tone={stopped ? 'neutral' : phaseTone(j.phase)}
@@ -105,7 +109,11 @@ export function SessionRow({
       {/* Under a paper, the reference is already on the card above, so the
           row carries what the run ran on, which is what differs between runs.
           A session listed on its own shows the paper's reference. */}
-      <span className="row-mono row-title">{nested ? runLabel(j) : j.ref}</span>
+      <span className="row-mono row-title">
+        <RowLink href={href} onOpen={onOpen}>
+          {nested ? runLabel(j) : j.ref}
+        </RowLink>
+      </span>
       {/* How long a running session has been going. A run costs money for as
           long as it runs, so this shows elapsed minutes rather than an age
           such as "an hour ago", which rounds them away. */}
@@ -185,7 +193,7 @@ export function SessionRow({
         </span>
       )}
       <Ico name="chevronRight" size={15} className="chev" />
-    </RowButton>
+    </div>
   )
 }
 

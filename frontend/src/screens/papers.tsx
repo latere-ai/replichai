@@ -30,6 +30,7 @@ import { type Choice, RuntimePick, runtimesFrom } from '../runtime-pick'
 import { citationBits, type Grouped } from '../papers'
 import { GlassModal, GlassSelect } from 'latere-ui/react'
 import { Tip } from '../ui'
+import { pathOf } from '../routes'
 import { isMine } from '../account'
 import { CardHead, Empty } from './shared'
 import { DeleteSessionDialog, SessionRow } from './sessions'
@@ -309,7 +310,17 @@ export function PapersCard({
                 </div>
               </div>
               {g.sessions.map((s) => (
-                <SessionRow key={s.id} i18n={i18n} job={s} nested canDelete={mayDelete} onOpen={() => onOpenSession(s)} onChanged={refresh} onDelete={setDropping} />
+                <SessionRow
+                  key={s.id}
+                  i18n={i18n}
+                  job={s}
+                  nested
+                  canDelete={mayDelete}
+                  href={pathOf({ name: 'session', projectId: project.id, jobId: s.id })}
+                  onOpen={() => onOpenSession(s)}
+                  onChanged={refresh}
+                  onDelete={setDropping}
+                />
               ))}
             </div>
           ))}
@@ -322,7 +333,17 @@ export function PapersCard({
               {/* A label, not a row: nothing here is a paper to start or open. */}
               <div className="group-head">{t('otherSessions')}</div>
               {grouped.other.map((s) => (
-                <SessionRow key={s.id} i18n={i18n} job={s} nested canDelete={mayDelete} onOpen={() => onOpenSession(s)} onChanged={refresh} onDelete={setDropping} />
+                <SessionRow
+                  key={s.id}
+                  i18n={i18n}
+                  job={s}
+                  nested
+                  canDelete={mayDelete}
+                  href={pathOf({ name: 'session', projectId: project.id, jobId: s.id })}
+                  onOpen={() => onOpenSession(s)}
+                  onChanged={refresh}
+                  onDelete={setDropping}
+                />
               ))}
             </div>
           )}
