@@ -65,6 +65,13 @@
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
+  /* latere-ui's controls and its footer read --text and its two quieter steps;
+     the ink ladder names them --fg-1 to --fg-3. Importing `latere-ui/tokens`
+     instead would redefine --bg, --bg-surface and --bg-raised for the page. */
+  --text: var(--fg-1);
+  --text-secondary: var(--fg-2);
+  --text-muted: var(--fg-3);
+
   /* The ladder's radii, under the names this sheet uses. */
   --radius-sm: var(--radius-control);
   --radius-pill: 999px;
@@ -1824,14 +1831,20 @@ button.quota-pill:hover {
 
 /* The app's own tooltip, so the delay and the appearance are the app's rather
    than the browser's. `.tip` only marks a trigger. The bubble is one element
-   portalled to <body> by TipHost and placed from the trigger's rect, because a
-   card that rounds its corners with overflow:hidden clips anything positioned
-   inside it. */
+   portalled to <body> by TipHost, shown in the top layer and placed from the
+   trigger's rect, because a card that rounds its corners with overflow:hidden
+   clips anything positioned inside it, and a dialog covers anything outside
+   the top layer. The inset, margin, border and overflow lines undo the
+   browser's [popover] defaults. */
 .tip {
   display: inline-flex;
 }
 .tip-bubble {
   position: fixed;
+  inset: auto;
+  margin: 0;
+  border: 0;
+  overflow: visible;
   z-index: 70;
   padding: 6px 9px;
   border-radius: 7px;

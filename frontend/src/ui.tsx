@@ -528,10 +528,30 @@ export function Tip({ text, children }: { text?: string; children: ReactNode }) 
   )
 }
 
-// TipHost draws every tooltip in the app, from one bubble portalled to <body>.
-// Every card in the app rounds its corners with `overflow: hidden`, which would
-// clip a bubble positioned inside the trigger; one fixed bubble outside every
-// card is the only placement no container can cut.
+// The bubble's attributes for the top layer. Spread rather than written as JSX
+// because @types/react 18 does not declare `popover`.
+const TOP_LAYER: Record<string, string> = { popover: 'manual' }
+
+// raise shows the bubble in the top layer. An engine without the Popover API
+// ignores the attribute and draws the same fixed bubble in place; one that
+// refuses to show it gets the attribute removed, so it is drawn in place rather
+// than left display:none.
+function raise(el: HTMLElement) {
+  if (typeof el.showPopover !== 'function' || !el.hasAttribute('popover')) return
+  try {
+    if (!el.matches(':popover-open')) el.showPopover()
+  } catch {
+    el.removeAttribute('popover')
+  }
+}
+
+// TipHost draws every tooltip in the app, from one bubble portalled to <body>
+// and shown in the browser's top layer. Every card in the app rounds its
+// corners with `overflow: hidden`, which would clip a bubble positioned inside
+// the trigger, and a dialog paints over anything outside the top layer; one
+// fixed bubble there is the only placement no container or dialog can cover.
+// latere-ui's GlassTooltip is positioned inside its trigger, so it is clipped
+// by the same cards and has no side placement for the folded rail.
 //
 // It listens on the document rather than per trigger: `data-tip` stays a plain
 // attribute, so a tip can sit on an element that cannot take a wrapper, such as
@@ -598,6 +618,8 @@ export function TipHost() {
 
   useLayoutEffect(() => {
     if (!tip || !bubble.current) return
+    // A popover is display:none until shown, so it is raised before it is measured.
+    raise(bubble.current)
     const b = bubble.current.getBoundingClientRect()
     const M = 6 // the gap from the trigger, and the margin from the viewport
     const above = tip.rect.top - b.height - M
@@ -625,6 +647,7 @@ export function TipHost() {
   return createPortal(
     <div
       ref={bubble}
+      {...TOP_LAYER}
       className="tip-bubble"
       aria-hidden="true"
       // Measured off-screen on the first pass, placed on the second.

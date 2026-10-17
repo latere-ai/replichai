@@ -957,14 +957,9 @@
 
 /* ── The shared footer ────────────────────────────────────────────────────────
    latere-ui's SiteFooter ships its own stylesheet, which this app does not
-   restyle. It reads --text and its two quieter steps, so the wrapper aliases
-   them to the ink ladder's --fg-1 to --fg-3 and the footer inherits them.
-   Importing `latere-ui/tokens` instead would redefine --bg, --bg-surface and
-   --bg-raised at :root for the whole page. */
+   restyle. It reads --text and its two quieter steps, which styles.css aliases
+   to the ink ladder for the whole page. */
 .lp-footer-wrap {
-  --text: var(--fg-1);
-  --text-secondary: var(--fg-2);
-  --text-muted: var(--fg-3);
   /* The footer sets its type in --font-ui, so the lockup at its head is set
      in the same face as the header's, and the links in the app's sans. */
   --font-ui: var(--font-sans);
