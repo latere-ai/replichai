@@ -237,9 +237,8 @@ function Blockers({
 // One blocking session, and what the owner can do about this one.
 //
 // The delete confirms in the row rather than in a dialog: this list is already
-// inside the publish wizard's Modal, and a second Modal over it would share the
-// Escape key with the first, so one press would close both and take the list of
-// blockers with it.
+// inside the publish wizard's dialog, and a second dialog over it would hide the
+// list of blockers the delete is about.
 function BlockerRow({
   i18n,
   b,
