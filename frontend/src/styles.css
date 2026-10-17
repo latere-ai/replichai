@@ -3195,13 +3195,14 @@ textarea::placeholder {
 
 /* ── Dialogs ──
    latere-ui's GlassModal, set the way the platform console sets it on the ink
-   ladder: the page color inside an emphasis edge, over the ladder's scrim. The
-   body is a column with one gap, so a dialog's paragraphs, fields and notes
-   need no margins of their own. */
+   ladder: the page color inside an emphasis edge. The page behind it is
+   frosted in its own ground rather than dimmed, so the dialog reads as a layer
+   of the same page. The body is a column with one gap, so a dialog's paragraphs,
+   fields and notes need no margins of their own. */
 :root[data-design='ink'] .lu-modal-scrim {
-  background: var(--scrim);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
 :root[data-design='ink'] .lu-modal {
   -webkit-backdrop-filter: none;
