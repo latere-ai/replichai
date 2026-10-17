@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.37.1 - 2026-10-18
+
 ### Changed
 
 - The rate card reads the price list with the same reader as the Latere
