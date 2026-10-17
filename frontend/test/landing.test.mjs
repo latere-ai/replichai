@@ -132,7 +132,7 @@ try {
         const b = getComputedStyle(body)
         return {
           barTop: bar.getBoundingClientRect().top,
-          signin: cs.visibility !== 'hidden' && +cs.opacity > 0.5 && r.width >= 90 && r.top >= 0 && r.bottom <= vh,
+          signin: cs.visibility !== 'hidden' && +cs.opacity > 0.5 && r.width >= 72 && r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= innerWidth,
           barInScroller: body.contains(bar),
           windowScroll: document.scrollingElement.scrollTop,
           bodyScroll: body.scrollTop,

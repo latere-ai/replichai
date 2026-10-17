@@ -627,10 +627,10 @@ function PaperCite({ i18n, papers }: { i18n: I18n; papers?: PaperCitation[] }) {
 
 // HomeLockup is the product's lockup linked home, as the header sets it. The
 // shared footer opens with the same element, so the two never disagree.
-function HomeLockup() {
+function HomeLockup({ i18n }: { i18n: I18n }) {
   return (
     <a className="lp-bar-brand" href="/">
-      <Lockup size={20} className="landing-lockup" />
+      <Lockup size={20} className="landing-lockup" by={i18n.t('byLatere')} />
     </a>
   )
 }
@@ -654,13 +654,16 @@ export function Landing({
           at every scroll position. */}
       <header className="lp-bar">
         <div className="lp-bar-in">
-          <HomeLockup />
+          <HomeLockup i18n={i18n} />
           <nav className="lp-bar-actions">
             <a className="lp-bar-link lp-bar-registry" href="/registry">
               {t('lpNavRegistry')}
             </a>
-            <a className="btn lp-bar-signin" data-test="lp-signin" href={href}>
-              <LatereMark height={11} /> {t('signInWith')}
+            {/* On a phone the bar has room for the lockup and "Sign in", not
+                "Sign in with Latere"; the mark still says where it goes. */}
+            <a className="btn lp-bar-signin" data-test="lp-signin" href={href} aria-label={t('signInWith')}>
+              <LatereMark height={11} /> <span className="lp-signin-long">{t('signInWith')}</span>
+              <span className="lp-signin-short">{t('signInTitle')}</span>
             </a>
           </nav>
         </div>
@@ -706,7 +709,7 @@ export function Landing({
           <SiteFooter
             brand={
               <span className="lp-footer-brand">
-                <HomeLockup />
+                <HomeLockup i18n={i18n} />
                 <SourceLink i18n={i18n} className="lp-footer-source" />
               </span>
             }
