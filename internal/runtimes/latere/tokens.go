@@ -47,7 +47,7 @@ func tokenSourceFrom(ctx context.Context) (TokenSource, bool) {
 
 // ErrNoCredential is a call that has no person to act for: no source on the
 // context and none configured on the runtime.
-var ErrNoCredential = errors.New("no Latere credential: sign in, or set LATERE_API_KEY to a personal access token")
+var ErrNoCredential = errors.New("no Latere credential: sign in with `replichai login`, or set LATERE_API_KEY to a personal access token")
 
 // renewBefore is how long before its expiry a cached bearer is replaced, so
 // a bearer handed to a call does not expire while the call is in flight.
@@ -77,6 +77,14 @@ func (c *cache) Token(ctx context.Context) (string, error) {
 	}
 	c.bearer, c.until = bearer, until
 	return bearer, nil
+}
+
+// Expiring keeps each bearer mint gives until shortly before the expiry mint
+// reports, and asks again after it. It is how the command line acts with the
+// operator's own `replichai login`, whose mint is a minutes-long token Auth
+// addresses to api.latere.ai.
+func Expiring(mint func(ctx context.Context) (string, time.Time, error)) TokenSource {
+	return &cache{now: time.Now, mint: mint}
 }
 
 // PersonalAccessToken exchanges a person's personal access token (pat_...)

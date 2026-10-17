@@ -139,6 +139,10 @@ more of the provider. Users point them at your deployment with
   token the CLI presents has to satisfy all three.
 - `org` switches context by sending `organization_id` on a refresh-token grant,
   which only an identity service that supports organizations understands.
+- On the `latere` runtime, unless `LATERE_API_KEY` or `LATERE_TOKEN_COMMAND` is
+  set, it asks the same `/actor-tokens` for the audience `api.latere.ai`, which
+  only Latere Auth mints. Users signed in to another provider set one of those
+  two variables to run on the Latere platform.
 
 A provider laid out differently still serves the browser sign-in, which
 discovers its endpoints, while those CLI commands cannot sign in against it.

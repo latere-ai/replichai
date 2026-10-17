@@ -10,24 +10,27 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/audit"
+	"github.com/latere-ai/replichai/internal/cloud"
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/signin"
 )
 
 // TestRealLatereEndToEnd runs one small graded session on the live Latere
-// platform, as the person whose credential LATERE_API_KEY or
-// LATERE_TOKEN_COMMAND names, and charges their wallet a few cents. It is
-// opt-in (REPLICHAI_LATERE_E2E=1), because it reaches the network and spends
-// money; it prints the transcript when the session does not pass, before the
-// session is released, so a failure says why. REPLICHAI_LATERE_ENVIRONMENT
-// names the environment the session runs on, and REPLICHAI_LATERE_MODEL the
-// model, read as --model reads it.
+// platform, as the person signed in with `replichai login`, or the one whose
+// credential LATERE_API_KEY or LATERE_TOKEN_COMMAND names when either is set,
+// and charges their wallet a few cents. It is opt-in
+// (REPLICHAI_LATERE_E2E=1), because it reaches the network and spends money;
+// it prints the transcript when the session does not pass, before the session
+// is released, so a failure says why. REPLICHAI_LATERE_ENVIRONMENT names the
+// environment the session runs on, and REPLICHAI_LATERE_MODEL the model, read
+// as --model reads it.
 //
 // LATERE_TOKEN_COMMAND must print a bearer addressed to api.latere.ai.
 // `latere print-token` is not one: it prints the Latere CLI's login token,
 // which only Latere Auth accepts, and the platform answers 401.
 func TestRealLatereEndToEnd(t *testing.T) {
 	if os.Getenv("REPLICHAI_LATERE_E2E") != "1" {
-		t.Skip("set REPLICHAI_LATERE_E2E=1 and a Latere credential to run a real session")
+		t.Skip("set REPLICHAI_LATERE_E2E=1 and sign in with `replichai login` to run a real session")
 	}
 	var tokens TokenSource
 	switch {
@@ -36,7 +39,18 @@ func TestRealLatereEndToEnd(t *testing.T) {
 	case os.Getenv("LATERE_TOKEN_COMMAND") != "":
 		tokens = Command(os.Getenv("LATERE_TOKEN_COMMAND"))
 	default:
-		t.Fatal("set LATERE_API_KEY or LATERE_TOKEN_COMMAND")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		authURL := os.Getenv("REPLICHAI_AUTH_URL")
+		if authURL == "" {
+			authURL = cloud.DefaultAuthURL
+		}
+		session := cloud.New(home, authURL)
+		tokens = Expiring(func(ctx context.Context) (string, time.Time, error) {
+			return session.ActorToken(ctx, signin.PlatformAudience, cloud.ActorTTL)
+		})
 	}
 	model := os.Getenv("REPLICHAI_LATERE_MODEL")
 	if model == "" {

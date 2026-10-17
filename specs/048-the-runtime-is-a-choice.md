@@ -5,7 +5,7 @@ status: built
 
 # 048 — The runtime is a choice
 
-**Status:** built, except where the platform comes first. The command line takes `--runtime latere` and `--model` as a level or one model, and `replichai models` lists both; the server offers the runtimes `REPLICHAI_RUNTIMES` names, records each job's runtime, model and payer, and runs a person-paid job as the person through their kept sign-in. The app's picker shipped with the 047 redesign. Who pays is decided (the person's own Latere wallet), and the app offers Latere since 2026-10-16, when Latere Auth registered the app's sign-in client with `offline_access` and a token for the platform's API.
+**Status:** built. The command line takes `--runtime latere` and `--model` as a level or one model, and `replichai models` lists both; on Latere it acts as the person signed in with `replichai login`. The server offers the runtimes `REPLICHAI_RUNTIMES` names, records each job's runtime, model and payer, and runs a person-paid job as the person through their kept sign-in. The app's picker shipped with the 047 redesign. Who pays is decided (the person's own Latere wallet), and the app offers Latere since 2026-10-16, when Latere Auth registered the app's sign-in client with `offline_access` and a token for the platform's API.
 
 **Scope:** the person who starts a session picks where it runs and on what model, in the app and on the command line. Which runtimes a deployment offers, the model list each runtime answers with, how a session records the runtime and model it ran on, and how a session run on the Latere platform is priced and charged. The Latere runtime itself is [041g](041g-latere-runs-a-session.md); this spec is the choice in front of it.
 
@@ -91,7 +91,7 @@ A refresh token rotates on every use, and presenting a spent one ends the whole 
 
 `--runtime` already selects a runtime and `--model` already takes a tier or `provider/id`. They gain:
 
-- `--runtime latere`, configured as 041g describes. It acts as the person signed in with `replichai login` once Auth lets that sign-in mint for the platform's API; until then it takes the person's personal access token from `LATERE_API_KEY`.
+- `--runtime latere`, configured as 041g describes. It acts as the person signed in with `replichai login`; `LATERE_API_KEY` (a personal access token) or `LATERE_TOKEN_COMMAND`, when set, is used instead.
 - `--model quick|thorough|sustained` beside `fast|balanced|best`.
 - `replichai models [--runtime <name>]`, which lists what `--model` accepts on that runtime: the three levels and, on Latere, every model the person may use.
 
@@ -116,3 +116,11 @@ OpenAI is designed and not built. When it is added it is one more row in Runtime
 - A project-level default runtime or level. A choice nobody was asked to make permanent stays per session, as 031 decided for the tier.
 - Mixing runtimes inside one session. A session runs where it started (041c).
 - Choosing the reasoning depth of a model. On Latere the platform sets one reasoning level per Effort level, and a specific model runs at its own default.
+
+## Outcome
+
+**The command line acts with `replichai login`.** Latere Auth lets the terminal's client, `replichai-cli`, mint for `api.latere.ai` as well as for ReplicHAI's own API. Before its calls to the platform, the `latere` runtime mints, from the stored sign-in, a five-minute token addressed to `api.latere.ai` and keeps it until a minute before it expires, so a person who has signed in needs no personal access token. `LATERE_API_KEY`, then `LATERE_TOKEN_COMMAND`, win over the sign-in when set, and the sign-in is read only when a call is made, so a command that never reaches the platform needs none. A server never uses a sign-in from its own machine: it acts per person through the kept sign-ins.
+
+**No fallback to the stored credential.** The token ReplicHAI's own API takes falls back to the stored access token where Auth will not mint (045i). The platform's must not: the stored token is addressed to Auth alone and the platform answers it 401, so a refused mint is reported with Auth's reason instead.
+
+**One refresh at a time.** Building this found that the command line's sessions over one credential file could refresh it at the same moment: `run` builds a runtime for each paper it runs at once, beside the client of ReplicHAI's API. Auth spends a refresh token once and answers a second presentation with `invalid_grant`, which signed the terminal out in the middle of a batch. Refreshes now take turns within a process, and a caller that waited reads the rotated credential rather than presenting the spent one. Two separate `replichai` processes that refresh the same file at the same moment can still collide.

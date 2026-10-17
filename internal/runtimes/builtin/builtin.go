@@ -48,9 +48,10 @@ type AnthropicConfig struct {
 }
 
 // LatereConfig holds what the Latere runtime needs to reach the platform. A
-// command-line run names the person it acts as with APIKey or TokenCommand;
-// a server leaves both empty and attaches each session's person to the
-// context instead (WithLatereSignIn).
+// command-line run names the person it acts as with APIKey, TokenCommand or
+// SignIn, in that order, so a setting the operator wrote wins over the
+// sign-in they already have; a server leaves all three empty and attaches
+// each session's person to the context instead (WithLatereSignIn).
 type LatereConfig struct {
 	// BaseURL and AuthURL are the platform's API origin and its Auth;
 	// empty is production.
@@ -61,6 +62,9 @@ type LatereConfig struct {
 	// TokenCommand prints a bearer for the platform's API, in the manner
 	// of a git credential helper.
 	TokenCommand string
+	// SignIn mints a bearer for the platform's API from the operator's own
+	// sign-in, and reports when it expires.
+	SignIn func(context.Context) (string, time.Time, error)
 	// Environments reads which environments a session may name, each time a
 	// session asks; nil offers every environment the runtime knows.
 	Environments func(context.Context) ([]string, error)
@@ -87,9 +91,16 @@ func buildLatere(config LatereConfig) (managed.Runtime, error) {
 		tokens = latere.PersonalAccessToken(authURL, strings.TrimSpace(config.APIKey), &http.Client{Timeout: 30 * time.Second, Transport: xotel.Transport(nil)})
 	case strings.TrimSpace(config.TokenCommand) != "":
 		tokens = latere.Command(config.TokenCommand)
+	case config.SignIn != nil:
+		tokens = latere.Expiring(config.SignIn)
 	}
 	return latere.New(latere.Config{BaseURL: config.BaseURL, Tokens: tokens, Environments: config.Environments})
 }
+
+// ErrNoLatereCredential is a Latere call with no person to act for, so a
+// composition root can name the same remedy when the sign-in it supplies is
+// missing.
+var ErrNoLatereCredential = latere.ErrNoCredential
 
 // AnthropicEnvironments are the environments the anthropic-managed runtime
 // offers, as packages installed on top of Anthropic's base image, which

@@ -201,7 +201,7 @@ func (c *Client) call(ctx context.Context, method, path string, body, into any) 
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	bearer, _, err := c.Session.Bearer(ctx, 5*time.Minute)
+	bearer, _, err := c.Session.Bearer(ctx, ActorTTL)
 	if err != nil {
 		return err
 	}

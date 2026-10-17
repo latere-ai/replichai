@@ -5,16 +5,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"latere.ai/x/pkg/hostsandbox"
 
+	"github.com/latere-ai/replichai/internal/cloud"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
+	"github.com/latere-ai/replichai/internal/signin"
 )
 
 const defaultCLIRuntime = "anthropic-managed"
@@ -126,10 +130,27 @@ func runtimeCatalog(rawName string, options localOptions) (*runtimes.Catalog, ma
 		Latere: builtin.LatereConfig{
 			BaseURL: credentials.LatereAPIURL, AuthURL: credentials.LatereAuthURL,
 			APIKey: credentials.LatereAPIKey, TokenCommand: credentials.LatereTokenCommand,
+			SignIn: latereSignIn(cloud.New(homeDir(), envOr("REPLICHAI_AUTH_URL", cloud.DefaultAuthURL))),
 		},
 		Local: options.config(),
 	})
 	return catalog, name, err
+}
+
+// latereSignIn acts on the Latere platform as the operator signed in with
+// `replichai login`: each call mints, from that sign-in, a token Auth
+// addresses to the platform's API. It is read when a call is made, not when
+// the runtime is built, so a command that never reaches the platform needs no
+// sign-in, and LATERE_API_KEY or LATERE_TOKEN_COMMAND, when set, are used
+// instead.
+func latereSignIn(session *cloud.Session) func(context.Context) (string, time.Time, error) {
+	return func(ctx context.Context) (string, time.Time, error) {
+		bearer, expiry, err := session.ActorToken(ctx, signin.PlatformAudience, cloud.ActorTTL)
+		if errors.Is(err, cloud.ErrSignedOut) {
+			return "", time.Time{}, fmt.Errorf("%w: %w", builtin.ErrNoLatereCredential, err)
+		}
+		return bearer, expiry, err
+	}
 }
 
 func controllerFor(ctx context.Context, rawName string, interval time.Duration, options localOptions) (*managed.Controller, managed.Runtime, error) {

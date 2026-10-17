@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -40,6 +41,11 @@ const ClientID = "replichai-cli"
 // Audience is the service an actor token is minted for, so a credential
 // captured in transit or in a shell history is valid for one service only.
 const Audience = "replichai.latere.ai"
+
+// ActorTTL is how long an actor token is asked to live: the longest Latere
+// Auth mints, so a holder that keeps one until shortly before its expiry asks
+// for a new one as seldom as it can.
+const ActorTTL = 5 * time.Minute
 
 // Scopes are identity only. Nothing product-specific is requested, because
 // nothing product-specific is decided by the token.
@@ -342,7 +348,7 @@ func (s *Session) Bearer(ctx context.Context, ttl time.Duration) (string, bool, 
 	if err != nil {
 		return "", false, err
 	}
-	actor, err := s.mintActor(ctx, token.AccessToken, ttl)
+	actor, _, err := s.mintActor(ctx, token.AccessToken, Audience, ttl)
 	if err != nil {
 		// A provider that does not mint an audience-scoped token has not
 		// failed the sign-in. The stored credential still authenticates, and
@@ -353,35 +359,81 @@ func (s *Session) Bearer(ctx context.Context, ttl time.Duration) (string, bool, 
 	return actor, true, nil
 }
 
-func (s *Session) mintActor(ctx context.Context, bearer string, ttl time.Duration) (string, error) {
-	if ttl <= 0 {
-		ttl = 5 * time.Minute
-	}
-	payload, err := json.Marshal(map[string]any{"audience": Audience, "ttl_seconds": int(ttl.Seconds())})
+// ActorToken mints, from the stored credential, a short-lived token addressed
+// to another service, such as the Latere platform's API, and reports when it
+// expires. Unlike Bearer it never falls back to the stored credential: that
+// is addressed to Auth alone, so the other service would refuse it, and a
+// refused mint is reported with the reason Auth gave instead.
+func (s *Session) ActorToken(ctx context.Context, audience string, ttl time.Duration) (string, time.Time, error) {
+	token, err := s.Current(ctx)
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
+	}
+	actor, expiry, err := s.mintActor(ctx, token.AccessToken, audience, ttl)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("mint a token for %s from the replichai sign-in: %w", audience, err)
+	}
+	return actor, expiry, nil
+}
+
+// mintActor asks Auth for a token addressed to audience, and reads its expiry
+// from the answer's expires_in, since Auth may shorten the lifetime asked
+// for.
+func (s *Session) mintActor(ctx context.Context, bearer, audience string, ttl time.Duration) (string, time.Time, error) {
+	if ttl <= 0 {
+		ttl = ActorTTL
+	}
+	payload, err := json.Marshal(map[string]any{"audience": audience, "ttl_seconds": int(ttl.Seconds())})
+	if err != nil {
+		return "", time.Time{}, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.AuthURL+"/actor-tokens", strings.NewReader(string(payload)))
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+bearer)
 	response, err := s.HTTP.Do(request)
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	defer func() { _ = response.Body.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("actor-tokens: %w", err)
+	}
 	if response.StatusCode/100 != 2 {
-		return "", fmt.Errorf("actor-tokens: %s", response.Status)
+		return "", time.Time{}, fmt.Errorf("actor-tokens: %s%s", response.Status, refusalOf(raw))
 	}
 	var body struct {
 		ActorToken string `json:"actor_token"`
+		ExpiresIn  int    `json:"expires_in"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil || body.ActorToken == "" {
-		return "", errors.New("actor-tokens: empty response")
+	if err := json.Unmarshal(raw, &body); err != nil || body.ActorToken == "" {
+		return "", time.Time{}, errors.New("actor-tokens: empty response")
 	}
-	return body.ActorToken, nil
+	lifetime := time.Duration(body.ExpiresIn) * time.Second
+	if lifetime <= 0 {
+		lifetime = ttl
+	}
+	return body.ActorToken, s.now().Add(lifetime), nil
+}
+
+// refusalOf is the reason Auth gave for refusing a mint, from its error body
+// ({"error": code, "message": sentence}), or nothing when the body is not
+// one. The body carries no credential, so it is safe to show.
+func refusalOf(raw []byte) string {
+	var body struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(raw, &body) != nil || body.Error == "" {
+		return ""
+	}
+	if body.Message == "" {
+		return ": " + body.Error
+	}
+	return ": " + body.Error + ": " + body.Message
 }
 
 // Logout removes the stored credential.
