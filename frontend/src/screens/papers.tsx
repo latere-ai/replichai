@@ -118,8 +118,8 @@ export function PapersCard({
       await addPaper(project.id, url.trim())
       setUrl('')
       refresh()
-      // The title resolves after the answer, so a second read a moment later is
-      // what turns "Looking up the title…" into the paper's name.
+      // The title resolves after the answer, so a second read a moment later
+      // picks up the paper's name.
       setTimeout(refresh, 1500)
     } catch (e) {
       setErr(addPaperErrLabel(t, e))
@@ -199,7 +199,7 @@ export function PapersCard({
         <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             className="text"
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 0 }}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder={t('paperPlaceholder')}
@@ -215,7 +215,7 @@ export function PapersCard({
             otherwise mean three identical pickers. */}
         {runtimes.length > 0 && runtimes[0].efforts.length > 0 && (
           <div className="tier-pick" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span className="muted small">{t('modelTier')}</span>
+            <span className="muted small" style={{ whiteSpace: 'nowrap' }}>{t('modelTier')}</span>
             <RuntimePick i18n={i18n} runtimes={runtimes} value={choice} onChange={setChoice} />
             <Tip text={t('modelTierHint')}>
               <span className="muted small" aria-label={t('modelTierHint')}>

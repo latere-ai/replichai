@@ -23,6 +23,9 @@ const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true }
 // 360 is the common Android width, and the only one that reaches the drawer's
 // `max-width: 84vw` clamp.
 const NARROW = { width: 360, height: 780, isMobile: true, hasTouch: true }
+// A laptop window with the rail open: wider than a phone, but the content gets
+// less room than a phone does.
+const TABLET = { width: 860, height: 900 }
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
 
@@ -192,6 +195,25 @@ const spill = (page, vw) =>
       if (e.parentElement && over.some((o) => o.el === e.parentElement)) continue
       over.push({ el: e, sel: e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).join('.') : ''), right: Math.round(r.right) })
     }
+    // Anything cut off at its card's edge: a card clips what overflows it, so
+    // a control that does not fit is hidden rather than spilling past the
+    // window, and the window-edge check above cannot see it.
+    const clipped = []
+    for (const e of document.querySelectorAll('.card *')) {
+      const card = e.closest('.card')
+      const r = e.getBoundingClientRect()
+      if (!r.width || !r.height) continue
+      const c = card.getBoundingClientRect()
+      if (r.right <= c.right + 1 && r.left >= c.left - 1) continue
+      if (e.closest('.grid-table-wrap, .rate-card, pre, code')) continue
+      let scrolls = false
+      for (let a = e.parentElement; a && a !== card; a = a.parentElement) {
+        const ox = getComputedStyle(a).overflowX
+        if (ox === 'auto' || ox === 'scroll') scrolls = true
+      }
+      if (scrolls || clipped.some((o) => o.el.contains(e))) continue
+      clipped.push({ el: e, sel: e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).join('.') : ''), by: Math.round(Math.max(r.right - c.right, c.left - r.left)) })
+    }
     const panes = []
     for (const e of document.querySelectorAll('.screen, .tx-body, .main, .topbar')) {
       if (e.scrollWidth > e.clientWidth + 1) panes.push(`${e.className.split(/\s+/)[0]} (${e.scrollWidth} > ${e.clientWidth})`)
@@ -200,6 +222,7 @@ const spill = (page, vw) =>
       doc: document.documentElement.scrollWidth - window.innerWidth,
       panes,
       over: over.slice(0, 4).map(({ sel, right }) => `${sel.slice(0, 70)} ends at ${right}`),
+      clipped: clipped.slice(0, 4).map(({ sel, by }) => `${sel.slice(0, 70)} runs ${by}px past its card`),
     }
   }, vw)
 
@@ -240,7 +263,7 @@ try {
   // signed-out reader gets a different top bar and rail, and a stranger
   // opening a shared link on a phone is the likeliest mobile visit this app
   // gets.
-  const sweep = async (screens, { viewport, me, who }) => {
+  const sweep = async (screens, { viewport, me, who, phone = true }) => {
     for (const [name, path] of screens) {
       const page = await open(path, { viewport, me })
       const label = `${who} ${name} @${viewport.width}`
@@ -258,7 +281,7 @@ try {
 
       // The public profile is a page for strangers and renders outside the shell.
       const shell = await page.evaluate(() => !!document.querySelector('.shell'))
-      if (shell) {
+      if (shell && phone) {
         const w = await page.evaluate(() => ({
           main: Math.round(document.querySelector('.main').getBoundingClientRect().width),
           railInFlow: document.querySelector('.rail').getBoundingClientRect().right > 0,
@@ -300,12 +323,14 @@ try {
       check(sp.doc <= 1, `${label}: the document scrolls ${sp.doc}px sideways`)
       for (const q of sp.panes) fail(`${label}: ${q} scrolls sideways — a pane hiding its own overflow is what made this invisible`)
       for (const o of sp.over) fail(`${label}: ${o}, past the ${viewport.width}px edge`)
+      for (const o of sp.clipped) fail(`${label}: ${o}`)
       await page.close()
     }
   }
 
   await sweep(SCREENS, { viewport: PHONE, me: SIGNED_IN, who: 'signed in' })
   await sweep(SCREENS, { viewport: NARROW, me: SIGNED_IN, who: 'signed in' })
+  await sweep(SCREENS, { viewport: TABLET, me: SIGNED_IN, who: 'signed in, rail open', phone: false })
   await sweep(PUBLIC_SCREENS, { viewport: PHONE, me: SIGNED_OUT, who: 'signed out' })
 
   /* ── The drawer opens, and everything closes it ── */
@@ -555,7 +580,7 @@ try {
     await page.close()
   }
 
-  h.ok('on a phone the rail is a drawer, nothing spills past the edge, and the desktop keeps its rail and its fold')
+  h.ok('on a phone the rail is a drawer, nothing spills past the window or a card at phone and rail-open widths, and the desktop keeps its rail and its fold')
 } catch (e) {
   fail(e)
 } finally {

@@ -60,51 +60,55 @@ export function PublicProfileScreen({ i18n, handle }: { i18n: I18n; handle: stri
   if (!p) return <div className="center-load">…</div>
 
   return (
-    <div className="screen measured form">
-      <div className="screen-head">
-        <a className="btn ghost" href="/">
-          <Ico name="globe" size={13} /> <Wordmark />
-        </a>
-      </div>
-      <div className="stack">
-        <div className="card card-pad stack" style={{ gap: 14 }}>
-          <div className="profile-head">
-            <Initials email={p.display_name || p.handle} />
-            <div className="profile-id">
-              <div className="profile-name">{p.display_name || p.handle}</div>
-              {p.institution && <div className="profile-email">{p.institution}</div>}
-              <div className="profile-email">@{p.handle}</div>
-            </div>
-          </div>
-          <SignerRows i18n={i18n} contact={p.contact_email} orcid={p.orcid} scholar={p.scholar_url} />
-          <span className="muted small" style={{ lineHeight: 1.6 }}>
-            {t('profileUnverified')}
-          </span>
+    // Outside the shell there is no `.main`, so this is the width the
+    // stylesheet's narrow layout measures.
+    <div className="page-frame">
+      <div className="screen measured form">
+        <div className="screen-head">
+          <a className="btn ghost" href="/">
+            <Ico name="globe" size={13} /> <Wordmark />
+          </a>
         </div>
-
-        {/* The work this researcher signed: each title, and when it was signed. */}
-        <section className="findings-sec">
-          <p className="table-caption">
-            <b>{t('profileSignedWork')}</b>
-          </p>
-          {p.projects.length === 0 ? (
-            <Empty icon="globe" text={t('profileNoSignedWork')} />
-          ) : (
-            <div className="card">
-              <div className="rows">
-                {p.projects.map((proj) => (
-                  <a key={proj.id} className="row" href={`/p/${proj.id}`}>
-                    <div className="row-main">
-                      <div className="row-title">{proj.title}</div>
-                      {proj.signed_off_at && <div className="row-sub">{dateOnly(i18n.lang, proj.signed_off_at)}</div>}
-                    </div>
-                    <Ico name="chevronRight" size={15} className="chev" />
-                  </a>
-                ))}
+        <div className="stack">
+          <div className="card card-pad stack" style={{ gap: 14 }}>
+            <div className="profile-head">
+              <Initials email={p.display_name || p.handle} />
+              <div className="profile-id">
+                <div className="profile-name">{p.display_name || p.handle}</div>
+                {p.institution && <div className="profile-email">{p.institution}</div>}
+                <div className="profile-email">@{p.handle}</div>
               </div>
             </div>
-          )}
-        </section>
+            <SignerRows i18n={i18n} contact={p.contact_email} orcid={p.orcid} scholar={p.scholar_url} />
+            <span className="muted small" style={{ lineHeight: 1.6 }}>
+              {t('profileUnverified')}
+            </span>
+          </div>
+
+          {/* The work this researcher signed: each title, and when it was signed. */}
+          <section className="findings-sec">
+            <p className="table-caption">
+              <b>{t('profileSignedWork')}</b>
+            </p>
+            {p.projects.length === 0 ? (
+              <Empty icon="globe" text={t('profileNoSignedWork')} />
+            ) : (
+              <div className="card">
+                <div className="rows">
+                  {p.projects.map((proj) => (
+                    <a key={proj.id} className="row" href={`/p/${proj.id}`}>
+                      <div className="row-main">
+                        <div className="row-title">{proj.title}</div>
+                        {proj.signed_off_at && <div className="row-sub">{dateOnly(i18n.lang, proj.signed_off_at)}</div>}
+                      </div>
+                      <Ico name="chevronRight" size={15} className="chev" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   )

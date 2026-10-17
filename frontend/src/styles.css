@@ -629,6 +629,9 @@ textarea {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* The content's layout follows the width the screen gets, not the window's:
+     with the rail open, a 900px window leaves less room than a phone. */
+  container-type: inline-size;
   /* Inset on three sides: the rail's own padding is the fourth, so the gap
      between the last nav row and the paper's edge is even all the way round. */
   margin: 8px 8px 8px 0;
@@ -637,6 +640,9 @@ textarea {
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 18px 40px -30px rgba(0, 0, 0, 0.3);
+}
+.page-frame {
+  container-type: inline-size;
 }
 .topbar {
   height: 56px;
@@ -1889,7 +1895,7 @@ button.quota-pill:hover {
    compressing it. The breakpoint is 900px, not 760, because the rail is still
    in flow at 820, so the card is already too narrow for two columns while the
    viewport is wide. */
-@media (max-width: 900px) {
+@container (max-width: 660px) {
   .policy-row {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1970,9 +1976,16 @@ textarea::placeholder {
 }
 .detail-grid {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: 16px;
   align-items: start;
+}
+/* The two columns stack before the main one gets too narrow for a paper's
+   add row and its session rows. */
+@container (max-width: 860px) {
+  .detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ── Submit ── */
@@ -3345,7 +3358,7 @@ textarea::placeholder {
   flex-wrap: wrap;
   gap: 8px 14px;
 }
-@media (max-width: 760px) {
+@container (max-width: 760px) {
   .rate-head {
     display: none;
   }
@@ -3750,12 +3763,12 @@ textarea::placeholder {
   font-size: 12.5px;
   overflow-wrap: anywhere;
 }
-@media (max-width: 900px) {
+@container (max-width: 660px) {
   .released-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@media (max-width: 760px) {
+@container (max-width: 760px) {
   .release-row {
     flex-wrap: wrap;
     row-gap: 4px;
@@ -3814,7 +3827,7 @@ textarea::placeholder {
   width: 30px;
 }
 
-@media (max-width: 760px) {
+@container (max-width: 760px) {
   /* Published is context; the title and the phase are identity. So Published
      is the first column dropped at narrow widths. */
   .project-list {
@@ -4030,7 +4043,11 @@ textarea::placeholder {
   .crumb .leaf {
     max-width: none;
   }
+}
 
+/* The content in a narrow screen: a phone, or a window the rail leaves
+   little of. */
+@container (max-width: 760px) {
   /* ── Column panes stack ── */
   .screen {
     padding: 18px 14px 40px;
@@ -4217,7 +4234,7 @@ textarea::placeholder {
    its own line, its loop and outcome under it side by side, so the comparison
    the table exists for stays on one line, and the evidence under those. The
    head is dropped because every cell now says what it is. */
-@media (max-width: 760px) {
+@container (max-width: 760px) {
   .grid-table-wrap {
     overflow: visible;
   }
@@ -4303,7 +4320,7 @@ textarea::placeholder {
    field's name on the left and the field on the right, so the column of
    names is read down and the fields line up. The publish wizard sets the same
    fields in a dialog, which keeps them stacked. On a phone they stack too. */
-@media (min-width: 761px) {
+@container (min-width: 761px) {
   .screen.form .profile-fields .field {
     display: grid;
     grid-template-columns: 180px minmax(0, 1fr);

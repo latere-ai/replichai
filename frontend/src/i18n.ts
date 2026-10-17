@@ -616,7 +616,7 @@ const en = {
     fillInNothing: 'Nothing more to fill in.',
     fillInFailed: 'Couldn’t look those up. Try again in a moment.',
     paperNeverRun: 'not started',
-    paperUntitled: 'Looking up the title…',
+    paperUntitled: 'Untitled paper',
     errNotAllowed: 'Your account cannot do this right now. Sign out and back in. If that does not help, ask a platform admin.',
     errOffline: 'You appear to be offline. Check your connection and try again.',
     rename: 'Rename',
