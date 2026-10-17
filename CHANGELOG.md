@@ -18,6 +18,16 @@ committed. The commit log already holds that.
   manifest names the address in `MAILGUN_FROM`; one that is not an address
   stops the start.
 
+### Fixed
+
+- In a window between phone and desktop width with the sidebar open, a
+  project's papers and credits stack instead of squeezing the papers card
+  until its Add button and session rows run past the edge, and the projects
+  list and other screens use their narrow layout. The layout now follows the
+  width the content gets rather than the window's.
+- A paper whose source has no title reads "Untitled paper" instead of
+  "Looking up the title…", which never changed.
+
 ## v0.36.0 - 2026-10-17
 
 ### Changed
