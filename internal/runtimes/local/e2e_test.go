@@ -6,6 +6,7 @@ package local_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -76,9 +77,18 @@ func runRealSession(t *testing.T, agent harness.Harness, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A temporary directory the test framework cleans up, rather than a
-	// fixed /tmp path where os.RemoveAll would remove whatever it found.
-	root := t.TempDir()
+	// A fresh directory under /tmp, removed afterwards. srt binds its sockets
+	// under each stage's temporary directory, and a socket path is limited to
+	// 104 bytes on macOS, which a session under the default per-user TMPDIR
+	// (/var/folders/...) exceeds, so the bootstrap fails before any agent runs.
+	root, err := os.MkdirTemp("/tmp", "rh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	if root, err = filepath.EvalSymlinks(root); err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("session root: %s", root)
 	runtime, err := local.New(local.Config{
 		Sandbox: driver, Harness: agent, Catalog: catalog,

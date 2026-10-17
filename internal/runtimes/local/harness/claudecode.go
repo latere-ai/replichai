@@ -127,19 +127,20 @@ func (ClaudeCodeHarness) Files(_ Stage, request Request) ([]File, error) {
 
 // Needs reports what Claude Code requires of the machine.
 //
-// The login consists of the configuration directory and file, where the
-// credential lives on Linux and the account state lives on every platform,
-// and on macOS the login Keychain as well, because there the credential is in
-// the keychain rather than in a file. All of these are read-only, and they are
-// granted only to a session that uses that login. This is a widening of the
-// sandbox, and the narrowest one that works; without it the harness reports
-// "not logged in".
+// The login is the account file, ~/.claude.json, and the credential: on macOS
+// the login Keychain, elsewhere ~/.claude/.credentials.json. All of it is
+// read-only, and it is granted only to a session that uses that login. The
+// configuration directory around the credential is not granted, because it
+// holds the operator's conversation history (projects/, history.jsonl). The
+// configuration directory itself cannot be moved into the session: the
+// Keychain entry is named after the default directory, so a moved one has no
+// login.
 //
 // The denials cover the operator's standing instructions, which are not the
-// method: a reproduction that silently inherited them would not be
-// reproducing the paper. The operator's plugins, agents, commands and skills
-// are not the method either; Claude Code loads all four at startup, and they
-// run code.
+// method, and the operator's plugins, agents, commands and skills, which
+// Claude Code loads at startup and which run code. They stay denied even
+// though nothing grants their directory, so a later grant cannot reopen
+// them.
 func (ClaudeCodeHarness) Needs(machine Machine) Needs {
 	needs := Needs{}
 	// Nothing is granted under the shared temporary root. The scratch area
@@ -150,9 +151,11 @@ func (ClaudeCodeHarness) Needs(machine Machine) Needs {
 		return needs
 	}
 	config := filepath.Join(machine.Home, ".claude")
-	needs.Login = []Grant{{Path: config}, {Path: config + ".json"}}
+	needs.Login = []Grant{{Path: config + ".json"}}
 	if machine.Platform == "darwin" {
 		needs.Login = append(needs.Login, Grant{Path: filepath.Join(machine.Home, "Library", "Keychains")})
+	} else {
+		needs.Login = append(needs.Login, Grant{Path: filepath.Join(config, ".credentials.json")})
 	}
 	for _, name := range []string{"CLAUDE.md", "settings.json", "plugins", "agents", "commands", "skills"} {
 		needs.Denies = append(needs.Denies, filepath.Join(config, name))

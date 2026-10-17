@@ -494,7 +494,7 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 	model managed.ModelRef, gateway harness.Gateway, role harness.Stage, task string) error {
 	request := harness.Request{
 		Instructions: spec.Instructions, Task: task, Model: model, Gateway: gateway,
-		Paths: session.Paths(),
+		Paths: session.Paths(), Machine: r.config.Machine,
 	}
 	if role == harness.StageJudge {
 		request.Instructions = ""
@@ -523,6 +523,12 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		if !harness.Outside(session.Workspace(), file.Path) {
 			return fmt.Errorf("harness %q would write %s inside the workspace", r.config.Harness.Name(), file.Path)
 		}
+		if file.Link != "" {
+			if err := linkFile(file.Path, file.Link); err != nil {
+				return err
+			}
+			continue
+		}
 		mode := os.FileMode(file.Mode)
 		if mode == 0 {
 			mode = 0o600
@@ -541,6 +547,9 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 		// writes its own state back into its configuration directory and
 		// will not start otherwise; Claude Code needs nothing here,
 		// because its scratch is redirected into the session instead.
+		for _, path := range needs.Reads {
+			paths = append(paths, hostsandbox.Path{Host: path, Access: hostsandbox.ReadOnly})
+		}
 		for _, path := range needs.Writes {
 			paths = append(paths, hostsandbox.Path{Host: path, Access: hostsandbox.ReadWrite})
 		}

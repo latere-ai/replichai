@@ -138,15 +138,24 @@ type Request struct {
 	Gateway Gateway
 	// Paths are the directories this stage may use.
 	Paths Paths
+	// Machine is the computer the stage runs on. A harness on the operator's
+	// own login uses it to name the one login file it links into the session.
+	Machine Machine
 }
 
 // File is a configuration file written before a stage starts. Its path is
 // always outside the workspace, because a file written inside it would be
 // committed by the agent and published as part of the reproduction.
+//
+// A File with Link set is a symbolic link to Link instead, and Body and Mode
+// are ignored. It carries one file of the operator's login into a
+// session-scoped configuration directory, so that the harness reads and
+// refreshes that file and nothing else of the operator's.
 type File struct {
 	Path string
 	Mode uint32
 	Body []byte
+	Link string
 }
 
 // Needs describes what a harness requires of the machine it runs on beyond
@@ -154,9 +163,10 @@ type File struct {
 //
 // A harness is an installed program, and two of its requirements cannot be
 // inferred. First, the location of an existing login differs between
-// harnesses: Codex keeps its token in a file under its own configuration
-// directory, which the sandbox already grants, while Claude Code on macOS
-// keeps its credential in the login Keychain, which is a different file.
+// harnesses: Codex keeps its token in one file under its configuration
+// directory, while Claude Code on macOS keeps its credential in the login
+// Keychain. Only the login is granted, never the directory around it, which
+// holds the operator's own conversation history.
 // Second, a harness keeps a scratch area of its own outside the workspace.
 // Claude Code creates one per working directory under the temporary root, and
 // without it every shell command fails before it runs.
@@ -169,6 +179,11 @@ type Needs struct {
 	// credential file and the operator's whole conversation history are in
 	// the same directory.
 	Login []Grant
+	// Reads are paths the harness needs to read in order to run at all,
+	// outside the session's own directories and outside its login: its own
+	// installation, where it lives under the home directory. They are granted
+	// read-only to every stage.
+	Reads []string
 	// Writes are paths the harness needs to write in order to work at all,
 	// outside the session's own directories and outside its login. They are
 	// granted to every stage, because a harness that cannot run a command

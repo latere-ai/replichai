@@ -10,6 +10,17 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Security
+
+- A local run on your own Codex or Claude Code login can no longer read your
+  conversation history with that harness. It used to be granted the whole
+  configuration directory (`~/.codex`, or `~/.claude` read-only), which also
+  holds your past sessions and prompt history. Codex now keeps its
+  configuration inside the run with only your `auth.json` linked in, and
+  Claude Code is granted only `~/.claude.json` and the macOS Keychain (or
+  `~/.claude/.credentials.json` on Linux). Codex's installation under
+  `~/.codex/packages` is readable, because the program lives there.
+
 ## v0.36.1 - 2026-10-17
 
 ### Changed
