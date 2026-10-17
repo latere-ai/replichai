@@ -22,6 +22,11 @@ import (
 	"strings"
 )
 
+// BillingContact is where a reader writes about a payment or a hold. Mail is
+// sent from a no-reply address, so a reply to it bounces; a message that
+// invites an answer names this address instead.
+const BillingContact = "billing@latere.ai"
+
 // Transport delivers one rendered message. It is the subset of
 // latere.ai/x/pkg/email.Sender this package needs, declared here so a test can
 // substitute one without a network and without the shared package's transport
@@ -96,8 +101,8 @@ func renderAccountFrozen(walletURL string) (subject, htmlBody string) {
 			`<p>Topping up lifts the hold automatically:</p>`+
 			`<p><a href="%s" style="display:inline-block;padding:12px 24px;background:#4F46E5;color:#fff;`+
 			`text-decoration:none;border-radius:6px;font-weight:bold;">Top up your account</a></p>`+
-			`<p>If you think this is a mistake, reply to this email and we will look into it.</p>`,
-		html.EscapeString(walletURL),
+			`<p>If you think this is a mistake, write to <a href="mailto:%s">%s</a> and we will look into it.</p>`,
+		html.EscapeString(walletURL), BillingContact, BillingContact,
 	)
 	return subject, htmlBody
 }
