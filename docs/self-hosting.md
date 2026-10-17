@@ -16,7 +16,7 @@ deployed there, as one worked example.
 | a runtime credential | depends on the runtime | `anthropic-managed` runs sessions on Anthropic's Managed Agents backend and needs an Anthropic API key. `local` runs them on the server's own machine through a coding agent installed and logged in there, and needs no key in replichai's configuration. `memory` produces fake audits and needs nothing |
 | a GitHub App, or a personal access token | no | publishing each reproduction to its own repository in a GitHub organization you control. Without either, audits still run and keep only their transcript |
 | Stripe | no | card payments. Without it, checkout is refused and credits come only from an admin |
-| Mailgun, or an SMTP server | no | sending project invitations. Without either, each message is written to the log instead |
+| Mailgun, or an SMTP server | no | sending project invitations and the account-on-hold notice. Without either, each message is written to the log instead |
 
 ## Configuration
 
@@ -65,7 +65,9 @@ The groups, and what to decide in each:
 
 Several defaults in `example.env` are the hosted service's own values: the
 issuer and audience, the GitHub organization, and the mail sender. A deployment
-of your own changes each of them.
+of your own changes each of them. The mail's footer (the copyright line and the
+legal pages it links to) and the billing address the account-on-hold notice
+names are also the hosted service's own, and are set in `internal/notify`.
 
 The server also takes command-line flags that mirror some of these variables;
 run it with `-h` to list them. One has no variable: `-workers`, the number of
