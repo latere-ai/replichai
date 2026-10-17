@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
 import { GlassModal } from 'latere-ui/react'
 import { stepDollars, typedDollars } from './money'
 import { createPortal } from 'react-dom'
@@ -114,145 +114,7 @@ export function RowButton({
   )
 }
 
-/* ── Select ── */
-
 type Option<T extends string> = { value: T; label: string; icon?: IconName }
-
-// Select is the app's own <select>: a combobox button over a listbox. Click or
-// Enter opens it, arrows move, Enter picks, Escape closes and returns focus,
-// and a click anywhere else dismisses it.
-export function Select<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-  width,
-}: {
-  value: T
-  options: Option<T>[]
-  onChange: (v: T) => void
-  label?: string
-  width?: number | string
-}) {
-  const [open, setOpen] = useState(false)
-  const [cursor, setCursor] = useState(() => Math.max(0, options.findIndex((o) => o.value === value)))
-  const [at, setAt] = useState({ left: 0, top: 0, width: 0 })
-  const box = useRef<HTMLDivElement>(null)
-  const list = useRef<HTMLUListElement>(null)
-  const btn = useRef<HTMLButtonElement>(null)
-  const current = options.find((o) => o.value === value) ?? options[0]
-
-  const close = useCallback((refocus = true) => {
-    setOpen(false)
-    if (refocus) btn.current?.focus()
-  }, [])
-
-  // The list is portalled to <body>: every card in this app clips its corners
-  // with overflow:hidden, which would slice an absolutely-positioned dropdown
-  // off at the card's edge. Fixed coordinates come from the button, and the
-  // list flips above it when there is no room below.
-  useLayoutEffect(() => {
-    if (!open) return
-    const place = () => {
-      const b = btn.current?.getBoundingClientRect()
-      if (!b) return
-      const height = list.current?.offsetHeight ?? options.length * 34 + 8
-      const below = window.innerHeight - b.bottom
-      const top = below < height + 12 && b.top > height + 12 ? b.top - height - 5 : b.bottom + 5
-      setAt({ left: b.left, top, width: b.width })
-    }
-    place()
-    // A scroll moves the anchor out from under a fixed list, so it dismisses.
-    // It is named so the cleanup can remove it when the list closes another way.
-    const dismiss = () => close(false)
-    window.addEventListener('resize', place)
-    window.addEventListener('scroll', dismiss, { capture: true, once: true })
-    return () => {
-      window.removeEventListener('resize', place)
-      window.removeEventListener('scroll', dismiss, { capture: true })
-    }
-  }, [open, options.length, close])
-
-  useEffect(() => {
-    if (!open) return
-    const away = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (!box.current?.contains(target) && !list.current?.contains(target)) close(false)
-    }
-    document.addEventListener('mousedown', away)
-    return () => document.removeEventListener('mousedown', away)
-  }, [open, close])
-
-  const pick = (i: number) => {
-    onChange(options[i].value)
-    close()
-  }
-
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') return close()
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      return open ? pick(cursor) : setOpen(true)
-    }
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault()
-      if (!open) return setOpen(true)
-      setCursor((c) => (c + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length)
-    }
-  }
-
-  return (
-    <div className="sel" ref={box} style={{ width }}>
-      <button
-        ref={btn}
-        type="button"
-        className={'sel-btn' + (open ? ' open' : '')}
-        role="combobox"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={label}
-        onClick={() => {
-          setCursor(Math.max(0, options.findIndex((o) => o.value === value)))
-          setOpen((o) => !o)
-        }}
-        onKeyDown={onKey}
-      >
-        {current?.icon && <Ico name={current.icon} size={13} />}
-        <span className="sel-value">{current?.label}</span>
-        <Ico name="chevronDown" size={13} className="sel-caret" />
-      </button>
-      {open &&
-        createPortal(
-          <ul
-            ref={list}
-            className="sel-list"
-            role="listbox"
-            aria-label={label}
-            tabIndex={-1}
-            style={{ left: at.left, top: at.top, minWidth: at.width }}
-          >
-            {options.map((o, i) => (
-              <li key={o.value}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={o.value === value}
-                  className={'sel-opt' + (i === cursor ? ' cursor' : '') + (o.value === value ? ' on' : '')}
-                  onMouseEnter={() => setCursor(i)}
-                  onClick={() => pick(i)}
-                >
-                  {o.icon && <Ico name={o.icon} size={13} />}
-                  <span className="sel-value">{o.label}</span>
-                  {o.value === value && <Ico name="check" size={13} w={2.2} className="sel-tick" />}
-                </button>
-              </li>
-            ))}
-          </ul>,
-          document.body,
-        )}
-    </div>
-  )
-}
 
 /* ── Segmented ── */
 

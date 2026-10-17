@@ -27,7 +27,8 @@ import { formatUSD, parseUSD, toDollars } from '../money'
 import { Ico } from '../icons'
 import { followsList, listName, listedKeys } from '../price-list'
 import { absoluteTime, relativeTime } from '../when'
-import { Check, NumberField, Pill, PromptDialog, Seams, Select, Tip } from '../ui'
+import { GlassSelect } from 'latere-ui/react'
+import { Check, NumberField, Pill, PromptDialog, Seams, Tip } from '../ui'
 import { CardHead, Empty, Initials, TierPill } from './shared'
 
 // AdminScreen is the console: who may sign in, at what tier, with how much
@@ -226,17 +227,18 @@ function PlatformPolicy({
           </label>
           <p className="policy-hint">{t('draftModelHint')}</p>
         </div>
-        <Select
-          value={provider}
-          options={[
-            { value: '', label: t('draftProviderNone') },
-            { value: 'anthropic', label: 'Anthropic' },
-            { value: 'openai', label: t('draftProviderOpenAI') },
-          ]}
-          onChange={setProvider}
-          label={t('draftProvider')}
-          width={260}
-        />
+        <div style={{ width: 260 }}>
+          <GlassSelect
+            value={provider}
+            options={[
+              { value: '', label: t('draftProviderNone') },
+              { value: 'anthropic', label: 'Anthropic' },
+              { value: 'openai', label: t('draftProviderOpenAI') },
+            ]}
+            onChange={setProvider}
+            ariaLabel={t('draftProvider')}
+          />
+        </div>
       </div>
       {provider !== '' && (
         <>
@@ -631,16 +633,17 @@ function PeopleCard({
           placeholder={t('inviteEmail')}
           spellCheck={false}
         />
-        <Select
-          value={tier}
-          onChange={setTier}
-          label={t('access')}
-          width={132}
-          options={[
-            { value: 'user', label: t('tierUser'), icon: 'user' },
-            { value: 'admin', label: t('tierAdmin'), icon: 'shieldCheck' },
-          ]}
-        />
+        <div style={{ width: 132 }}>
+          <GlassSelect
+            value={tier}
+            onChange={(v) => setTier(v === 'admin' ? 'admin' : 'user')}
+            ariaLabel={t('access')}
+            options={[
+              { value: 'user', label: t('tierUser') },
+              { value: 'admin', label: t('tierAdmin') },
+            ]}
+          />
+        </div>
         <button className="btn">
           <Ico name="userPlus" size={13} /> {t('grant')}
         </button>
