@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
+import { GlassModal } from 'latere-ui/react'
 import { stepDollars, typedDollars } from './money'
 import { createPortal } from 'react-dom'
 import { Ico, type IconName } from './icons'
@@ -357,76 +358,7 @@ export function NumberField({
   )
 }
 
-/* ── Modal + prompt ── */
-
-// What the keyboard can land on inside a dialog.
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-const focusable = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(FOCUSABLE)]
-
-// Modal is the one dialog shell: a backdrop that dismisses, Escape that
-// dismisses, a body that does not scroll behind it, and the keyboard's place
-// while it is up. aria-modal alone does not make the page behind inert, so
-// focus moves into the dialog, Tab wraps inside it, and focus returns to the
-// opener on close.
-export function Modal({ title, eyebrow, icon, onClose, children, foot }: { title: string; eyebrow?: ReactNode; icon?: IconName; onClose: () => void; children: ReactNode; foot?: ReactNode }) {
-  const box = useRef<HTMLDivElement>(null)
-  // In on open, back to the opener on close. A field that took focus itself
-  // through autoFocus keeps it.
-  useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const el = box.current
-    if (el && !el.contains(document.activeElement)) (focusable(el)[0] ?? el).focus()
-    return () => opener?.focus()
-  }, [])
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') return onClose()
-      const el = box.current
-      if (e.key !== 'Tab' || !el) return
-      // Tab wraps within the dialog: past the last control to the first, and
-      // Shift+Tab from the first, or from the dialog itself, to the last.
-      const f = focusable(el)
-      const at = document.activeElement
-      const outside = !el.contains(at) || at === el
-      if (!f.length) {
-        e.preventDefault()
-        el.focus()
-      } else if (e.shiftKey && (at === f[0] || outside)) {
-        e.preventDefault()
-        f[f.length - 1].focus()
-      } else if (!e.shiftKey && (at === f[f.length - 1] || outside)) {
-        e.preventDefault()
-        f[0].focus()
-      }
-    }
-    document.addEventListener('keydown', key)
-    const prior = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', key)
-      document.body.style.overflow = prior
-    }
-  }, [onClose])
-  // Portalled to <body>: a fixed backdrop is contained by any ancestor with a
-  // transform, and the screens that open a dialog run a fade-up animation that
-  // leaves one, which would confine the backdrop to the content column.
-  return createPortal(
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          {eyebrow && <span className="attestation">{eyebrow}</span>}
-          <h2 className="modal-title">
-            {icon && <span className="modal-icon"><Ico name={icon} size={14} /></span>}
-            {title}
-          </h2>
-        </div>
-        <div className="modal-body">{children}</div>
-        {foot && <div className="modal-foot">{foot}</div>}
-      </div>
-    </div>,
-    document.body,
-  )
-}
+/* ── Prompt ── */
 
 // PromptDialog asks for one number in the app's own dialog. window.prompt draws
 // a chrome-owned box that ignores the theme, cannot be styled, and blocks the
@@ -457,15 +389,24 @@ export function PromptDialog({
   parse?: (text: string) => number | null
 }) {
   const [draft, setDraft] = useState(initial)
+  // The field takes focus on open, so typing can start at once. It is moved
+  // there from an effect rather than through autoFocus: the dialog's focus trap
+  // records what had focus when it opened, to return it on close, and that has
+  // to be the control that opened the dialog, not this field. The dialog's
+  // effects run before this one, since it is a child.
+  const field = useId()
+  useEffect(() => {
+    document.getElementById(field)?.focus()
+  }, [field])
   const read = parse ?? ((text: string) => (Number.isInteger(Number.parseInt(text, 10)) ? Number.parseInt(text, 10) : null))
   const parsed = read(draft)
   const valid = parsed !== null && parsed >= 0
   return (
-    <Modal
+    <GlassModal
+      open
       title={title}
-      icon="wallet"
       onClose={onCancel}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={onCancel}>
             {cancelLabel}
@@ -479,9 +420,8 @@ export function PromptDialog({
       <p className="muted small" style={{ margin: 0, lineHeight: 1.6 }}>
         {body}
       </p>
-      {/* The field takes focus on open, so typing can start at once. */}
-      <NumberField i18n={i18n} value={draft} onChange={setDraft} ariaLabel={title} width={132} autoFocus />
-    </Modal>
+      <NumberField i18n={i18n} id={field} value={draft} onChange={setDraft} ariaLabel={title} width={132} />
+    </GlassModal>
   )
 }
 

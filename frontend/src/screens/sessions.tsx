@@ -11,7 +11,8 @@ import { type I18n } from '../i18n'
 import { deleteSessionErrLabel, failureTip, sessionFailureText } from '../errors'
 import { formatUSD } from '../money'
 import { Ico } from '../icons'
-import { Modal, Pill, RowButton, Tip } from '../ui'
+import { GlassModal } from 'latere-ui/react'
+import { Pill, RowButton, Tip } from '../ui'
 import { elapsed } from '../when'
 import { freshest, stopPending, stoppedByHand, terminal } from '../session-stop'
 import { useJobStream } from '../job-stream'
@@ -208,12 +209,11 @@ export function DeleteSessionDialog({ i18n, job, onClose, onDone }: { i18n: I18n
     }
   }
   return (
-    <Modal
+    <GlassModal
+      open
       title={t('deleteSessionTitle')}
-      icon="trash"
-      eyebrow={job.ref}
       onClose={onClose}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
             {t('cancel')}
@@ -224,9 +224,10 @@ export function DeleteSessionDialog({ i18n, job, onClose, onDone }: { i18n: I18n
         </>
       }
     >
+      <span className="attestation">{job.ref}</span>
       <p className="muted">{t('deleteSessionBody')}</p>
       {job.repo_name && <p className="muted small">{t('deleteSessionKeepsRepo')}</p>}
       {err && <p className="err small">{err}</p>}
-    </Modal>
+    </GlassModal>
   )
 }

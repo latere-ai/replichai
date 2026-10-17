@@ -111,7 +111,7 @@ try {
   const press = async (label) => {
     const btn = await page.waitForFunction(
       (re) => {
-        const b = [...document.querySelectorAll('.modal button')].find((b) => new RegExp(re, 'i').test(b.textContent))
+        const b = [...document.querySelectorAll('[role="dialog"][aria-modal="true"] button')].find((b) => new RegExp(re, 'i').test(b.textContent))
         return b && !b.disabled ? b : null
       },
       { timeout: 5000 },
@@ -126,12 +126,12 @@ try {
   // dot it lights.
   const walkToSignOff = async () => {
     await page.click('[data-test="publish-project"]')
-    await page.waitForSelector('.modal', { timeout: 5000 })
+    await page.waitForSelector('[role="dialog"][aria-modal="true"]', { timeout: 5000 })
     for (let step = 2; step <= 3; step++) {
       await press('Continue')
-      await page.waitForFunction((n) => document.querySelectorAll('.modal .step-dot.on').length === n, { timeout: 5000 }, step)
+      await page.waitForFunction((n) => document.querySelectorAll('[role="dialog"][aria-modal="true"] .step-dot.on').length === n, { timeout: 5000 }, step)
     }
-    await page.evaluate(() => document.querySelector('.modal .check, .modal [role="checkbox"]')?.click())
+    await page.evaluate(() => document.querySelector('[role="dialog"][aria-modal="true"] input[type="checkbox"], [role="dialog"][aria-modal="true"] [role="checkbox"]')?.click())
   }
   const signOff = () => press('Sign off')
 
@@ -147,7 +147,7 @@ try {
 
   await page.click('[data-test="delete-session"]')
   await page.waitForSelector('[data-test="delete-session-confirm"]', { timeout: 5000 })
-  const dialog = await page.$eval('.modal', (el) => el.textContent.replace(/\s+/g, ' ').trim())
+  const dialog = await page.$eval('[role="dialog"][aria-modal="true"]', (el) => el.textContent.replace(/\s+/g, ' ').trim())
   // The dialog states what does not go. That is the reason it is a dialog and
   // not a bare button.
   if (!/ledger/i.test(dialog)) fail(`the dialog does not say the cost survives: ${dialog}`)
@@ -173,11 +173,11 @@ try {
   // nothing about publishing.
   if (!(await page.$('[data-test="delete-blocker"]'))) fail('the unfinished blocker offers no way to remove it')
 
-  // It confirms in the row, not in a second Modal: two modals would share the
+  // It confirms in the row, not in a second dialog: two dialogs would share the
   // Escape key, and one press would take the list of blockers with it.
   await page.click('[data-test="delete-blocker"]')
   await page.waitForSelector('[data-test="delete-blocker-confirm"]', { timeout: 5000 })
-  if ((await page.$$eval('.modal', (m) => m.length)) !== 1) fail('the blocker delete opened a second modal over the wizard')
+  if ((await page.$$eval('[role="dialog"][aria-modal="true"]', (m) => m.length)) !== 1) fail('the blocker delete opened a second modal over the wizard')
   await page.click('[data-test="delete-blocker-confirm"]')
   await page.waitForFunction(() => document.querySelectorAll('.blocker-row').length === 0, { timeout: 8000 })
 
@@ -189,8 +189,9 @@ try {
   // instead of signing off again. Without a refresh on the delete, the project
   // screen keeps listing a session that is gone, and opening it 404s. Asserted
   // in place; a page.goto here would pass whether or not anything refetched.
-  await page.evaluate(() => document.querySelector('.modal-backdrop')?.click())
-  await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 8000 })
+  // A click outside the dialog, on the dim page around it.
+  await page.mouse.click(8, 8)
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-modal="true"]'), { timeout: 8000 })
   // The refetch is given time to land; a row that is still there after it is
   // the bug, so the wait falls through to the count rather than failing on it.
   await page.waitForFunction(() => document.querySelectorAll('[data-test="delete-session"]').length === 1, { timeout: 3000 }).catch(() => {})
@@ -201,7 +202,7 @@ try {
   // that the blocker row went away would pass on a list that never refetched.
   await walkToSignOff()
   await signOff()
-  await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 8000 })
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-modal="true"]'), { timeout: 8000 })
 
   if (visibility !== 'public') fail(`the project is ${visibility} after the blocker was removed, want public`)
   if (!page.calls.includes(`DELETE /jobs/${STUCK}`)) fail(`no DELETE reached the server: ${JSON.stringify(page.calls.slice(-8))}`)

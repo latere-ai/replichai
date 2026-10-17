@@ -61,7 +61,7 @@ try {
   await page.waitForSelector('[data-test="project-rows"] .row')
   const before = reads()
   await page.click('[data-test="trash-project"]')
-  await page.waitForSelector('.modal-backdrop [data-test="trash-confirm"]')
+  await page.waitForSelector('[role="dialog"] [data-test="trash-confirm"]')
   await page.click('[data-test="trash-confirm"]')
   await waitUntil(() => page.calls.some((c) => c.startsWith('DELETE /projects/')), { what: 'the trash to be sent' })
   await waitUntil(() => reads() > before, { what: 'the list to be re-read after the trash' })

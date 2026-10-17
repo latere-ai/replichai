@@ -44,8 +44,8 @@ try {
   if (before !== '$20.00') fail(`header started at ${JSON.stringify(before)}, want "$20.00"`)
 
   await page.evaluate(() => [...document.querySelectorAll('.member-row .btn')].find((button) => /add credits/i.test(button.textContent))?.click())
-  await page.waitForSelector('.modal[role="dialog"]')
-  await page.evaluate(() => [...document.querySelectorAll('.modal-foot .btn')].find((button) => /^save$/i.test(button.textContent.trim()))?.click())
+  await page.waitForSelector('[role="dialog"][aria-modal="true"]')
+  await page.evaluate(() => [...document.querySelectorAll('[role="dialog"][aria-modal="true"] .btn')].find((button) => /^save$/i.test(button.textContent.trim()))?.click())
 
   // First prove the top-up finished and the admin table received its refresh.
   await page.waitForFunction(() => [...document.querySelectorAll('.member-row')].some((row) => row.textContent.includes('$30.00')))

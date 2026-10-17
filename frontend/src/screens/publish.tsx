@@ -20,8 +20,9 @@ import {
 import { type I18n } from '../i18n'
 import { dateOnly } from '../locale'
 import { deleteSessionErrLabel, publishBlockers, publishBlockerText, publishErrText } from '../errors'
-import { Ico, type IconName } from '../icons'
-import { Check, Modal } from '../ui'
+import { Ico } from '../icons'
+import { GlassModal } from 'latere-ui/react'
+import { Check } from '../ui'
 import { ProfileFields, SignerRows, type TextField } from './shared'
 
 // PublishWizard walks the three commitments of going public: what becomes
@@ -110,23 +111,12 @@ export function PublishWizard({
     }
   }
 
-  const stepIcon: IconName = step === 1 ? 'globe' : step === 2 ? 'user' : 'shieldCheck'
   return (
-    <Modal
+    <GlassModal
+      open
       title={step === 1 ? t('publishStep1') : step === 2 ? t('publishStep2') : t('publishStep3')}
-      icon={stepIcon}
-      eyebrow={
-        <span className="step-dots">
-          {t('publishStepOf', { n: String(step) })}
-          <span className="step-track">
-            {[1, 2, 3].map((n) => (
-              <span key={n} className={'step-dot' + (n <= step ? ' on' : '')} />
-            ))}
-          </span>
-        </span>
-      }
       onClose={onClose}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={step === 1 ? onClose : () => setStep(step - 1)}>
             {step > 1 && <Ico name="chevronLeft" size={12} w={2.2} />}
@@ -144,6 +134,16 @@ export function PublishWizard({
         </>
       }
     >
+      <span className="attestation">
+        <span className="step-dots">
+          {t('publishStepOf', { n: String(step) })}
+          <span className="step-track">
+            {[1, 2, 3].map((n) => (
+              <span key={n} className={'step-dot' + (n <= step ? ' on' : '')} />
+            ))}
+          </span>
+        </span>
+      </span>
       {step === 1 && (
         <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
           {t('publishBody')}
@@ -211,7 +211,7 @@ export function PublishWizard({
           }}
         />
       )}
-    </Modal>
+    </GlassModal>
   )
 }
 
@@ -416,11 +416,11 @@ function WithdrawDialog({
   }
 
   return (
-    <Modal
+    <GlassModal
+      open
       title={t('withdrawTitle')}
-      icon="lock"
       onClose={onClose}
-      foot={
+      footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
             {t('cancel')}
@@ -457,6 +457,6 @@ function WithdrawDialog({
           <Ico name="alert" size={13} /> {err}
         </p>
       )}
-    </Modal>
+    </GlassModal>
   )
 }

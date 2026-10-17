@@ -3,12 +3,11 @@
 
 // A browser regression test for where the keyboard is while a dialog is up.
 //
-// It guards that the keyboard never stays behind the backdrop, where Tab would
+// It guards that the keyboard never stays behind the dim layer, where Tab would
 // walk the page underneath and Enter re-fire the opener. Every dialog in the
-// app is one Modal, so the behavior is asserted there once: focus lands inside
-// on open, Tab and Shift+Tab wrap within it, and Escape returns it to the
-// opener. Run it
-// with `bun run test:browser`.
+// app is latere-ui's GlassModal, so the behavior is asserted on one: focus
+// lands inside on open, Tab and Shift+Tab stay within it, and Escape returns it
+// to the opener. Run it with `bun run test:browser`.
 import { check, fail, start } from './harness.mjs'
 
 const at = (ms) => new Date(1754_215_200_000 + ms).toISOString()
@@ -27,7 +26,7 @@ try {
   const where = () =>
     page.evaluate(() => {
       const a = document.activeElement
-      const modal = document.querySelector('.modal')
+      const modal = document.querySelector('[role="dialog"][aria-modal="true"]')
       return { inside: !!modal && modal.contains(a), test: a?.dataset?.test ?? '', tag: a?.tagName ?? '' }
     })
 
@@ -35,14 +34,14 @@ try {
   await page.waitForSelector('[data-test="trash-project"]')
   await page.focus('[data-test="trash-project"]')
   await page.keyboard.press('Enter')
-  await page.waitForSelector('.modal')
+  await page.waitForSelector('[role="dialog"][aria-modal="true"]')
 
   // In: the keyboard is inside the dialog the moment it opens.
   const opened = await where()
   check(opened.inside, `focus should land inside the dialog when it opens, it is on ${JSON.stringify(opened)}`)
 
   // Around: Tab never leaves the dialog, and comes back round to the start.
-  const controls = await page.evaluate(() => document.querySelectorAll('.modal a[href], .modal button:not([disabled]), .modal input:not([disabled])').length)
+  const controls = await page.evaluate(() => document.querySelectorAll(':is([role="dialog"][aria-modal="true"]) :is(a[href], button:not([disabled]), input:not([disabled]))').length)
   let left = 0
   for (let i = 0; i < controls + 2; i++) {
     await page.keyboard.press('Tab')
@@ -56,9 +55,40 @@ try {
 
   // Out: closing the dialog returns the keyboard to what opened it.
   await page.keyboard.press('Escape')
-  await page.waitForSelector('.modal', { hidden: true })
+  await page.waitForSelector('[role="dialog"][aria-modal="true"]', { hidden: true })
   const closed = await where()
   check(closed.test === 'trash-project', `after the dialog closes focus should be back on its opener, it is on ${JSON.stringify(closed)}`)
+
+  // A dialog that asks for one value puts the keyboard in its field, so typing
+  // can start at once, and still gives it back to the button that opened it.
+  const admin = await h.page({
+    routes: [
+      ['/me', { authenticated: true, principal: 'admin', email: 'admin@example.com', tier: 'admin', credits: { wallet: 20_000_000, start_reserve: 5_000_000 } }],
+      ['/me/profile', {}],
+      [/^\/(projects|public|shared)$/, []],
+      ['GET /admin/access', [{ email: 'admin@example.com', tier: 'admin', bound: true, wallet: 20_000_000 }]],
+      ['GET /admin/settings', { start_reserve: 5_000_000, overdraft_cap: 20_000_000, rates: { models: [] } }],
+      ['/admin/solvency', { outstanding_micro: 0 }],
+    ],
+  })
+  await admin.open('/console')
+  await admin.waitForSelector('.member-row .btn')
+  await admin.evaluate(() => {
+    const add = [...document.querySelectorAll('.member-row .btn')].find((b) => /add credits/i.test(b.textContent))
+    add.dataset.test = 'add-credits'
+    add.focus()
+  })
+  await admin.keyboard.press('Enter')
+  await admin.waitForSelector('[role="dialog"][aria-modal="true"] input')
+  // The field is focused from an effect after the dialog opens, so the check
+  // waits for it rather than reading the first frame.
+  await admin.waitForFunction(() => document.activeElement?.closest('[role="dialog"]') && document.activeElement.tagName === 'INPUT', { timeout: 3000 }).catch(() => {})
+  const field = await admin.evaluate(() => ({ tag: document.activeElement?.tagName ?? '', inside: !!document.activeElement?.closest('[role="dialog"]') }))
+  check(field.inside && field.tag === 'INPUT', `the amount field should have the keyboard when the dialog opens, it is on ${JSON.stringify(field)}`)
+  await admin.keyboard.press('Escape')
+  await admin.waitForSelector('[role="dialog"][aria-modal="true"]', { hidden: true })
+  const back = await admin.evaluate(() => document.activeElement?.dataset?.test ?? document.activeElement?.tagName ?? '')
+  check(back === 'add-credits', `after the amount dialog closes focus should be back on Add credits, it is on ${back}`)
 
   h.ok('a dialog takes the keyboard and gives it back')
 } catch (e) {

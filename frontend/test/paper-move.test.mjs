@@ -107,13 +107,13 @@ try {
 
   await page.click('[data-test="move-paper"]')
   await page.waitForSelector('[data-test="move-paper-confirm"]', { timeout: 5000 })
-  if (await page.$('.modal select')) fail('the destination picker is an OS-drawn <select>')
+  if (await page.$('[role="dialog"] select')) fail('the destination picker is an OS-drawn <select>')
 
   // Waited for, not slept on: the destinations arrive from /projects, and until
   // they have, the dialog shows a loading line with no control in it. The
   // whole suite run back to back is slower than this file alone.
-  await page.waitForSelector('.modal [role="combobox"], .modal .select-btn', { timeout: 10000 })
-  await page.evaluate(() => document.querySelector('.modal [role="combobox"], .modal .select-btn')?.click())
+  await page.waitForSelector('[role="dialog"] [role="combobox"]', { timeout: 10000 })
+  await page.evaluate(() => document.querySelector('[role="dialog"] [role="combobox"]')?.click())
   await page.waitForSelector('[role="option"]', { timeout: 10000 })
   const options = await page.$$eval('[role="option"]', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()))
   if (!options.includes('Where it belongs')) fail(`the destination list is missing the other private project: ${JSON.stringify(options)}`)
@@ -123,12 +123,12 @@ try {
 
   await page.evaluate(() => [...document.querySelectorAll('[role="option"]')].find((o) => /Where it belongs/.test(o.textContent))?.click())
   // The pick closes the list and puts the choice on the control.
-  await page.waitForFunction(() => !document.querySelector('[role="option"]') && /Where it belongs/.test(document.querySelector('.modal [role="combobox"]')?.textContent ?? ''), { timeout: 5000 })
+  await page.waitForFunction(() => !document.querySelector('[role="option"]') && /Where it belongs/.test(document.querySelector('[role="dialog"] [role="combobox"]')?.textContent ?? ''), { timeout: 5000 })
 
   /* ── 3. Through to the moved paper, without a reload ── */
 
   await page.click('[data-test="move-paper-confirm"]')
-  await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 8000 })
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"]'), { timeout: 8000 })
 
   if (!moveBody) fail(`no move reached the server: ${JSON.stringify(page.calls.slice(-8))}`)
   else {
