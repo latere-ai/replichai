@@ -219,6 +219,7 @@ func TestHandlerDoesNotRecompressPackedAssets(t *testing.T) {
 	}{
 		{"/fonts/instrument-serif-italic.woff2", false},
 		{"/og.png", false},
+		{"/email/lockup-replichai-ink.png", false},
 		{"/favicon.svg", true},
 		{"/index.html", true},
 	} {
