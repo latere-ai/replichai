@@ -4,7 +4,6 @@
 package ci
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,9 +13,15 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// A private repository must route every job, including reusable-workflow
-// jobs, to the org runner. Hosted jobs stop before execution at the budget.
-func TestVerificationRunsWithoutHostedMinutes(t *testing.T) {
+// runnerPolicy is the runs-on expression of the organization's runner policy
+// (latere-ai/ci, README, Runners): for a private repository the self-hosted
+// runner, or a hosted one while it is offline.
+const runnerPolicy = `${{ (github.event.repository.private || contains(fromJSON('["push","schedule","workflow_dispatch","release"]'), github.event_name)) && (vars.CI_RUNNER_PRIVATE || vars.CI_RUNNER_PUBLIC) || 'ubuntu-latest' }}`
+
+// Every job runs by the runner policy, including reusable-workflow jobs, whose
+// runs_on defaults to it. A label pinned in its place would give up the
+// fallback: a job aimed at an offline runner waits in the queue for a day.
+func TestJobsRunByTheRunnerPolicy(t *testing.T) {
 	// Relative to this package's directory, where go test runs it. A path from
 	// runtime.Caller is module-relative when the test is built with -trimpath.
 	for _, name := range []string{"ci.yml", "docker.yml"} {
@@ -44,17 +49,15 @@ func TestVerificationRunsWithoutHostedMinutes(t *testing.T) {
 			}
 			for id, job := range workflow.Jobs {
 				if job.Uses != "" {
-					if job.With["runs_on"] != "linux-vm" {
-						t.Errorf("%s does not route reusable jobs to linux-vm", id)
-					}
-					var runners []string
-					if err := json.Unmarshal([]byte(job.With["test_os"]), &runners); err != nil || len(runners) != 1 || runners[0] != "linux-vm" {
-						t.Errorf("%s leaves the test matrix on hosted runners", id)
+					for _, input := range []string{"runs_on", "test_os"} {
+						if _, ok := job.With[input]; ok {
+							t.Errorf("%s passes %s, which overrides the runner policy", id, input)
+						}
 					}
 					continue
 				}
-				if job.RunsOn != "linux-vm" {
-					t.Errorf("%s runs on %q, want linux-vm", id, job.RunsOn)
+				if job.RunsOn != runnerPolicy {
+					t.Errorf("%s runs on %q, want the runner policy", id, job.RunsOn)
 				}
 				node := false
 				for _, step := range job.Steps {
