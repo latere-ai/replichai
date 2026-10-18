@@ -27,9 +27,6 @@ jobs:
   # Postgres, and a frontend that needs bun and a browser.
   verify:
     uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
-    with:
-      runs_on: linux-vm
-      test_os: '["linux-vm"]'
 
   # The Postgres contracts. The shared workflow runs the suite with no database,
   # so every store contract skips there. This job provides one and runs the
@@ -37,7 +34,7 @@ jobs:
   # it is the lint gate above.
   test:
     name: test (race) + postgres contracts
-    runs-on: linux-vm
+    runs-on: ${{ (github.event.repository.private || contains(fromJSON('["push","schedule","workflow_dispatch","release"]'), github.event_name)) && (vars.CI_RUNNER_PRIVATE || vars.CI_RUNNER_PUBLIC) || 'ubuntu-latest' }}
     services:
       postgres:
         image: postgres:17-alpine
@@ -64,7 +61,7 @@ jobs:
 
   frontend:
     name: frontend (bun)
-    runs-on: linux-vm
+    runs-on: ${{ (github.event.repository.private || contains(fromJSON('["push","schedule","workflow_dispatch","release"]'), github.event_name)) && (vars.CI_RUNNER_PRIVATE || vars.CI_RUNNER_PUBLIC) || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
