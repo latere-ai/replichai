@@ -17,7 +17,7 @@ resources:
 # same build, and an apply by hand never rolls production to another one.
 images:
   - name: ghcr.io/latere-ai/replichai
-    newTag: v0.37.1
+    newTag: v0.37.2
 
 patches:
   - target:
