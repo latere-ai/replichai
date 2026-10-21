@@ -191,8 +191,9 @@ pushes it to `ghcr.io/latere-ai/replichai`, applies `deploy/prod/` in the
 `test/release-smoke.sh` against `https://replichai.latere.ai`, and publishes
 the GitHub release with the tag's section of `CHANGELOG.md` (the pre-push hook
 refuses a release tag that has none). Between releases, `docker.yml` builds an
-image from every push to `main`, tagged by branch and by sha, so a commit can
-be tried in a cluster without cutting a release.
+image from every push to `main` that changes more than specs and markdown,
+tagged by branch and by sha, so a commit can be tried in a cluster without
+cutting a release.
 
 Nothing deploys staging: the overlay is a prepared stub.
 

@@ -35,8 +35,8 @@ status: built
 
 **Release is a tag, deploy is the central pipeline.** Three GitHub Actions workflows, matching the latere convention:
 
-- `ci.yml`: vet, `go test -race` against a live Postgres service (so the job and access store contracts run their real `SELECT … FOR UPDATE SKIP LOCKED` path instead of skipping), and build. On every push and PR to `main`.
-- `docker.yml`: build and push a ghcr image on every `main` push, for continuous delivery between releases.
+- `ci.yml`: vet, `go test -race` against a live Postgres service (so the job and access store contracts run their real `SELECT … FOR UPDATE SKIP LOCKED` path instead of skipping), and build. On every push and PR to `main` that changes more than specs and markdown.
+- `docker.yml`: build and push a ghcr image on every `main` push that changes more than specs and markdown, for continuous delivery between releases.
 - `release.yml`: a `v*` tag calls the central reusable pipeline (`latere-ai/ci/service-release.yml@v1`), which builds the image, applies `deploy/prod/`, rolls the Deployment in `latere`, runs the live smoke, and publishes the GitHub release. **Deploy always targets prod;** there is no CI staging deploy.
 
 `build_mode: dockerfile`: replichai builds everything in one Dockerfile and migrates at startup, so no split build or migrate step is needed.

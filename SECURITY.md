@@ -79,6 +79,6 @@ repository that hold the control to its word.
 
 ## Supply chain
 
-Every push runs a vulnerability check over the Go module graph as part of the
-quality gate. Release images are built from a tag by the release workflow.
+Every push that changes code runs a vulnerability check over the Go module
+graph as part of the quality gate. Release images are built from a tag by the release workflow.
 They are not signed and carry no bill of materials.
