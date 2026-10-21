@@ -3,6 +3,13 @@ name: Docker
 on:
   push:
     branches: [main]
+    # The image ships method/ and no other spec or markdown, so a push that
+    # changes only those elsewhere builds no image.
+    paths:
+      - "**"
+      - "!specs/**"
+      - "!**.md"
+      - "method/**"
 
 # Continuous image build on main. Tag releases and the production deploy are
 # handled by release.yml through the central reusable pipeline. This workflow

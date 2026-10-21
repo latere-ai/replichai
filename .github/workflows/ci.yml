@@ -1,10 +1,30 @@
 name: ci
 
+# A push or pull request that changes only specs or markdown starts no run,
+# because no build or test reads them. The exceptions are method/, the audit
+# method the server ships and the suite reads, and docs/cli.md and
+# docs/architecture.md, which a test holds to the CLI's subcommands, so a
+# change to them runs everything. `lateregate release` runs the whole bar,
+# the spec tree included, before every tag.
 on:
   push:
     branches: [main]
+    paths:
+      - "**"
+      - "!specs/**"
+      - "!**.md"
+      - "method/**"
+      - "docs/cli.md"
+      - "docs/architecture.md"
   pull_request:
     branches: [main]
+    paths:
+      - "**"
+      - "!specs/**"
+      - "!**.md"
+      - "method/**"
+      - "docs/cli.md"
+      - "docs/architecture.md"
   workflow_dispatch:
 
 # A newer push to the same ref supersedes this run: its commit carries every

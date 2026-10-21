@@ -29,7 +29,8 @@ Fork the repository, work on a branch, and open a pull request. Keep one
 logical change per commit, stage the files explicitly, and write the subject
 as `scope: what changed`, in lowercase, for whoever reads the log. Maintainers
 push to `main` directly; CI runs the same gate on every push and pull
-request, and a `v*` tag cuts a release. A change people will notice gets an
+request that changes more than specs and markdown, and a `v*` tag cuts a
+release. A change people will notice gets an
 entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), written for whoever
 runs an audit or operates a deployment.
 
