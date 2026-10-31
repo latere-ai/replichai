@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.37.4 - 2026-10-31
+
 ### Fixed
 
 - **A reproduction a restart interrupted is rejoined by one driver.** A
