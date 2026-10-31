@@ -294,6 +294,31 @@ func TestThePoolSweepsForStrandedRuns(t *testing.T) {
 	}
 }
 
+// TestTwoPassesInARowRejoinARunOnce checks that one process starts one
+// driver on a stranded run however soon its passes follow each other. A worker
+// re-adopts its own lease, so only the record of what it drives keeps a second
+// pass off the run, and that record has to hold from the moment the first pass
+// returns, before the driver it started has run at all.
+func TestTwoPassesInARowRejoinARunOnce(t *testing.T) {
+	s := NewMemStore()
+	ctx := t.Context()
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
+	_, _, _ = s.Claim(ctx, "pod-gone")
+	_ = s.Advance(ctx, j.ID, PhaseRunning, nil)
+	_ = s.Observe(ctx, j.ID, provider.RunStatus{RunID: "sesn_stranded_02"})
+
+	held := make(chan struct{})
+	defer close(held)
+	r := &fakeRunner{onResume: func() { <-held }} // the rejoined run stays open
+	w := NewWorker(s, r, WithWorkerID("pod-here"), withLeaseTTL(0))
+	for pass, want := range []int{1, 0} {
+		if resumed, failed, err := w.reconcile(ctx, false); err != nil || resumed != want || failed != 0 {
+			t.Fatalf("pass %d = %d/%d/%v, want %d/0/nil", pass+1, resumed, failed, err, want)
+		}
+	}
+	waitForCall(t, r, "resume")
+}
+
 // TestASweepDoesNotFailASessionItCannotRejoin checks that a sweep leaves alone
 // what it cannot positively rejoin. Resolving is quiet: the paper fetch and the
 // repository creation report no status, so a slow one lets its lease expire
