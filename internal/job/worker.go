@@ -446,13 +446,24 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 		if !mine {
 			continue // another worker has it
 		}
-		if j.Phase == PhaseRunning && j.Status.RunID != "" {
-			w.spawn(j.ID, func() error { return w.driveResume(ctx, j) }) // rejoin the live backend session
-			resumed++
-			continue
-		}
-		if j.Phase == PhasePublishing && j.Status.RunID != "" {
-			w.spawn(j.ID, func() error { return w.drivePublish(ctx, j) }) // the run settled; finish finalizing it
+		if rejoinable {
+			// The rejoin is registered here, before its goroutine runs, so a
+			// sweep that comes first still finds it driven. Registered in the
+			// goroutine, it was absent until that goroutine ran, and a sweep
+			// in that gap adopted the run again, since a worker re-adopts its
+			// own lease, and put a second driver on it.
+			jctx, done, ok := w.begin(ctx, j.ID)
+			if !ok {
+				continue // another pass of this process rejoined it meanwhile
+			}
+			drive := w.driveResume // rejoin the live backend session
+			if j.Phase == PhasePublishing {
+				drive = w.drivePublish // the run settled; finish finalizing it
+			}
+			w.spawn(j.ID, func() error {
+				defer done()
+				return drive(ctx, jctx, j)
+			})
 			resumed++
 			continue
 		}
@@ -469,10 +480,28 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 // Cancel can interrupt, and returns that context and a function that
 // deregisters the job.
 func (w *Worker) track(pool context.Context, id string) (context.Context, func()) {
-	ctx, cancel := context.WithCancel(pool)
 	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.register(pool, id)
+}
+
+// begin is track for a rejoin: it registers the job unless this process
+// already drives it, under the one hold of the lock that checks, and reports
+// whether it did.
+func (w *Worker) begin(pool context.Context, id string) (context.Context, func(), bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, ok := w.running[id]; ok {
+		return nil, nil, false
+	}
+	ctx, done := w.register(pool, id)
+	return ctx, done, true
+}
+
+// register is track's body, called with w.mu held.
+func (w *Worker) register(pool context.Context, id string) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(pool)
 	w.running[id] = cancel
-	w.mu.Unlock()
 	return ctx, func() {
 		w.mu.Lock()
 		delete(w.running, id)
@@ -554,13 +583,10 @@ func (w *Worker) drive(pool context.Context, j Job) error {
 }
 
 // driveResume rejoins a run already in flight, in the running phase, and
-// drives it to completion: resume, then publish, then done. It runs under a
-// per-job context that Cancel can interrupt, exactly like a fresh drive
-// without the phases already passed.
-func (w *Worker) driveResume(pool context.Context, j Job) error {
-	ctx, done := w.track(pool, j.ID)
-	defer done()
-
+// drives it to completion: resume, then publish, then done. It runs under
+// ctx, the per-job context reconcile registered, which Cancel can interrupt,
+// exactly like a fresh drive without the phases already passed.
+func (w *Worker) driveResume(pool, ctx context.Context, j Job) error {
 	var observeMu sync.Mutex
 	var observeErr error
 	observe := func(s provider.RunStatus) {
@@ -596,10 +622,7 @@ func (w *Worker) driveResume(pool context.Context, j Job) error {
 // unchanged manifest adds no commit, so re-running it costs a few reads and
 // recovers a reproduction that succeeded, where failing the row would have
 // stranded it.
-func (w *Worker) drivePublish(pool context.Context, j Job) error {
-	ctx, done := w.track(pool, j.ID)
-	defer done()
-
+func (w *Worker) drivePublish(pool, ctx context.Context, j Job) error {
 	if err := w.call("publish", func() error { return w.runner.Publish(ctx, &j) }); err != nil {
 		if errors.Is(err, ErrRetryablePublish) {
 			return err
