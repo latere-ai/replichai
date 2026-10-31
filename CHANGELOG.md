@@ -10,6 +10,13 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- **A reproduction a restart interrupted is rejoined by one driver.** A
+  server that looked for interrupted reproductions twice in quick
+  succession could rejoin the same one twice, and the second driver could
+  mark it failed while the first was finishing it.
+
 ### Security
 
 - **Built with gRPC-Go 1.83.2,** which fixes GHSA-2v4p-qf9q-27wj, a crash
