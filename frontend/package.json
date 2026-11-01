@@ -16,16 +16,16 @@
     "highlight.js": "^11.12.0",
     "latere-ui": "github:latere-ai/latere-ui#v2.2.0",
     "marked": "^18.1.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "puppeteer-core": "^25.16.0",
     "typescript": "^5.6.3",
-    "vite": "^6.0.7"
+    "vite": "8.3.5"
   }
 }
