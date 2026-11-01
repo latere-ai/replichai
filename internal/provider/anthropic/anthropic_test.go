@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
 
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -43,7 +43,7 @@ func writeJSON(t *testing.T, w http.ResponseWriter, body any) {
 func TestTheOptionSuppliesTheCredential(t *testing.T) {
 	var got string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = r.Header.Get("x-api-key")
+		got = r.Header.Get("Authorization")
 		writeJSON(t, w, map[string]any{"data": []any{}, "has_more": false})
 	}))
 	t.Cleanup(server.Close)
@@ -53,7 +53,7 @@ func TestTheOptionSuppliesTheCredential(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	_, _ = p.ResolveModel(context.Background(), "best")
-	if got != "from-option" {
+	if got != "Bearer from-option" {
 		t.Errorf("credential = %q, want the value from WithAPIKey", got)
 	}
 }
@@ -71,7 +71,7 @@ func TestTheCredentialTravelsInAHeaderNotTheURL(t *testing.T) {
 	var gotURL, gotHeader string
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.String()
-		gotHeader = r.Header.Get("x-api-key")
+		gotHeader = r.Header.Get("Authorization")
 		writeJSON(t, w, map[string]any{"data": []any{map[string]string{"id": "m"}}})
 	})
 
@@ -81,7 +81,7 @@ func TestTheCredentialTravelsInAHeaderNotTheURL(t *testing.T) {
 	if strings.Contains(gotURL, "test-credential") {
 		t.Errorf("credential leaked into the URL: %s", gotURL)
 	}
-	if gotHeader != "test-credential" {
+	if gotHeader != "Bearer test-credential" {
 		t.Errorf("credential not sent as a header, got %q", gotHeader)
 	}
 }

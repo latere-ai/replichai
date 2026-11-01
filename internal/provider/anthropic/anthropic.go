@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/anthropics/anthropic-sdk-go/packages/param"
+	"github.com/anthropics/anthropic-sdk-go/v2"
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
+	"github.com/anthropics/anthropic-sdk-go/v2/packages/param"
 
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -262,9 +262,7 @@ func (p *Provider) EnsureWorker(ctx context.Context, spec provider.WorkerSpec) (
 		Name:  spec.Name,
 		Model: anthropic.BetaManagedAgentsModelConfigParams{ID: spec.Model},
 		Tools: []anthropic.BetaAgentNewParamsToolUnion{{
-			OfAgentToolset20260401: &anthropic.BetaManagedAgentsAgentToolset20260401Params{
-				Type: anthropic.BetaManagedAgentsAgentToolset20260401ParamsTypeAgentToolset20260401,
-			},
+			OfAgentToolset20260401: &anthropic.BetaManagedAgentsAgentToolset20260401Params{},
 		}},
 	}
 	if spec.Instructions != "" {
@@ -298,7 +296,6 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 	// the worker commits its reproduction into a real repository as it works.
 	if spec.Mount.Set() {
 		repo := anthropic.BetaManagedAgentsGitHubRepositoryResourceParams{
-			Type:               anthropic.BetaManagedAgentsGitHubRepositoryResourceParamsTypeGitHubRepository,
 			URL:                spec.Mount.URL,
 			AuthorizationToken: spec.Mount.Token,
 		}
@@ -342,7 +339,6 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 		}
 		uploaded = append(uploaded, meta.ID)
 		file := anthropic.BetaManagedAgentsFileResourceParams{
-			Type:   anthropic.BetaManagedAgentsFileResourceParamsTypeFile,
 			FileID: meta.ID,
 		}
 		if att.Path != "" {
@@ -362,20 +358,17 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 	var kickoff anthropic.BetaManagedAgentsEventParamsUnion
 	if strings.TrimSpace(spec.Rubric) == "" && spec.MaxRevisions == 0 {
 		kickoff = anthropic.BetaManagedAgentsEventParamsUnion{OfUserMessage: &anthropic.BetaManagedAgentsUserMessageEventParams{
-			Type: anthropic.BetaManagedAgentsUserMessageEventParamsTypeUserMessage,
 			Content: []anthropic.BetaManagedAgentsUserMessageEventParamsContentUnion{{
-				OfText: &anthropic.BetaManagedAgentsTextBlockParam{Type: anthropic.BetaManagedAgentsTextBlockTypeText, Text: spec.Task},
+				OfText: &anthropic.BetaManagedAgentsTextBlockParam{Text: spec.Task},
 			}},
 		}}
 	} else {
-		// Every discriminator is set explicitly: these fields are omitempty in the
-		// SDK structs, so leaving them zero drops "type" from the wire payload.
+		// The SDK fills in each "type" discriminator itself; the tests check that
+		// it reaches the wire payload.
 		outcome := &anthropic.BetaManagedAgentsUserDefineOutcomeEventParams{
-			Type:        anthropic.BetaManagedAgentsUserDefineOutcomeEventParamsTypeUserDefineOutcome,
 			Description: spec.Task,
 			Rubric: anthropic.BetaManagedAgentsUserDefineOutcomeEventParamsRubricUnion{
 				OfText: &anthropic.BetaManagedAgentsTextRubricParams{
-					Type:    anthropic.BetaManagedAgentsTextRubricParamsTypeText,
 					Content: spec.Rubric,
 				},
 			},
@@ -627,9 +620,7 @@ func firstNonZeroTime(ts ...time.Time) time.Time {
 func (p *Provider) CloseRun(ctx context.Context, h provider.RunHandle) error {
 	_, interruptErr := p.client.Beta.Sessions.Events.Send(ctx, h.ID, anthropic.BetaSessionEventSendParams{
 		Events: []anthropic.BetaManagedAgentsEventParamsUnion{
-			anthropic.BetaManagedAgentsEventParamsOfUserInterrupt(
-				anthropic.BetaManagedAgentsUserInterruptEventParamsTypeUserInterrupt,
-			),
+			{OfUserInterrupt: &anthropic.BetaManagedAgentsUserInterruptEventParams{}},
 		},
 	})
 	_, archiveErr := p.client.Beta.Sessions.Archive(ctx, h.ID, anthropic.BetaSessionArchiveParams{})

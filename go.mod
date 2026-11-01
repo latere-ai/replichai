@@ -5,7 +5,7 @@ go 1.27.0
 toolchain go1.27.3
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.59.0
+	github.com/anthropics/anthropic-sdk-go/v2 v2.4.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/jackc/pgx/v5 v5.12.0
 	go.opentelemetry.io/otel v1.47.0
