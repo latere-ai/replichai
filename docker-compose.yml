@@ -16,7 +16,7 @@
 # for local use only; production runs behind the OIDC login and access gate.
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: replichai
       POSTGRES_USER: replichai
