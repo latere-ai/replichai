@@ -10,6 +10,15 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- The `anthropic-managed` runtime is built with version 2 of Anthropic's Go
+  SDK, which talks to the API as version 2026-10-21 and sends
+  `ANTHROPIC_API_KEY` in the `Authorization: Bearer` header instead of
+  `X-Api-Key`. What each session is asked to do, and with which model, is
+  unchanged. A gateway set with `ANTHROPIC_BASE_URL` must accept the key in
+  `Authorization`.
+
 ## v0.37.4 - 2026-10-31
 
 ### Fixed
