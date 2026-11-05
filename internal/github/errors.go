@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"latere.ai/x/pkg/retryafter"
 )
 
 // APIError is GitHub's answer to a request it refused: the status, the message
@@ -117,14 +119,14 @@ func failure(method, path string, resp *http.Response, payload []byte, now time.
 // the primary one. The wait comes from Retry-After in seconds, else from the
 // reset epoch; a rate limit with neither is temporary with no figure.
 func rateLimit(resp *http.Response, now time.Time) (limited bool, wait time.Duration) {
-	retryAfter := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	retryAfter := strings.TrimSpace(resp.Header.Get(retryafter.Header))
 	remaining := strings.TrimSpace(resp.Header.Get("X-RateLimit-Remaining"))
 	secondary := resp.StatusCode == http.StatusForbidden && (retryAfter != "" || remaining == "0")
 	if resp.StatusCode != http.StatusTooManyRequests && !secondary {
 		return false, 0
 	}
-	if seconds, err := strconv.Atoi(retryAfter); err == nil && seconds > 0 {
-		return true, time.Duration(seconds) * time.Second
+	if wait, ok := retryafter.Parse(retryAfter, now); ok && wait > 0 {
+		return true, wait
 	}
 	if reset, err := strconv.ParseInt(strings.TrimSpace(resp.Header.Get("X-RateLimit-Reset")), 10, 64); err == nil {
 		if until := time.Unix(reset, 0).Sub(now); until > 0 {

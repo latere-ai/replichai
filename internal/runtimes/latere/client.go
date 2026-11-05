@@ -12,11 +12,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	xotel "latere.ai/x/pkg/otel"
+	"latere.ai/x/pkg/retryafter"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -136,20 +136,21 @@ func (c *client) send(ctx context.Context, bearer, method, path string, body any
 	case response.StatusCode == http.StatusNotFound:
 		return nil, errors.Join(&managed.NotFoundError{Runtime: Name, ID: redactPath(path)}, failure)
 	case response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500:
-		return nil, &managed.TemporaryError{Err: failure, After: retryAfter(response.Header.Get("Retry-After"))}
+		return nil, &managed.TemporaryError{Err: failure, After: retryAfter(response.Header.Get(retryafter.Header), time.Now())}
 	default:
 		return nil, failure
 	}
 }
 
-// retryAfter reads a Retry-After header given in seconds. The HTTP-date form
-// is not used by the platform and reads as no hint.
-func retryAfter(header string) time.Duration {
-	seconds, err := strconv.Atoi(strings.TrimSpace(header))
-	if err != nil || seconds <= 0 {
+// retryAfter reads a Retry-After header, in seconds or as an HTTP date. A value
+// that is missing, unreadable or not in the future reads as no hint, and a count
+// too large for a duration saturates instead of turning negative.
+func retryAfter(header string, now time.Time) time.Duration {
+	wait, ok := retryafter.Parse(header, now)
+	if !ok || wait <= 0 {
 		return 0
 	}
-	return time.Duration(seconds) * time.Second
+	return wait
 }
 
 // redactPath drops a query string from a path before it is put in an error,

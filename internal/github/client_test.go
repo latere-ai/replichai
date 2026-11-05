@@ -159,6 +159,32 @@ func TestARateLimitIsTemporaryAndSaysHowLong(t *testing.T) {
 		}
 	})
 
+	t.Run("an overflowing Retry-After saturates instead of going negative", func(t *testing.T) {
+		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "99999999999999999")
+			w.WriteHeader(http.StatusTooManyRequests)
+		})
+		_, err := c.TreePaths(context.Background(), "open-hai", "x", "main")
+		var limited *APIError
+		if !errors.As(err, &limited) || limited.RetryAfter() <= 0 {
+			t.Fatalf("err = %v; want a positive wait", err)
+		}
+	})
+
+	t.Run("a Retry-After date is a wait", func(t *testing.T) {
+		now := time.Unix(1_700_000_000, 0).UTC()
+		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", now.Add(45*time.Second).Format(http.TimeFormat))
+			w.WriteHeader(http.StatusTooManyRequests)
+		})
+		c.now = func() time.Time { return now }
+		_, err := c.TreePaths(context.Background(), "open-hai", "x", "main")
+		var limited *APIError
+		if !errors.As(err, &limited) || limited.RetryAfter() != 45*time.Second {
+			t.Fatalf("err = %v; want a 45s wait", err)
+		}
+	})
+
 	t.Run("429 with no figure is still temporary", func(t *testing.T) {
 		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusTooManyRequests)
