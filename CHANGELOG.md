@@ -10,6 +10,11 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- The server prints its version with `-version` and exits, so an image can be
+  asked which build it is without starting it.
+
 ### Changed
 
 - The `anthropic-managed` runtime is built with version 2 of Anthropic's Go

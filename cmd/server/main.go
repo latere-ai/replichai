@@ -19,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -84,6 +85,14 @@ func main() {
 	}
 }
 
+// printVersion writes the line `-version` prints: the program name and the
+// version the build reports on its telemetry, so an image can be asked which
+// build it is without starting the server.
+func printVersion(w io.Writer) error {
+	_, err := fmt.Fprintf(w, "%s %s\n", serviceName, xotel.Version(version))
+	return err
+}
+
 func run() error {
 	addr := flag.String("addr", envOr("ADDR", ":8080"), "listen address")
 	dbURL := flag.String("database-url", os.Getenv("DATABASE_URL"), "Postgres URL on the direct endpoint; empty uses in-memory stores, and migrations always use this one")
@@ -94,7 +103,11 @@ func run() error {
 	workers := flag.Int("workers", 2, "number of job workers")
 	dev := flag.Bool("dev", envBool("DEV"), "enable the loopback-only dev bypass (no OIDC); local use only")
 	runnerDelay := flag.String("runner-delay", os.Getenv("RUNNER_DELAY"), "dev: pause per phase so SSE progression is watchable (e.g. 1500ms)")
+	showVersion := flag.Bool("version", false, "print the build's version and exit")
 	flag.Parse()
+	if *showVersion {
+		return printVersion(os.Stdout)
+	}
 	baseURL := strings.TrimRight(envOr("BASE_URL", "http://localhost:8080"), "/")
 	delay, _ := time.ParseDuration(*runnerDelay)
 
