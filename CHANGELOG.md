@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.38.0 - 2026-11-05
+
 ### Added
 
 - The server prints its version with `-version` and exits, so an image can be
