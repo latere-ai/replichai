@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"latere.ai/x/pkg/retryafter"
+	"latere.ai/x/pkg/sanitize"
 )
 
 // APIError is GitHub's answer to a request it refused: the status, the message
@@ -108,7 +109,7 @@ func failure(method, path string, resp *http.Response, payload []byte, now time.
 			}
 		}
 	} else if text := strings.TrimSpace(string(payload)); text != "" {
-		e.Message = truncate(text, 200)
+		e.Message = sanitize.Truncate(text, 200)
 	}
 	e.rateLimited, e.wait = rateLimit(resp, now)
 	return e
@@ -134,13 +135,6 @@ func rateLimit(resp *http.Response, now time.Time) (limited bool, wait time.Dura
 		}
 	}
 	return true, 0
-}
-
-func truncate(text string, limit int) string {
-	if len(text) <= limit {
-		return text
-	}
-	return text[:limit] + "…"
 }
 
 // isEmptyRepo reports GitHub's answer for a repository that holds no commit.

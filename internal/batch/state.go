@@ -13,11 +13,15 @@ import (
 	"time"
 
 	"latere.ai/x/pkg/atomicfile"
+	"latere.ai/x/pkg/sanitize"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
 const stateVersion = 1
+
+// errorLineLimit is how many characters of a failure the report shows.
+const errorLineLimit = 200
 
 // State is a project's progress, rewritten after every change so a batch
 // killed at any point leaves a file that is both valid and current.
@@ -230,7 +234,7 @@ func (s State) Report() string {
 		for index, entry := range s.Entries {
 			switch {
 			case entry.Phase == Failed:
-				fmt.Fprintf(&b, "- %s failed: %s\n", labels[index], oneLine(entry.Error))
+				fmt.Fprintf(&b, "- %s failed: %s\n", labels[index], sanitize.OneLine(entry.Error, errorLineLimit))
 			case !entry.Phase.Terminal():
 				fmt.Fprintf(&b, "- %s did not run.\n", labels[index])
 			case s.Publishing && entry.Repo == "":
@@ -264,12 +268,4 @@ func round(d time.Duration) string {
 		return "—"
 	}
 	return d.Round(time.Second).String()
-}
-
-func oneLine(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "\n", " "))
-	if len(value) > 200 {
-		return value[:200] + "…"
-	}
-	return value
 }
