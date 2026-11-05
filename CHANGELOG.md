@@ -24,6 +24,16 @@ committed. The commit log already holds that.
   unchanged. A gateway set with `ANTHROPIC_BASE_URL` must accept the key in
   `Authorization`.
 
+### Fixed
+
+- **A failure in the batch report is one line.** A carriage return or a
+  tab in it becomes a space, and a long failure is cut on a character
+  boundary, so the report no longer breaks or ends in half a character.
+
+- **A runtime waits as long as a provider's `Retry-After` says.** A number
+  of seconds or an HTTP date is read, and a huge value is a long wait
+  instead of one that wrapped to negative and retried at once.
+
 ## v0.37.4 - 2026-10-31
 
 ### Fixed
