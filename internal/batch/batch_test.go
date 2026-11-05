@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -772,5 +773,27 @@ func TestTheDefaultPoolIsSized(t *testing.T) {
 	}
 	if got := r.maxExecute.Load(); got > int32(DefaultParallel()) {
 		t.Fatalf("%d papers ran at once with the default of %d", got, DefaultParallel())
+	}
+}
+
+// TestAFailureReadsAsOneValidLine checks that a failure carrying CR, tab and
+// multibyte text lands in the report as a single line, cut at a character
+// boundary, so a cut never writes invalid UTF-8.
+func TestAFailureReadsAsOneValidLine(t *testing.T) {
+	r := newRunner()
+	r.fail["10.1/a"] = errors.New("first\r\nsecond\tthird\u2028fourth " + strings.Repeat("é", 300))
+	state, _ := Run(context.Background(), File{Papers: []Entry{{Paper: "10.1/a"}}}, r,
+		Options{Parallel: 1, StatePath: filepath.Join(t.TempDir(), "batch.json")})
+	report := state.Report()
+	if !utf8.ValidString(report) {
+		t.Fatalf("the report is not valid UTF-8:\n%q", report)
+	}
+	if !strings.Contains(report, "- 10.1/a failed: first second third fourth ééé") {
+		t.Fatalf("the failure did not collapse to one line:\n%q", report)
+	}
+	for _, bad := range []string{"\r", "\t", "\u2028"} {
+		if strings.Contains(report, bad) {
+			t.Errorf("the report holds %q:\n%q", bad, report)
+		}
 	}
 }

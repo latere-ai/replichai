@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -182,6 +183,17 @@ func TestARateLimitIsTemporaryAndSaysHowLong(t *testing.T) {
 		var limited *APIError
 		if !errors.As(err, &limited) || limited.RetryAfter() != 45*time.Second {
 			t.Fatalf("err = %v; want a 45s wait", err)
+		}
+	})
+
+	t.Run("a long multibyte body is cut at a character", func(t *testing.T) {
+		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(strings.Repeat("é", 300)))
+		})
+		_, err := c.TreePaths(context.Background(), "open-hai", "x", "main")
+		if err == nil || !utf8.ValidString(err.Error()) || !strings.Contains(err.Error(), "…") {
+			t.Fatalf("err = %q; want valid UTF-8 cut with an ellipsis", err)
 		}
 	})
 
