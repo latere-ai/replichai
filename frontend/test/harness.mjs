@@ -352,7 +352,12 @@ export async function startBrowser({ headless = true, join = process.env.WEB_TES
   if (join) return { browser: await puppeteer.connect({ browserWSEndpoint: join }), owned: false }
   const chrome = findChrome()
   if (!chrome) return { browser: null, owned: true }
-  return { browser: await puppeteer.launch({ executablePath: chrome, headless }), owned: true }
+  // WEB_TEST_NO_SANDBOX is set by test/e2e.mjs for the browser Playwright
+  // installed, which is started the way Playwright starts it: without the
+  // sandbox, since the runner's kernel restricts the user namespaces the
+  // sandbox needs and the pages here are this repository's own mocked app.
+  const args = process.env.WEB_TEST_NO_SANDBOX ? ['--no-sandbox'] : []
+  return { browser: await puppeteer.launch({ executablePath: chrome, headless, args }), owned: true }
 }
 
 // browserGone is what a lost browser prints. It names the browser, because the
