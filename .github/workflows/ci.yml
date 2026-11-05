@@ -1,124 +1,26 @@
 name: ci
 
-# A push or pull request that changes only specs or markdown starts no run,
-# because no build or test reads them. The exceptions are method/, the audit
-# method the server ships and the suite reads, and docs/cli.md and
-# docs/architecture.md, which a test holds to the CLI's subcommands, so a
-# change to them runs everything. `lateregate release` runs the whole bar,
-# the spec tree included, before every tag.
+# The bar lives in latere-ai/ci-gate, pinned in go.mod, and the shared
+# workflow runs it. What this repository decides is in .lateregate.yaml.
+# `lateregate init` writes this file, the same in every repository.
 on:
   push:
     branches: [main]
-    paths:
-      - "**"
-      - "!specs/**"
-      - "!**.md"
-      - "method/**"
-      - "docs/cli.md"
-      - "docs/architecture.md"
   pull_request:
-    branches: [main]
-    paths:
-      - "**"
-      - "!specs/**"
-      - "!**.md"
-      - "method/**"
-      - "docs/cli.md"
-      - "docs/architecture.md"
   workflow_dispatch:
 
 # A newer push to the same ref supersedes this run: its commit carries every
-# change this one would verify, and the runner slots are better spent on it.
+# change this one would verify.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+# actions: read lets the gate find the last commit whose CI passed, which it
+# measures the change from.
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  # The shared gates: `go tool lateregate`, the same command as `make check`.
-  # In order: fmt-check, modernize, cgo-free, otel-client, license, spec-lint,
-  # depcheck, lint, vuln, test, race, hermetic, tempdir, and cover. depcheck is
-  # skipped here because no package is named; lint is golangci-lint against the
-  # config rendered from .lateregate.yaml; test is go vet and the suite. The
-  # exact plan for the current tree is `go tool lateregate list`. The jobs
-  # below cover what that workflow cannot run: a suite that needs a live
-  # Postgres, and a frontend that needs bun and a browser.
-  verify:
+  gate:
     uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
-
-  # The Postgres contracts. The shared workflow runs the suite with no database,
-  # so every store contract skips there. This job provides one and runs the
-  # whole suite under the race detector against it. golangci-lint is not here;
-  # it is the lint gate above.
-  test:
-    name: test (race) + postgres contracts
-    runs-on: ${{ (github.event.repository.private || contains(fromJSON('["push","schedule","workflow_dispatch","release"]'), github.event_name)) && (vars.CI_RUNNER_PRIVATE || vars.CI_RUNNER_PUBLIC) || 'ubuntu-latest' }}
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_DB: replichai
-          POSTGRES_USER: replichai
-          POSTGRES_PASSWORD: testpass
-        ports:
-          - 5432/tcp
-        options: >-
-          --health-cmd "pg_isready -U replichai -d replichai"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.27.x"
-          cache: false
-      - run: go test -race -timeout 300s ./...
-        env:
-          TEST_DATABASE_URL: postgres://replichai:testpass@localhost:${{ job.services.postgres.ports['5432'] }}/replichai?sslmode=disable
-
-  frontend:
-    name: frontend (bun)
-    runs-on: ${{ (github.event.repository.private || contains(fromJSON('["push","schedule","workflow_dispatch","release"]'), github.event_name)) && (vars.CI_RUNNER_PRIVATE || vars.CI_RUNNER_PUBLIC) || 'ubuntu-latest' }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "26"
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1"
-      - run: cd frontend && bun install --frozen-lockfile
-      - run: cd frontend && bun run typecheck
-      - run: cd frontend && bun run build
-      - run: cd frontend && bun test src
-      # The bare runner does not ship Chrome. Install the browser paired with
-      # puppeteer-core and require its executable in the browser suite.
-      - name: Install Chrome for browser tests
-        working-directory: frontend
-        run: |
-          set -euo pipefail
-          browser=$(node --input-type=module -e 'import { PUPPETEER_REVISIONS } from "puppeteer-core"; console.log(PUPPETEER_REVISIONS.chrome)')
-          sudo "$(command -v node)" node_modules/@puppeteer/browsers/lib/main-cli.js install "chrome@$browser" --install-deps --path "$RUNNER_TEMP/chrome"
-          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/chrome"
-          chrome=$(find "$RUNNER_TEMP/chrome" -type f -path '*/chrome-linux64/chrome' -print -quit)
-          test -x "$chrome"
-          echo "PUPPETEER_EXECUTABLE_PATH=$chrome" >> "$GITHUB_ENV"
-      # Ubuntu restricts unprivileged user namespaces. Chrome's bundled
-      # helper provides its sandbox without changing the host's AppArmor policy.
-      # https://pptr.dev/troubleshooting#using-setuid-sandbox
-      - name: Configure Chrome sandbox
-        run: |
-          set -euo pipefail
-          sandbox="$(dirname "$PUPPETEER_EXECUTABLE_PATH")/chrome_sandbox"
-          test -f "$sandbox"
-          sudo chown root:root "$sandbox"
-          sudo chmod 4755 "$sandbox"
-          echo "CHROME_DEVEL_SANDBOX=$sandbox" >> "$GITHUB_ENV"
-      # Against the bundle built above, through vite preview: the dev server
-      # compiles on request and is too slow on this runner for the suite's waits.
-      - run: cd frontend && bun run test:browser
-        env:
-          WEB_TEST_BUILT: "1"

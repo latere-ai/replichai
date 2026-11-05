@@ -33,10 +33,9 @@ status: built
 
 **The operator's infrastructure code provisions the domain, the database, and the DB secret.** It lives outside this repository. It adds the `replichai.latere.ai` A record pointing at the ingress load balancer, the `replichai` database (protected from destruction, like every other service's), and the `replichai-db` Kubernetes secret carrying `DATABASE_URL`, and is applied through the operator's existing workflow.
 
-**Release is a tag, deploy is the central pipeline.** Three GitHub Actions workflows, matching the latere convention:
+**Release is a tag, deploy is the central pipeline.** Two GitHub Actions workflows, matching the latere convention:
 
-- `ci.yml`: vet, `go test -race` against a live Postgres service (so the job and access store contracts run their real `SELECT … FOR UPDATE SKIP LOCKED` path instead of skipping), and build. On every push and PR to `main` that changes more than specs and markdown.
-- `docker.yml`: build and push a ghcr image on every `main` push that changes more than specs and markdown, for continuous delivery between releases.
+- `ci.yml`: the shared `lateregate` pipeline. Its `e2e` suite runs the job, access and other store contracts against a live Postgres under the race detector (so the real `SELECT … FOR UPDATE SKIP LOCKED` path runs instead of skipping), the `frontend` gate typechecks, tests and builds the web app and runs the browser suite, and the `image` gate builds the Dockerfile. On every push and PR to `main`.
 - `release.yml`: a `v*` tag calls the central reusable pipeline (`latere-ai/ci/service-release.yml@v1`), which builds the image, applies `deploy/prod/`, rolls the Deployment in `latere`, runs the live smoke, and publishes the GitHub release. **Deploy always targets prod;** there is no CI staging deploy.
 
 `build_mode: dockerfile`: replichai builds everything in one Dockerfile and migrates at startup, so no split build or migrate step is needed.
