@@ -188,7 +188,7 @@ to the tag, commits, tags, and pushes.
 `service-release` workflow, which builds the image from the root `Dockerfile`,
 pushes it to `ghcr.io/latere-ai/replichai`, applies `deploy/prod/` in the
 `latere` namespace, rolls the Deployment onto the new image, runs
-`test/release-smoke.sh` against `https://replichai.latere.ai`, and publishes
+`tools/smoke/release.sh` against `https://replichai.latere.ai`, and publishes
 the GitHub release with the tag's section of `CHANGELOG.md` (the pre-push hook
 refuses a release tag that has none). Between releases, `docker.yml` builds an
 image from every push to `main` that changes more than specs and markdown,
@@ -207,7 +207,7 @@ podman push ghcr.io/latere-ai/replichai:$(git rev-parse --short HEAD)
 kubectl apply -k deploy/prod/
 kubectl -n latere set image deploy/replichai replichai=ghcr.io/latere-ai/replichai:$(git rev-parse --short HEAD)
 kubectl -n latere rollout status deploy/replichai
-test/release-smoke.sh
+tools/smoke/release.sh
 ```
 
 `deploy/prod/` pins the last release, so the `apply` alone runs that release;
@@ -222,7 +222,7 @@ The gate is **fail-closed**, and the one way to open it by accident is `DEV`.
 It exists so a developer can work without an identity provider, and it admits
 every request as a synthetic principal. On a public domain that is not a
 relaxed gate; it is no gate. It is therefore never set in an overlay, and
-`test/release-smoke.sh` drives `/projects` against the deployed base URL after
+`tools/smoke/release.sh` drives `/projects` against the deployed base URL after
 every tagged release and fails unless the request is refused, so the bypass
 reaching production is a failed release rather than a silent hole.
 
