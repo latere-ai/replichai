@@ -472,7 +472,7 @@ func TestPlatformFailuresAreClassified(t *testing.T) {
 	if err := closed.call(ctx, "b", http.MethodGet, "/", nil, "", nil); !managed.IsTemporary(err) {
 		t.Fatalf("unreachable = %v", err)
 	}
-	if retryAfter("soon") != 0 || (&apiError{Status: 500}).Error() != "platform answered 500" || code(errors.New("x")) != "" {
+	if retryAfter("soon", time.Now()) != 0 || retryAfter("99999999999999999", time.Now()) <= 0 || retryAfter("-3", time.Now()) != 0 || (&apiError{Status: 500}).Error() != "platform answered 500" || code(errors.New("x")) != "" {
 		t.Fatal("helpers")
 	}
 	if defaultHTTPClient().Transport == nil {
