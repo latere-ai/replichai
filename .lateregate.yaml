@@ -1,8 +1,8 @@
 # The gate configuration for replichai.
 #
-# This repository calls the shared go-verify pipeline for the Go gates that
-# stand on their own, and keeps jobs of its own for the two that do not: the
-# race suite against a live Postgres, and the bun/Chrome frontend.
+# The shared pipeline runs every gate that stands on its own. The `e2e`,
+# `frontend` and `image` sections below declare what needs more than the plain
+# test run: a live Postgres, a Bun package driving a browser, and the image.
 
 hermetic:
   # The system directories only. The suite reaches two binaries: git, for the
@@ -161,3 +161,53 @@ postgres:
   # Serving traffic opens the pooled endpoint and falls back to the direct one;
   # migrations keep the direct endpoint.
   role: pooled
+
+# The Bun package that holds the web app. The gate installs it from its
+# lockfile, then typechecks, runs the unit tests, builds the bundle the server
+# embeds, and runs the package's `e2e` script, the browser suite.
+frontend:
+  projects: [frontend]
+  # The browser suite drives Chromium through puppeteer-core. Naming the
+  # package here has the shared pipeline install a browser before the gate.
+  browser: [frontend]
+
+# The image the release ships. The gate builds the Dockerfile and checks the
+# binary reports the version it was built as, the image stays under its size
+# cap, and it holds no shell.
+image:
+  images:
+    - name: replichai
+      build_args:
+        VERSION: v0.0.0-candidate
+      version_args: [-version]
+      version_expect: "replichai v0.0.0-candidate"
+      max_mib: 80
+      # The server creates its working directory under /tmp when it starts, and
+      # the gate starts the image with a read-only root file system and no
+      # writable /tmp, where the cluster mounts one. It stops at start with a
+      # read-only file system error, so no probe could answer.
+      skip_start: the server writes its run directory under /tmp at start, which the gate's read-only start gives it no volume for
+
+# Suites that run against real services. The plain test run has no database,
+# so every Postgres store contract skips there; a skipped test fails an e2e
+# suite, which keeps those contracts from silently not running.
+e2e:
+  - name: postgres
+    why: >-
+      the Postgres stores keep the contract the memory stores keep: access,
+      credit, jobs, platform, profiles, projects and sign-ins, including the
+      concurrent migrations and the pooled endpoint, under the race detector
+    test:
+      # The packages whose tests read TEST_DATABASE_URL.
+      packages:
+        - ./internal/access
+        - ./internal/credit
+        - ./internal/job
+        - ./internal/platform
+        - ./internal/profile
+        - ./internal/project
+        - ./internal/signin
+      race: true
+    services: [postgres]
+    env:
+      TEST_DATABASE_URL: "${postgres.url}"

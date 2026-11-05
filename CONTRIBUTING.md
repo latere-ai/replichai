@@ -165,6 +165,7 @@ bun test src           # the unit tests
 bun run typecheck      # the app and, through tsconfig.test.json, the tests too
 bun run test:browser   # every test/*.test.mjs in headless Chrome; skips cleanly with no Chrome
 WEB_TEST_BUILT=1 bun run test:browser   # the same against the last build, as CI runs it
+bun run e2e            # the same suite as the gate runs it: fails, not skips, when no browser is found
 ```
 
 The browser tests are the only ones that can catch a layout bug, because layout
