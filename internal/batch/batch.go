@@ -263,7 +263,7 @@ type EntryState struct {
 	// Run is the run's ordinal among the runs of Paper, from 1. With Paper it
 	// is the key a resume matches on. A state file written before runs were
 	// recorded has none, and a resume numbers its entries by occurrence.
-	Run int `json:"run,omitempty"`
+	Run int `json:"run,omitzero"`
 	// PaperKey is the offline paper identity, carried so a push files the
 	// record against the paper without resolving it again.
 	PaperKey  string             `json:"paper_key,omitempty"`

@@ -4,7 +4,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -87,7 +87,7 @@ func TestServerEndToEnd(t *testing.T) {
 			Key string `json:"key"`
 		} `json:"papers"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &created); err != nil {
 		t.Fatalf("decode create: %v", err)
 	}
 	resp.Body.Close()
@@ -108,7 +108,7 @@ func TestServerEndToEnd(t *testing.T) {
 		JobID     string `json:"job_id"`
 		ProjectID string `json:"project_id"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &out); err != nil {
 		t.Fatalf("decode start: %v", err)
 	}
 	resp.Body.Close()
@@ -162,7 +162,7 @@ func TestServerEndToEnd(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create the destination: status %d", resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&second); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &second); err != nil {
 		t.Fatalf("decode the destination: %v", err)
 	}
 	resp.Body.Close()
@@ -219,7 +219,7 @@ func readPapers(t *testing.T, base, projectID string) []paperView {
 		t.Fatalf("list papers status = %d, want 200", resp.StatusCode)
 	}
 	var out []paperView
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &out); err != nil {
 		t.Fatalf("decode papers: %v", err)
 	}
 	return out

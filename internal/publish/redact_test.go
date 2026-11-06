@@ -4,7 +4,7 @@
 package publish
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"testing"
 
@@ -70,7 +70,7 @@ func TestThePublishedTranscriptIsSwept(t *testing.T) {
 		{
 			Role: provider.RoleUser, Kind: provider.KindToolResult,
 			Content: `{"access_token":"` + secret + `"}`,
-			Raw:     json.RawMessage(`{"type":"user","text":"` + secret + `"}`),
+			Raw:     jsontext.Value(`{"type":"user","text":"` + secret + `"}`),
 		},
 	}
 	files, err := RenderTranscriptFiles(events)

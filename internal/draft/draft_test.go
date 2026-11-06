@@ -5,7 +5,7 @@ package draft
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +22,7 @@ func TestOpenAICompatibleModel(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotAuth = r.URL.Path, r.Header.Get("authorization")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		_, _ = w.Write([]byte(`{
 			"choices":[{"message":{"content":"  Two papers on trust in automation.  "}}],
 			"usage":{"prompt_tokens":900,"completion_tokens":80,"prompt_tokens_details":{"cached_tokens":400}}

@@ -5,7 +5,8 @@ package publish
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"reflect"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/verdict"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // IdentityFile records the resolved paper identity in a published repository, so
@@ -92,7 +94,7 @@ type FinalizeReport struct {
 // later finalize reads it from here instead of re-resolving. Best-effort at the
 // call site: a failure is returned, and the caller decides whether to proceed.
 func RecordIdentity(ctx context.Context, forge LiveForge, owner, name string, id paper.Identity) error {
-	raw, err := json.MarshalIndent(id, "", "  ")
+	raw, err := json.Marshal(id, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -110,7 +112,7 @@ func RecordedIdentity(ctx context.Context, forge LiveForge, owner, name string) 
 	if err != nil || !present {
 		return paper.Identity{}, false, err
 	}
-	if json.Unmarshal(raw, &id) != nil {
+	if json.Unmarshal(raw, &id, wirejson.Foreign) != nil {
 		return paper.Identity{}, false, nil //nolint:nilerr // an unreadable record is absent, not an error: the caller re-resolves
 	}
 	return id, true, nil
@@ -301,7 +303,7 @@ func withoutFindingsNote(s string) string {
 // materially different, so re-finalizing the same reproduction adds no redundant
 // commit. It reports whether it committed.
 func commitManifestIfChanged(ctx context.Context, forge LiveForge, owner, name string, m Manifest) (bool, error) {
-	raw, err := json.MarshalIndent(m, "", "  ")
+	raw, err := json.Marshal(m, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return false, err
 	}
@@ -309,12 +311,12 @@ func commitManifestIfChanged(ctx context.Context, forge LiveForge, owner, name s
 		return false, err
 	} else if ok {
 		var prev Manifest
-		if json.Unmarshal(existing, &prev) == nil {
+		if json.Unmarshal(existing, &prev, wirejson.Foreign) == nil {
 			// What an earlier finalize recorded about the run is settled with
 			// what this one knows, so a finalize that knows less erases nothing.
 			if merged := mergeRun(prev.Run, m.Run); merged != m.Run {
 				m.Run = merged
-				if raw, err = json.MarshalIndent(m, "", "  "); err != nil {
+				if raw, err = json.Marshal(m, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  ")); err != nil {
 					return false, err
 				}
 			}

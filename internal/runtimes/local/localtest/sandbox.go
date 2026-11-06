@@ -11,7 +11,8 @@ package localtest
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -22,6 +23,8 @@ import (
 	"sync"
 
 	"latere.ai/x/pkg/hostsandbox"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Script describes what the fake driver does with each stage.
@@ -251,7 +254,7 @@ func (s *Sandbox) writeVerdict(entry *stage) error {
 			{"id": 1, "name": "Verdict", "passed": s.gradeFor(entry.round) == "passed", "evidence": "REPRODUCIBILITY.md"},
 		},
 	}
-	body, err := json.MarshalIndent(verdict, "", "  ")
+	body, err := json.Marshal(verdict, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

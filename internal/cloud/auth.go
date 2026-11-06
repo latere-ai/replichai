@@ -12,7 +12,8 @@ package cloud
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,8 @@ import (
 	"golang.org/x/oauth2"
 	authjwt "latere.ai/x/pkg/authkit/jwt"
 	"latere.ai/x/pkg/authkit/oidc"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // DefaultAuthURL is the identity provider the CLI signs in against.
@@ -92,9 +95,9 @@ func (s Store) Save(token Token) error {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
-	//nolint:gosec // this file is the credential store; writing the credential
+	// This file is the credential store; writing the credential
 	// into it is the point, and it is created 0600 below.
-	body, err := json.MarshalIndent(token, "", "  ")
+	body, err := json.Marshal(token, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -113,7 +116,7 @@ func (s Store) Load() (Token, error) {
 		return Token{}, err
 	}
 	var token Token
-	if err := json.Unmarshal(body, &token); err != nil {
+	if err := json.Unmarshal(body, &token, wirejson.Foreign); err != nil {
 		return Token{}, fmt.Errorf("parse %s: %w", s.Path(), err)
 	}
 	if strings.TrimSpace(token.AccessToken) == "" {
@@ -327,7 +330,7 @@ func (s *Session) refreshWithOrg(ctx context.Context, refresh, org string) (*oau
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int    `json:"expires_in"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(response.Body, &body, wirejson.Foreign); err != nil {
 		return nil, err
 	}
 	token := &oauth2.Token{AccessToken: body.AccessToken, RefreshToken: body.RefreshToken}
@@ -409,7 +412,7 @@ func (s *Session) mintActor(ctx context.Context, bearer, audience string, ttl ti
 		ActorToken string `json:"actor_token"`
 		ExpiresIn  int    `json:"expires_in"`
 	}
-	if err := json.Unmarshal(raw, &body); err != nil || body.ActorToken == "" {
+	if err := json.Unmarshal(raw, &body, wirejson.Foreign); err != nil || body.ActorToken == "" {
 		return "", time.Time{}, errors.New("actor-tokens: empty response")
 	}
 	lifetime := time.Duration(body.ExpiresIn) * time.Second
@@ -427,7 +430,7 @@ func refusalOf(raw []byte) string {
 		Error   string `json:"error"`
 		Message string `json:"message"`
 	}
-	if json.Unmarshal(raw, &body) != nil || body.Error == "" {
+	if json.Unmarshal(raw, &body, wirejson.Foreign) != nil || body.Error == "" {
 		return ""
 	}
 	if body.Message == "" {

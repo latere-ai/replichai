@@ -35,8 +35,8 @@ type Manifest struct {
 	Paper          ManifestPaper  `json:"paper"`
 	Reproduction   Reproduction   `json:"reproduction"`
 	Redistribution Redistribution `json:"redistribution"`
-	Findings       *Findings      `json:"findings,omitempty"`
-	Run            *Run           `json:"run,omitempty"`
+	Findings       *Findings      `json:"findings,omitzero"`
+	Run            *Run           `json:"run,omitzero"`
 }
 
 // Run records what one run ran under and how it ended (046). Two runs of one
@@ -59,8 +59,8 @@ type Run struct {
 	// which run of the paper this was and of how many, counted from one. With
 	// the paper they place the run in a study.
 	Project string `json:"project,omitempty"`
-	Run     int    `json:"run,omitempty"`
-	Runs    int    `json:"runs,omitempty"`
+	Run     int    `json:"run,omitzero"`
+	Runs    int    `json:"runs,omitzero"`
 
 	// Runtime is where the session executed, and Session its identifier there.
 	Runtime string `json:"runtime,omitempty"`
@@ -71,7 +71,7 @@ type Run struct {
 	// what was asked for, which may be a preference such as "best".
 	Harness        string    `json:"harness,omitempty"`
 	HarnessVersion string    `json:"harness_version,omitempty"`
-	Model          *RunModel `json:"model,omitempty"`
+	Model          *RunModel `json:"model,omitzero"`
 	RequestedModel string    `json:"requested_model,omitempty"`
 
 	// Sandbox is the boundary the work ran behind. Network is its egress
@@ -86,7 +86,7 @@ type Run struct {
 	Environment    string `json:"environment,omitempty"`
 	Network        string `json:"network,omitempty"`
 	NetworkProfile string `json:"network_profile,omitempty"`
-	NetworkAllowed int    `json:"network_allowed,omitempty"`
+	NetworkAllowed int    `json:"network_allowed,omitzero"`
 	NetworkDigest  string `json:"network_digest,omitempty"`
 
 	// PromptDigest identifies the exact instructions, task and rubric the
@@ -117,12 +117,12 @@ type Run struct {
 
 	// Rounds is how many times the work was graded. More than one means it was
 	// revised after a grade, so its findings are not the first attempt's.
-	Rounds int `json:"rounds,omitempty"`
+	Rounds int `json:"rounds,omitzero"`
 
 	// Tokens is every token the session used, and VendorCostMicroUSD what the
 	// harness reported it cost, where it reports one.
-	Tokens             int64 `json:"tokens,omitempty"`
-	VendorCostMicroUSD int64 `json:"vendor_cost_micro_usd,omitempty"`
+	Tokens             int64 `json:"tokens,omitzero"`
+	VendorCostMicroUSD int64 `json:"vendor_cost_micro_usd,omitzero"`
 
 	// Models lists every model that served a call of the session, in the
 	// order each first served, when that is more than the one Model names: a
@@ -189,7 +189,7 @@ type Reproduction struct {
 	Created      time.Time      `json:"created"`
 	MethodDigest string         `json:"method_digest"`
 	Verdict      provider.Grade `json:"verdict"`
-	Rate         *Rate          `json:"rate,omitempty"`
+	Rate         *Rate          `json:"rate,omitzero"`
 }
 
 // Rate is the decomposed reproducibility rate, present only when it could be

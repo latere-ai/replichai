@@ -4,13 +4,14 @@
 package local
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // VerdictFile is the name of the file the judge writes under grade/ for one
@@ -89,7 +90,7 @@ func ReadVerdict(gradeDir string, round int) (managed.Verdict, error) {
 		return managed.Verdict{}, err
 	}
 	var file JudgeVerdict
-	if err := json.Unmarshal(body, &file); err != nil {
+	if err := json.Unmarshal(body, &file, wirejson.Foreign); err != nil {
 		return managed.Verdict{}, fmt.Errorf("the judge's %s is not valid JSON: %w", VerdictFile(round), err)
 	}
 	return file.Verdict()

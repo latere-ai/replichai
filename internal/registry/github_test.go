@@ -6,7 +6,7 @@ package registry
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -24,9 +24,9 @@ func TestGitHubSourceThroughRegistry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/orgs/open-hai/repos"):
-			_ = json.NewEncoder(w).Encode([]map[string]string{{"name": "repo-a"}})
+			_ = json.MarshalWrite(w, []map[string]string{{"name": "repo-a"}})
 		case r.URL.Path == "/repos/open-hai/repo-a/contents/"+publish.ManifestFile:
-			_ = json.NewEncoder(w).Encode(map[string]any{
+			_ = json.MarshalWrite(w, map[string]any{
 				"content":  base64.StdEncoding.EncodeToString(manifestJSON),
 				"encoding": "base64",
 			})

@@ -39,8 +39,8 @@ type EffortOffer struct {
 	Effort   string `json:"effort"`
 	Model    string `json:"model,omitempty"`
 	Provider string `json:"provider,omitempty"`
-	Input    int64  `json:"input,omitempty"`
-	Output   int64  `json:"output,omitempty"`
+	Input    int64  `json:"input,omitzero"`
+	Output   int64  `json:"output,omitzero"`
 	Err      string `json:"error,omitempty"`
 }
 

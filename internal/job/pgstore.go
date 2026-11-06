@@ -5,7 +5,7 @@ package job
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,6 +17,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // uniqueViolation is the SQLSTATE Postgres returns when an insert violates a
@@ -95,7 +96,7 @@ const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, stat
 // bytes when it fails. Writing those would put a NULL over the row's usage,
 // and because a session's cost is derived from the usage, the charge would
 // silently disappear. The field that can fail to encode is Status.SessionRef,
-// a json.RawMessage holding whatever the caller put there.
+// a jsontext.Value holding whatever the caller put there.
 //
 // The encoding is returned as text rather than as bytes. Whenever parameters
 // travel in the text format, a byte slice is sent as bytea and reaches the
@@ -106,7 +107,7 @@ const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, stat
 // today. Text is what makes the write correct under any exec mode, rather
 // than resting on which mode a DSN happens to carry.
 func encodeStatus(status provider.RunStatus) (string, error) {
-	raw, err := json.Marshal(status)
+	raw, err := json.Marshal(status, wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		return "", fmt.Errorf("encode status: %w", err)
 	}
@@ -120,7 +121,7 @@ func encodeStatus(status provider.RunStatus) (string, error) {
 // phase was entered; and the encoding travels as text so the write does not
 // depend on which exec mode the DSN carries.
 func encodePhaseAt(phaseAt map[Phase]time.Time) (string, error) {
-	raw, err := json.Marshal(phaseAt)
+	raw, err := json.Marshal(phaseAt, wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		return "", fmt.Errorf("encode phase_at: %w", err)
 	}
@@ -204,7 +205,7 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	}
 	// rate_card is jsonb NOT NULL, and the encoding binds as text for the
 	// same reason encodeStatus returns text.
-	encodedCard, err := json.Marshal(card)
+	encodedCard, err := json.Marshal(card, wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		return Job{}, err
 	}

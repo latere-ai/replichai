@@ -4,7 +4,8 @@
 package batch
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"latere.ai/x/pkg/sanitize"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 const stateVersion = 1
@@ -31,7 +33,7 @@ type State struct {
 	// Publishing records that the batch was asked to publish. Without it, an
 	// ordinary local run would be reported as having failed to publish
 	// something it was never asked to publish.
-	Publishing bool         `json:"publishing,omitempty"`
+	Publishing bool         `json:"publishing,omitzero"`
 	StartedAt  time.Time    `json:"started_at"`
 	FinishedAt time.Time    `json:"finished_at,omitzero"`
 	Entries    []EntryState `json:"entries"`
@@ -40,7 +42,7 @@ type State struct {
 // Save writes the state atomically: a batch killed mid-write must not leave a
 // half-written file where its own resume path reads.
 func (s State) Save(path string) error {
-	body, err := json.MarshalIndent(s, "", "  ")
+	body, err := json.Marshal(s, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -58,7 +60,7 @@ func LoadState(path string) (State, error) {
 		return State{}, err
 	}
 	var state State
-	if err := json.Unmarshal(body, &state); err != nil {
+	if err := json.Unmarshal(body, &state, wirejson.Foreign); err != nil {
 		return State{}, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return state, nil

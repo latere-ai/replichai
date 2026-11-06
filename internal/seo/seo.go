@@ -20,12 +20,15 @@ package seo
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"html"
 	"net/http"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // DefaultBase is the base URL used when none is configured. A crawler has no
@@ -162,9 +165,9 @@ func (p Page) Head() string {
 	}
 	meta(&b, "name", "twitter:image", img)
 	if p.JSONLD != nil {
-		// json.Marshal escapes <, > and & by default, so a `</script>` inside a
+		// The document is written with HTML and JS escaping, so a `</script>` inside a
 		// researcher's title cannot close this element.
-		if doc, err := json.Marshal(p.JSONLD); err == nil {
+		if doc, err := json.Marshal(p.JSONLD, jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true), wirejson.Stored); err == nil {
 			b.WriteString(`<script type="application/ld+json">` + string(doc) + "</script>\n    ")
 		}
 	}
@@ -232,8 +235,8 @@ func WriteShell(w http.ResponseWriter, r *http.Request, index []byte) {
 	// from escaping, not from the content type. index is the frontend build
 	// embedded at compile time by internal/spa and never request-supplied.
 	// Every value Page.Head interpolates goes through html.EscapeString, and
-	// the JSON-LD document is written by json.Marshal, which escapes `<`, `>`
-	// and `&` so a title cannot close the script.
+	// the JSON-LD document is written with HTML and JS escaping, so `<`, `>`
+	// and `&` in a title cannot close the script.
 	_, _ = w.Write(Describe(index, page, described)) //nolint:gosec // G705: the shell is build-time bytes and every interpolated value is escaped in Page.Head.
 }
 

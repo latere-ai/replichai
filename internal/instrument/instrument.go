@@ -18,10 +18,13 @@
 package instrument
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // InputPlaceholder marks where the input data path is substituted into an
@@ -217,6 +220,26 @@ var knownCriterion = func() map[Criterion]bool {
 	return m
 }()
 
+// jsonKindName names a JSON value's kind in words, as the reader of a
+// violation would.
+func jsonKindName(k jsontext.Kind) string {
+	switch k {
+	case '"':
+		return "string"
+	case '0':
+		return "number"
+	case 't', 'f':
+		return "boolean"
+	case 'n':
+		return "null"
+	case '{':
+		return "object"
+	case '[':
+		return "array"
+	}
+	return "value"
+}
+
 // Validate reports every way raw departs from the schema in one pass, so a
 // worker's revision receives all of them together. An empty result means the
 // instrument is well-formed. The returned error is non-nil only when raw is
@@ -230,16 +253,16 @@ var knownCriterion = func() map[Criterion]bool {
 // honesty criterion, not here.
 func Validate(raw []byte) ([]Violation, error) {
 	var inst Instrument
-	if err := json.Unmarshal(raw, &inst); err != nil {
+	if err := json.Unmarshal(raw, &inst, wirejson.Foreign); err != nil {
 		// A field of the wrong shape is not a syntax error; reporting it as
 		// one sends the reader looking for a missing comma. A revision can
 		// fix it, so it is reported as a violation naming the field rather
 		// than as a refusal to read the document.
-		var mismatch *json.UnmarshalTypeError
-		if errors.As(err, &mismatch) {
+		var mismatch *json.SemanticError
+		if errors.As(err, &mismatch) && mismatch.GoType != nil {
 			return []Violation{{
-				Field:   mismatch.Field,
-				Message: fmt.Sprintf("is a JSON %s and must be %s", mismatch.Value, mismatch.Type),
+				Field:   strings.ReplaceAll(strings.TrimPrefix(string(mismatch.JSONPointer), "/"), "/", "."),
+				Message: fmt.Sprintf("is a JSON %s and must be %s", jsonKindName(mismatch.JSONKind), mismatch.GoType),
 			}}, nil
 		}
 		return nil, fmt.Errorf("instrument.json is not valid JSON: %w", err)

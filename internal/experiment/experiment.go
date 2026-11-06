@@ -16,12 +16,13 @@ package experiment
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/publish"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Source is where an experiment's input data comes from. Four are named so the
@@ -110,7 +111,7 @@ func ResolveAt(ctx context.Context, f Forge, ref InstrumentRef) (Instrument, err
 		return Instrument{}, fmt.Errorf("%w: %s/%s@%s", ErrNoInstrument, ref.Repo.Owner, ref.Repo.Name, short(ref.Commit))
 	}
 	var decl instrument.Instrument
-	if err := json.Unmarshal(raw, &decl); err != nil {
+	if err := json.Unmarshal(raw, &decl, wirejson.Foreign); err != nil {
 		return Instrument{}, fmt.Errorf("parse %s at %s: %w", InstrumentPath, short(ref.Commit), err)
 	}
 	return Instrument{Ref: ref, Decl: decl}, nil

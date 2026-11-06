@@ -17,7 +17,8 @@ package anthropic
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +32,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2/packages/param"
 
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // modelTier turns a neutral preference into a substring to look for in the
@@ -482,26 +484,26 @@ func (p *Provider) Transcript(ctx context.Context, h provider.RunHandle) ([]prov
 // preserves everything.
 func translateEvent(raw []byte) provider.Event {
 	var head struct {
-		Type          string          `json:"type"`
-		ProcessedAt   time.Time       `json:"processed_at"`
-		OccurredAt    time.Time       `json:"occurred_at"`
-		CreatedAt     time.Time       `json:"created_at"`
-		Content       json.RawMessage `json:"content"`
-		Name          string          `json:"name"`
-		MCPServerName string          `json:"mcp_server_name"`
-		Input         json.RawMessage `json:"input"`
-		IsError       bool            `json:"is_error"`
-		Result        string          `json:"result"`
-		Explanation   string          `json:"explanation"`
+		Type          string         `json:"type"`
+		ProcessedAt   time.Time      `json:"processed_at"`
+		OccurredAt    time.Time      `json:"occurred_at"`
+		CreatedAt     time.Time      `json:"created_at"`
+		Content       jsontext.Value `json:"content"`
+		Name          string         `json:"name"`
+		MCPServerName string         `json:"mcp_server_name"`
+		Input         jsontext.Value `json:"input"`
+		IsError       bool           `json:"is_error"`
+		Result        string         `json:"result"`
+		Explanation   string         `json:"explanation"`
 	}
-	_ = json.Unmarshal(raw, &head)
+	_ = json.Unmarshal(raw, &head, wirejson.Foreign)
 
 	role, kind := splitEventType(head.Type)
 	ev := provider.Event{
 		Role: role,
 		Kind: kind,
 		Time: firstNonZeroTime(head.ProcessedAt, head.OccurredAt, head.CreatedAt),
-		Raw:  append(json.RawMessage(nil), raw...),
+		Raw:  append(jsontext.Value(nil), raw...),
 	}
 	if usage, ok := eventUsage(raw); ok {
 		ev.Usage = &usage
@@ -534,7 +536,7 @@ func eventUsage(raw []byte) (provider.Usage, bool) {
 			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 		} `json:"model_usage"`
 	}
-	if json.Unmarshal(raw, &wrap) != nil || wrap.ModelUsage == nil {
+	if json.Unmarshal(raw, &wrap, wirejson.Foreign) != nil || wrap.ModelUsage == nil {
 		return provider.Usage{}, false
 	}
 	return provider.Usage{
@@ -546,14 +548,14 @@ func eventUsage(raw []byte) (provider.Usage, bool) {
 
 // blocksText concatenates the text of an event's content blocks, or returns the
 // content when it is a plain string. It is best-effort.
-func blocksText(raw json.RawMessage) string {
+func blocksText(raw jsontext.Value) string {
 	if len(raw) == 0 {
 		return ""
 	}
 	var blocks []struct {
 		Text string `json:"text"`
 	}
-	if json.Unmarshal(raw, &blocks) == nil {
+	if json.Unmarshal(raw, &blocks, wirejson.Foreign) == nil {
 		var b strings.Builder
 		for _, bl := range blocks {
 			if bl.Text == "" {
@@ -569,22 +571,22 @@ func blocksText(raw json.RawMessage) string {
 		}
 	}
 	var s string
-	if json.Unmarshal(raw, &s) == nil {
+	if json.Unmarshal(raw, &s, wirejson.Foreign) == nil {
 		return s
 	}
 	return ""
 }
 
 // compactJSON renders a tool input as compact JSON, or "" when empty.
-func compactJSON(raw json.RawMessage) string {
+func compactJSON(raw jsontext.Value) string {
 	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
 		return ""
 	}
-	var buf bytes.Buffer
-	if json.Compact(&buf, raw) != nil {
+	compact := jsontext.Value(bytes.Clone(raw))
+	if compact.Compact(wirejson.Foreign) != nil {
 		return string(raw)
 	}
-	return buf.String()
+	return string(compact)
 }
 
 // splitEventType turns a namespaced type like "agent.message" into a neutral

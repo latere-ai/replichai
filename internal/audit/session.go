@@ -8,7 +8,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/latere-ai/replichai/internal/method"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/verdict"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 const repositoryCredentialRef = "audit-repository"
@@ -433,9 +435,9 @@ func TranscriptPath(destination string) string {
 // temporary file, so a reader never sees half of a snapshot's transcript.
 func writeTranscript(path string, events []managed.Event) error {
 	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
+	encoder := jsontext.NewEncoder(&buffer, wirejson.Stored, wirejson.Embedding)
 	for _, event := range events {
-		if err := encoder.Encode(event); err != nil {
+		if err := json.MarshalEncode(encoder, event); err != nil {
 			return fmt.Errorf("encode the transcript: %w", err)
 		}
 	}

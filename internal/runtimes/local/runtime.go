@@ -8,7 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -23,6 +23,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Retention is what Release does with a session directory. The default is
@@ -954,7 +955,7 @@ func (r *Runtime) save(session *Session, locator Locator, status *managed.Status
 
 func (r *Runtime) reference(session *Session, locator Locator, revision uint64) (managed.SessionRef, error) {
 	locator.Version, locator.Dir = LocatorVersion, session.Dir()
-	encoded, err := json.Marshal(locator)
+	encoded, err := json.Marshal(locator, wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		return managed.SessionRef{}, err
 	}

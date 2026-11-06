@@ -5,7 +5,8 @@ package local
 
 import (
 	"bufio"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/runtimes/local/harness"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // The session directory's layout. workspace/ becomes the repository, tmp/ and
@@ -77,8 +79,8 @@ type StageRecord struct {
 	StartedAt time.Time               `json:"started_at"`
 	Offset    int64                   `json:"offset"`
 	Lines     int                     `json:"lines"`
-	Exit      *int                    `json:"exit,omitempty"`
-	Verdict   *managed.Verdict        `json:"verdict,omitempty"`
+	Exit      *int                    `json:"exit,omitzero"`
+	Verdict   *managed.Verdict        `json:"verdict,omitzero"`
 }
 
 // Session is one run's directory on disk. Every durable fact about a local
@@ -301,13 +303,13 @@ func (s *Session) AppendEvents(events []managed.Event) error {
 	defer func() { _ = file.Close() }()
 	writer := bufio.NewWriter(file)
 	for _, event := range events {
-		line, err := json.Marshal(event)
+		line, err := json.Marshal(event, wirejson.Stored, wirejson.Embedding)
 		if err != nil {
 			return fmt.Errorf("encode event %s: %w", event.ID, err)
 		}
 		if len(line) > maxEventBytes {
 			event.Raw = elidedRaw(len(event.Raw))
-			line, err = json.Marshal(event)
+			line, err = json.Marshal(event, wirejson.Stored, wirejson.Embedding)
 			if err != nil {
 				return fmt.Errorf("encode event %s: %w", event.ID, err)
 			}
@@ -322,11 +324,11 @@ func (s *Session) AppendEvents(events []managed.Event) error {
 // elidedRaw is the marker that replaces an oversize event's Raw. It is a JSON
 // string, because Raw must hold valid JSON, and it names the raw log where the
 // whole value still is.
-func elidedRaw(size int) json.RawMessage {
+func elidedRaw(size int) jsontext.Value {
 	encoded, err := json.Marshal(
-		fmt.Sprintf("[%d bytes elided; the whole value is in this stage's raw log]", size))
+		fmt.Sprintf("[%d bytes elided; the whole value is in this stage's raw log]", size), wirejson.Stored)
 	if err != nil {
-		return json.RawMessage(`""`)
+		return jsontext.Value(`""`)
 	}
 	return encoded
 }
@@ -356,7 +358,7 @@ func (s *Session) Events() ([]managed.Event, error) {
 			continue
 		}
 		var event managed.Event
-		if err := json.Unmarshal(line, &event); err != nil {
+		if err := json.Unmarshal(line, &event, wirejson.Foreign); err != nil {
 			continue
 		}
 		events = append(events, event)
@@ -445,7 +447,7 @@ func containedPath(root, relative string) (string, error) {
 }
 
 func (s *Session) writeJSON(name string, value any) error {
-	body, err := json.MarshalIndent(value, "", "  ")
+	body, err := json.Marshal(value, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -460,7 +462,7 @@ func (s *Session) readJSON(name string, into any) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(body, into)
+	return json.Unmarshal(body, into, wirejson.Foreign)
 }
 
 // initRepository makes the workspace a git repository with an identity already

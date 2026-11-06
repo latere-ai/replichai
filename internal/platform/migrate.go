@@ -5,7 +5,7 @@ package platform
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 
@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/latere-ai/replichai/internal/credit"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // migrations is the platform-policy schema (006k), versioned and applied at
@@ -143,7 +144,7 @@ ALTER TABLE platform_settings ADD COLUMN latere_environments JSONB NOT NULL DEFA
 // priced from afterwards, and an admin's later edit must not be overwritten
 // when the constant changes in a later release.
 func defaultCardJSON() string {
-	raw, err := json.Marshal(credit.DefaultCard())
+	raw, err := json.Marshal(credit.DefaultCard(), wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		panic("marshal default rate card: " + err.Error())
 	}

@@ -5,7 +5,7 @@ package webauth
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -213,7 +213,7 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	// The console reads the number in force before anyone has set one.
 	w := do("GET", "/admin/settings", "", admin)
 	var got platform.Settings
-	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+	if err := json.UnmarshalRead(w.Body, &got); err != nil {
 		t.Fatalf("decode settings: %v", err)
 	}
 	if w.Code != http.StatusOK || got.StartReserve != platform.DefaultStartReserve {
@@ -225,7 +225,7 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("put settings = %d %s", w.Code, w.Body.String())
 	}
-	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+	if err := json.UnmarshalRead(w.Body, &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got.StartReserve != 9*credit.Dollar || got.UpdatedBy != admin.Email {
@@ -239,7 +239,7 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("put drafting settings = %d %s", w.Code, w.Body.String())
 	}
-	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+	if err := json.UnmarshalRead(w.Body, &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got.Draft.Provider != "anthropic" || got.Draft.Model != "claude-haiku-4-5" {
@@ -251,7 +251,7 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 		t.Fatalf("put settings = %d", w.Code)
 	}
 	w = do("GET", "/admin/settings", "", admin)
-	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+	if err := json.UnmarshalRead(w.Body, &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got.Draft.Model != "claude-haiku-4-5" {
@@ -294,7 +294,7 @@ func TestAdminDrivesSettingsAndTopups(t *testing.T) {
 	}
 	w = do("GET", "/admin/access", "", admin)
 	var people []GrantView
-	if err := json.NewDecoder(w.Body).Decode(&people); err != nil {
+	if err := json.UnmarshalRead(w.Body, &people); err != nil {
 		t.Fatalf("decode people: %v", err)
 	}
 	var found *GrantView
@@ -401,7 +401,7 @@ func TestSettingsShowAndKeepTheRowsThePriceListSets(t *testing.T) {
 			t.Fatalf("%s /admin/settings = %d %s", method, w.Code, w.Body.String())
 		}
 		var got settingsView
-		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		if err := json.UnmarshalRead(w.Body, &got); err != nil {
 			t.Fatalf("decode settings: %v", err)
 		}
 		return got

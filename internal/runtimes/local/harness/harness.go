@@ -15,7 +15,8 @@ package harness
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"path"
 	"slices"
@@ -24,6 +25,7 @@ import (
 	"latere.ai/x/pkg/sanitize"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Name identifies one harness, in the spelling an operator uses.
@@ -308,19 +310,19 @@ const MaxContentBytes = 256 << 10
 // issue the same id twice.
 func EventID(stream string, index int) string { return fmt.Sprintf("%s-%d", stream, index) }
 
-// Raw preserves a stream line on an event. A json.RawMessage must hold valid
+// Raw preserves a stream line on an event. A jsontext.Value must hold valid
 // JSON or the event cannot be encoded, so a line that is not JSON, such as a
 // shell error or a stray print from the harness, is stored as a JSON string
 // rather than as bytes that would fail to marshal and make the whole
 // transcript unencodable.
-func Raw(line []byte) json.RawMessage {
+func Raw(line []byte) jsontext.Value {
 	trimmed := bytes.TrimSpace(line)
-	if json.Valid(trimmed) {
-		return json.RawMessage(append([]byte(nil), trimmed...))
+	if jsontext.Value(trimmed).IsValid() {
+		return jsontext.Value(append([]byte(nil), trimmed...))
 	}
-	encoded, err := json.Marshal(string(trimmed))
+	encoded, err := json.Marshal(string(trimmed), wirejson.Text)
 	if err != nil {
-		return json.RawMessage(`""`)
+		return jsontext.Value(`""`)
 	}
 	return encoded
 }

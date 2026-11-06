@@ -4,13 +4,14 @@
 package experiment
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/instrument"
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Caps bound what one pilot may cost, so a synthetic run cannot be silently
@@ -51,7 +52,7 @@ type PilotConfig struct {
 	PromptTemplate string  `json:"prompt_template,omitempty"`
 	OrderingSeeds  []int64 `json:"ordering_seeds,omitempty"` // one per participant
 	// Generated-cohort configuration.
-	Seed int64 `json:"seed,omitempty"`
+	Seed int64 `json:"seed,omitzero"`
 }
 
 // Pilot is what a synthetic run emits. It is a distinct type rather than an
@@ -62,7 +63,7 @@ type Pilot struct {
 	Kind        CohortKind                        `json:"cohort_kind"` // the indelible label
 	Config      PilotConfig                       `json:"config"`
 	Data        CohortData                        `json:"-"` // the bytes; exported separately
-	Calibration *Comparison                       `json:"calibration,omitempty"`
+	Calibration *Comparison                       `json:"calibration,omitzero"`
 	NotCovered  []instrument.ComponentServability `json:"not_covered,omitempty"`
 	Usage       managed.Usage                     `json:"usage"`
 }
@@ -157,5 +158,5 @@ func (p Pilot) Export() ([]byte, error) {
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(p)
+	return json.Marshal(p, wirejson.Stored)
 }

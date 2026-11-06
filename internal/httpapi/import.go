@@ -4,7 +4,7 @@
 package httpapi
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"strconv"
@@ -72,7 +72,7 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 	// so a record past MaxImportBytes fails the decode with the error tooLarge
 	// recognizes.
 	var body importedSession
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		if tooLarge(err) {
 			writeError(w, http.StatusRequestEntityTooLarge, "record_too_large")
 			return
@@ -109,9 +109,15 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 		rt.writeEnqueueError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{
-		"job_id": imported.ID, "project_id": proj.ID, "origin": string(imported.Origin),
-	})
+	writeJSON(w, http.StatusOK, importAnswer{JobID: imported.ID, Origin: string(imported.Origin), ProjectID: proj.ID})
+}
+
+// importAnswer is the answer to an import. Its members are declared in
+// sorted order, so a re-push of the same session answers the same bytes.
+type importAnswer struct {
+	JobID     string `json:"job_id"`
+	Origin    string `json:"origin"`
+	ProjectID string `json:"project_id"`
 }
 
 // statusOf converts the operator's report into the RunStatus every read path

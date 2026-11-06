@@ -4,7 +4,8 @@
 package job
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ import (
 func TestEncodeStatusRejectsMalformedSessionRef(t *testing.T) {
 	status := provider.RunStatus{
 		State:      provider.StateRunning,
-		SessionRef: json.RawMessage(`{"runtime":`),
+		SessionRef: jsontext.Value(`{"runtime":`),
 		Usage:      provider.Usage{InputTokens: 42},
 	}
 

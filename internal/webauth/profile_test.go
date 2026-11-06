@@ -5,7 +5,7 @@ package webauth
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -85,7 +85,7 @@ func TestHTTPUserInfoDecodesDisplayClaims(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer tok" {
 			t.Errorf("authorization = %q", got)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"email":              "ada@example.org",
 			"preferred_username": "ada",
 			"picture":            "https://auth.latere.ai/a.png",
@@ -137,7 +137,7 @@ func TestMeReportsDisplayClaims(t *testing.T) {
 		me(w, r)
 
 		var body map[string]any
-		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		if err := json.UnmarshalRead(w.Body, &body); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
 		if body["tier"] != "none" {
@@ -155,7 +155,7 @@ func TestMeReportsDisplayClaims(t *testing.T) {
 		me(w, r)
 
 		var body map[string]any
-		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		if err := json.UnmarshalRead(w.Body, &body); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
 		if _, ok := body["name"]; ok {

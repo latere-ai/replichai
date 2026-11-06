@@ -5,7 +5,8 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -33,23 +34,23 @@ func benchTranscript(target int) ([]byte, int) {
 		msg := provider.Event{
 			Role: provider.RoleAgent, Kind: provider.KindMessage, Time: at,
 			Content: fmt.Sprintf("Step %d: fetch the evaluation script and run it against the held-out split with seed %d.", i, i),
-			Raw:     json.RawMessage(fmt.Sprintf(`{"type":"agent.message","id":"evt_%04d","processed_at":%q,"content":[{"type":"text","text":"Step %d: fetch the evaluation script and run it against the held-out split with seed %d."}]}`, i, at.Format(time.RFC3339Nano), i, i)),
+			Raw:     jsontext.Value(fmt.Sprintf(`{"type":"agent.message","id":"evt_%04d","processed_at":%q,"content":[{"type":"text","text":"Step %d: fetch the evaluation script and run it against the held-out split with seed %d."}]}`, i, at.Format(time.RFC3339Nano), i, i)),
 		}
 		use := provider.Event{
 			Role: provider.RoleAgent, Kind: provider.KindToolUse, Tool: "bash", Time: at.Add(100 * time.Millisecond),
 			Content: fmt.Sprintf(`{"command":"python eval.py --split %d --seed %d --epochs 40"}`, i%7, i),
-			Raw:     json.RawMessage(fmt.Sprintf(`{"type":"agent.tool_use","id":"toolu_%04d","name":"bash","input":{"command":"python eval.py --split %d --seed %d --epochs 40"}}`, i, i%7, i)),
+			Raw:     jsontext.Value(fmt.Sprintf(`{"type":"agent.tool_use","id":"toolu_%04d","name":"bash","input":{"command":"python eval.py --split %d --seed %d --epochs 40"}}`, i, i%7, i)),
 		}
 		out := strings.Repeat(fmt.Sprintf("epoch %d loss 0.%04d acc 0.8%03d\\n", i, i%9999, i%999), 6)
 		res := provider.Event{
 			Role: provider.RoleUser, Kind: provider.KindToolResult, Time: at.Add(900 * time.Millisecond),
 			Content: strings.ReplaceAll(out, `\n`, "\n"),
-			Raw:     json.RawMessage(fmt.Sprintf(`{"type":"user.tool_result","tool_use_id":"toolu_%04d","content":[{"type":"text","text":"%s"}]}`, i, out)),
+			Raw:     jsontext.Value(fmt.Sprintf(`{"type":"user.tool_result","tool_use_id":"toolu_%04d","content":[{"type":"text","text":"%s"}]}`, i, out)),
 		}
 		req := provider.Event{
 			Role: provider.RoleSystem, Kind: "model_request_end", Time: at.Add(time.Second),
 			Usage: &provider.Usage{InputTokens: 1200 + int64(i), OutputTokens: 300, CachedInputTokens: 900, CacheWriteTokens: 400},
-			Raw:   json.RawMessage(fmt.Sprintf(`{"type":"span.model_request_end","model_usage":{"input_tokens":%d,"output_tokens":300,"cache_read_input_tokens":900,"cache_creation_input_tokens":400}}`, 1200+i)),
+			Raw:   jsontext.Value(fmt.Sprintf(`{"type":"span.model_request_end","model_usage":{"input_tokens":%d,"output_tokens":300,"cache_read_input_tokens":900,"cache_creation_input_tokens":400}}`, 1200+i)),
 		}
 		for _, e := range []provider.Event{msg, use, res, req} {
 			line, err := json.Marshal(e)

@@ -5,7 +5,7 @@ package experiment
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"reflect"
 	"testing"

@@ -5,7 +5,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,7 +22,7 @@ import (
 func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{
+		_ = json.MarshalWrite(w, map[string]any{"data": []map[string]string{
 			{"id": "claude-opus-6-preview"},
 			{"id": "claude-sonnet-5"},
 			{"id": "claude-haiku-4-5"},
@@ -65,7 +65,7 @@ func TestRatesReportsAPreferenceTheCardDoesNotName(t *testing.T) {
 func TestRatesReportsACardThatCoversTheBackend(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{
+		_ = json.MarshalWrite(w, map[string]any{"data": []map[string]string{
 			{"id": "claude-opus-5"}, {"id": "claude-sonnet-5"}, {"id": "claude-haiku-4-5"},
 		}})
 	}))

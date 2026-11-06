@@ -4,7 +4,8 @@
 package job
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"testing"
 	"time"
@@ -45,7 +46,7 @@ var _ pgx.Row = benchRow{}
 func benchRunStatus() provider.RunStatus {
 	return provider.RunStatus{
 		State: provider.RunState(0), RunID: "sesn_01HZX3K9Q2", Runtime: "anthropic-managed",
-		SessionRef: json.RawMessage(`{"runtime":"anthropic-managed","id":"sesn_01HZX3K9Q2","revision":14,"locator_version":1}`),
+		SessionRef: jsontext.Value(`{"runtime":"anthropic-managed","id":"sesn_01HZX3K9Q2","revision":14,"locator_version":1}`),
 		Model:      "claude-opus-5", ModelProvider: "anthropic", BillingVariant: "standard",
 		Usage: provider.Usage{
 			InputTokens: 182000, OutputTokens: 41000, CachedInputTokens: 910000,

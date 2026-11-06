@@ -5,7 +5,7 @@ package anthropic
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +35,7 @@ func newTestProvider(t *testing.T, handler http.HandlerFunc) *Provider {
 func writeJSON(t *testing.T, w http.ResponseWriter, body any) {
 	t.Helper()
 	w.Header().Set("content-type", "application/json")
-	if err := json.NewEncoder(w).Encode(body); err != nil {
+	if err := json.MarshalWrite(w, body); err != nil {
 		t.Fatalf("encoding response: %v", err)
 	}
 }
@@ -245,7 +245,7 @@ func TestUngradedStartSendsTaskWithoutOutcome(t *testing.T) {
 			var body struct {
 				Events []map[string]any `json:"events"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				t.Fatalf("decode kickoff: %v", err)
 			}
 			kickoff = body.Events[0]
@@ -507,7 +507,7 @@ func TestCloseRunInterruptsBeforeArchiving(t *testing.T) {
 					Type string `json:"type"`
 				} `json:"events"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				t.Fatalf("decode interrupt: %v", err)
 			}
 			if len(body.Events) != 1 || body.Events[0].Type != "user.interrupt" {

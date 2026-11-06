@@ -5,7 +5,7 @@ package github
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"strings"
 	"testing"
@@ -19,22 +19,22 @@ func TestCommitFilesAtomic(t *testing.T) {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/open-hai/x/contents/"):
 			w.WriteHeader(http.StatusNotFound) // absent, so the files are changed
 		case r.URL.Path == "/repos/open-hai/x":
-			_ = json.NewEncoder(w).Encode(map[string]string{"default_branch": "main"})
+			_ = json.MarshalWrite(w, map[string]string{"default_branch": "main"})
 		case r.URL.Path == "/repos/open-hai/x/git/ref/heads/main":
-			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": "basecommit"}})
+			_ = json.MarshalWrite(w, map[string]any{"object": map[string]string{"sha": "basecommit"}})
 		case strings.HasPrefix(r.URL.Path, "/repos/open-hai/x/git/commits/") && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]any{"tree": map[string]string{"sha": "basetree"}})
+			_ = json.MarshalWrite(w, map[string]any{"tree": map[string]string{"sha": "basetree"}})
 		case r.URL.Path == "/repos/open-hai/x/git/blobs":
 			blobs++
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "blob"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "blob"})
 		case r.URL.Path == "/repos/open-hai/x/git/trees":
-			_ = json.NewDecoder(r.Body).Decode(&treeBody)
+			_ = json.UnmarshalRead(r.Body, &treeBody)
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "newtree"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "newtree"})
 		case r.URL.Path == "/repos/open-hai/x/git/commits" && r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "newcommit"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "newcommit"})
 		case r.URL.Path == "/repos/open-hai/x/git/refs/heads/main":
 			w.WriteHeader(http.StatusOK)
 		default:
@@ -63,7 +63,7 @@ func TestCommitFilesIdempotent(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/open-hai/x/contents/") {
 			// The remote blob sha matches, so nothing changed.
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": gitBlobSHA(content), "encoding": "none"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": gitBlobSHA(content), "encoding": "none"})
 			return
 		}
 		t.Errorf("no git-data write should happen when unchanged: %s %s", r.Method, r.URL.Path)
@@ -92,24 +92,24 @@ func TestCommitFilesRetriesAStaleParent(t *testing.T) {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/open-hai/x/contents/"):
 			w.WriteHeader(http.StatusNotFound)
 		case r.URL.Path == "/repos/open-hai/x":
-			_ = json.NewEncoder(w).Encode(map[string]string{"default_branch": "main"})
+			_ = json.MarshalWrite(w, map[string]string{"default_branch": "main"})
 		case r.URL.Path == "/repos/open-hai/x/git/ref/heads/main":
-			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": head}})
+			_ = json.MarshalWrite(w, map[string]any{"object": map[string]string{"sha": head}})
 		case strings.HasPrefix(r.URL.Path, "/repos/open-hai/x/git/commits/") && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]any{"tree": map[string]string{"sha": "tree-of-" + head}})
+			_ = json.MarshalWrite(w, map[string]any{"tree": map[string]string{"sha": "tree-of-" + head}})
 		case r.URL.Path == "/repos/open-hai/x/git/blobs":
 			blobs++
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "blob"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "blob"})
 		case r.URL.Path == "/repos/open-hai/x/git/trees":
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "newtree"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "newtree"})
 		case r.URL.Path == "/repos/open-hai/x/git/commits" && r.Method == http.MethodPost:
 			var body map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.UnmarshalRead(r.Body, &body)
 			parents = append(parents, body["parents"])
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "newcommit"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "newcommit"})
 		case r.URL.Path == "/repos/open-hai/x/git/refs/heads/main":
 			patches++
 			if patches == 1 {
@@ -155,20 +155,20 @@ func TestCommitFilesGivesUpOnAPersistentlyMovingBranch(t *testing.T) {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/open-hai/x/contents/"):
 			w.WriteHeader(http.StatusNotFound)
 		case r.URL.Path == "/repos/open-hai/x":
-			_ = json.NewEncoder(w).Encode(map[string]string{"default_branch": "main"})
+			_ = json.MarshalWrite(w, map[string]string{"default_branch": "main"})
 		case r.URL.Path == "/repos/open-hai/x/git/ref/heads/main":
-			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": "basecommit"}})
+			_ = json.MarshalWrite(w, map[string]any{"object": map[string]string{"sha": "basecommit"}})
 		case strings.HasPrefix(r.URL.Path, "/repos/open-hai/x/git/commits/") && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]any{"tree": map[string]string{"sha": "basetree"}})
+			_ = json.MarshalWrite(w, map[string]any{"tree": map[string]string{"sha": "basetree"}})
 		case r.URL.Path == "/repos/open-hai/x/git/blobs":
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "blob"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "blob"})
 		case r.URL.Path == "/repos/open-hai/x/git/trees":
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "newtree"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "newtree"})
 		case r.URL.Path == "/repos/open-hai/x/git/commits" && r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"sha": "newcommit"})
+			_ = json.MarshalWrite(w, map[string]string{"sha": "newcommit"})
 		case r.URL.Path == "/repos/open-hai/x/git/refs/heads/main":
 			patches++
 			w.WriteHeader(http.StatusUnprocessableEntity)

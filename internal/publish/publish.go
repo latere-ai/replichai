@@ -5,13 +5,16 @@ package publish
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // ManifestFile is the manifest's name at the repository root.
@@ -90,7 +93,7 @@ func Publish(ctx context.Context, plan Plan, forge Forge, opts ...Option) (Publi
 func assemble(plan Plan, now time.Time) ([]File, error) {
 	m := plan.Manifest
 	m.Reproduction.Created = now.UTC()
-	manifestJSON, err := json.MarshalIndent(m, "", "  ")
+	manifestJSON, err := json.Marshal(m, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return nil, fmt.Errorf("marshaling the manifest: %w", err)
 	}

@@ -5,7 +5,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -95,9 +95,9 @@ func TestTheLatereRuntimeActsWithTheReplichaiLogin(t *testing.T) {
 		var asked struct {
 			Audience string `json:"audience"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&asked)
+		_ = json.UnmarshalRead(r.Body, &asked)
 		audiences = append(audiences, asked.Audience)
-		_ = json.NewEncoder(w).Encode(map[string]any{"actor_token": "platform-actor", "expires_in": 300})
+		_ = json.MarshalWrite(w, map[string]any{"actor_token": "platform-actor", "expires_in": 300})
 	}))
 	defer auth.Close()
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

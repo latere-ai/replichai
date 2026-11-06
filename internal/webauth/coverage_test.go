@@ -5,7 +5,7 @@ package webauth
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -181,7 +181,7 @@ func TestDiscover(t *testing.T) {
 			if r.URL.Path != "/.well-known/openid-configuration" {
 				t.Errorf("discovery path = %q", r.URL.Path)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{
+			_ = json.MarshalWrite(w, map[string]string{
 				"userinfo_endpoint":    "https://issuer.example/userinfo",
 				"end_session_endpoint": "https://issuer.example/logout",
 			})

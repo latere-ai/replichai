@@ -11,7 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Config wires a legacy managed runtime: the canonical name it answers to, the
@@ -137,7 +138,7 @@ type locator struct {
 	// SharedWorkspace marks a workspace other sessions use, which releasing
 	// this one leaves in place. A locator written before it existed names a
 	// workspace of the session's own.
-	SharedWorkspace bool             `json:"shared_workspace,omitempty"`
+	SharedWorkspace bool             `json:"shared_workspace,omitzero"`
 	WorkerID        string           `json:"worker_id"`
 	WorkerVersion   int              `json:"worker_version"`
 	Model           managed.ModelRef `json:"model"`
@@ -219,7 +220,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 		WorkspaceID: workspace.ID, SharedWorkspace: workspace.Shared, WorkerID: worker.ID, WorkerVersion: worker.Revision,
 		Model: managed.ModelRef{Provider: r.config.ModelProvider, ID: modelID}, Graded: spec.Evaluation != nil,
 		FileIDs: append([]string(nil), handle.Files...),
-	})
+	}, wirejson.Stored)
 	if err != nil {
 		// The session is already running on the backend, so a locator that
 		// cannot be returned leaves unreachable state. It is released rather

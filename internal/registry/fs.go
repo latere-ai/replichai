@@ -5,12 +5,13 @@ package registry
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io/fs"
 	"os"
 
 	"github.com/latere-ai/replichai/internal/publish"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // FSSource reads reproductions from a directory where each subdirectory is a
@@ -92,7 +93,7 @@ func (s *FSSource) Manifest(_ context.Context, repo string) (publish.Manifest, e
 		return publish.Manifest{}, err
 	}
 	var m publish.Manifest
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if err := json.Unmarshal(raw, &m, wirejson.Foreign); err != nil {
 		return publish.Manifest{}, fmt.Errorf("malformed manifest in %s: %w", repo, err)
 	}
 	return m, nil

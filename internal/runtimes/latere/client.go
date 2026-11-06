@@ -6,7 +6,7 @@ package latere
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +19,7 @@ import (
 	"latere.ai/x/pkg/retryafter"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // maxResponseBytes bounds what one call to the platform may return, so a
@@ -70,7 +71,7 @@ func (c *client) call(ctx context.Context, bearer, method, path string, body any
 	if out == nil || len(raw) == 0 {
 		return nil
 	}
-	if err := json.Unmarshal(raw, out); err != nil {
+	if err := json.Unmarshal(raw, out, wirejson.Foreign); err != nil {
 		return fmt.Errorf("decode %s %s: %w", method, redactPath(path), err)
 	}
 	return nil
@@ -80,7 +81,7 @@ func (c *client) call(ctx context.Context, bearer, method, path string, body any
 func (c *client) send(ctx context.Context, bearer, method, path string, body any, idempotencyKey string) ([]byte, error) {
 	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
+		encoded, err := json.Marshal(body, wirejson.Text)
 		if err != nil {
 			return nil, fmt.Errorf("encode %s %s: %w", method, redactPath(path), err)
 		}
@@ -126,7 +127,7 @@ func (c *client) send(ctx context.Context, bearer, method, path string, body any
 			} `json:"details"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(raw, &envelope) == nil {
+	if json.Unmarshal(raw, &envelope, wirejson.Foreign) == nil {
 		failure.Code, failure.Message = envelope.Error.Code, envelope.Error.Message
 		if response.StatusCode == http.StatusUnauthorized {
 			failure.Detail = envelope.Error.Details.Detail

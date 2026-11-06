@@ -4,7 +4,7 @@
 package publish
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +17,7 @@ func TestRenderTranscriptFiles(t *testing.T) {
 	events := []provider.Event{
 		{Role: "agent", Kind: "message", Content: "Reproducing the inner loop.",
 			Time: time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC),
-			Raw:  json.RawMessage(`{"type":"agent.message","content":[{"type":"text","text":"Reproducing the inner loop."}]}`)},
+			Raw:  jsontext.Value(`{"type":"agent.message","content":[{"type":"text","text":"Reproducing the inner loop."}]}`)},
 		{Role: "agent", Kind: "tool_use", Tool: "bash", Content: `{"command":"ls -la"}`},
 		{Role: "agent", Kind: "tool_result", Content: "main.py\ndata/"},
 		{Role: "agent", Kind: "thinking"},
@@ -96,7 +96,7 @@ func TestRenderTranscriptChunksAndInterlinks(t *testing.T) {
 func TestRenderTranscriptRejectsAnUnencodableEvent(t *testing.T) {
 	_, err := RenderTranscriptFiles([]provider.Event{
 		{Kind: "message", Content: "valid"},
-		{Kind: "message", Content: "invalid raw", Raw: json.RawMessage(`{`)},
+		{Kind: "message", Content: "invalid raw", Raw: jsontext.Value(`{`)},
 	})
 	if err == nil || !strings.Contains(err.Error(), "event 2") {
 		t.Fatalf("RenderTranscriptFiles error = %v, want event index", err)

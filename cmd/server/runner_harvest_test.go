@@ -5,7 +5,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func harvestSetup(t *testing.T, files map[string][]byte) (*engineRunner, job.Job
 	t.Helper()
 	forge := newRunnerForge([]string{"README.md", publish.IdentityFile})
 	id := paper.Identity{Key: "arxiv:2603.01795", Title: "A Paper", Slug: "a-paper", Scheme: paper.SchemeArXiv}
-	raw, err := json.MarshalIndent(id, "", "  ")
+	raw, err := json.Marshal(id, json.Deterministic(true), jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}

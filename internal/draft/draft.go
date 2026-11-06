@@ -20,7 +20,7 @@ package draft
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +31,7 @@ import (
 	xotel "latere.ai/x/pkg/otel"
 
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Errors this package returns.
@@ -193,7 +194,7 @@ func (m *anthropicModel) Complete(ctx context.Context, r Request) (Result, error
 		MaxTokens: r.MaxTokens,
 		System:    r.System,
 		Messages:  []chatMessage{{Role: "user", Content: r.Prompt}},
-	})
+	}, wirejson.Outbound)
 	if err != nil {
 		return Result{}, fmt.Errorf("drafting model: encoding the request: %w", err)
 	}
@@ -260,7 +261,7 @@ func (m *openAIModel) Complete(ctx context.Context, r Request) (Result, error) {
 		Model:     m.model,
 		MaxTokens: r.MaxTokens,
 		Messages:  msgs,
-	})
+	}, wirejson.Outbound)
 	if err != nil {
 		return Result{}, fmt.Errorf("drafting model: encoding the request: %w", err)
 	}
@@ -341,7 +342,7 @@ func roundtrip(client *http.Client, req *http.Request, out any) error {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("drafting model: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
-	if err := json.Unmarshal(body, out); err != nil {
+	if err := json.Unmarshal(body, out, wirejson.Foreign); err != nil {
 		return fmt.Errorf("drafting model: decoding the answer: %w", err)
 	}
 	return nil

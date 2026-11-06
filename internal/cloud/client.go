@@ -6,7 +6,7 @@ package cloud
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +15,8 @@ import (
 	"time"
 
 	xotel "latere.ai/x/pkg/otel"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // httpClient is this package's outbound client. Its transport is
@@ -188,7 +190,7 @@ func (c *Client) ImportSession(ctx context.Context, projectID string, record Imp
 func (c *Client) call(ctx context.Context, method, path string, body, into any) error {
 	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
+		encoded, err := json.Marshal(body, wirejson.Text)
 		if err != nil {
 			return err
 		}
@@ -219,7 +221,7 @@ func (c *Client) call(ctx context.Context, method, path string, body, into any) 
 	if into == nil {
 		return nil
 	}
-	return json.Unmarshal(payload, into)
+	return json.Unmarshal(payload, into, wirejson.Foreign)
 }
 
 // Repository is the repository the platform allocated for a paper, and the

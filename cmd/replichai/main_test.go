@@ -6,7 +6,8 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"io"
@@ -52,7 +53,7 @@ func TestReadRecordedIdentity(t *testing.T) {
 
 	present := github.New("t", github.WithBaseURL(httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, _ *http.Request) {
-			_ = json.NewEncoder(w).Encode(map[string]string{
+			_ = json.MarshalWrite(w, map[string]string{
 				"content": base64.StdEncoding.EncodeToString(raw), "encoding": "base64",
 			})
 		})).URL))
@@ -150,7 +151,7 @@ func TestVerifyInstrument(t *testing.T) {
 					w.WriteHeader(status)
 					return
 				}
-				_ = json.NewEncoder(w).Encode(map[string]string{
+				_ = json.MarshalWrite(w, map[string]string{
 					"content": base64.StdEncoding.EncodeToString(body), "encoding": "base64",
 				})
 			})).URL))
@@ -636,7 +637,7 @@ func TestFlagsAreAcceptedAfterThePaperReference(t *testing.T) {
 func TestDetachedSessionReferenceRoundTripsOpaqueLocator(t *testing.T) {
 	ref := managed.SessionRef{
 		Runtime: "memory", ID: "session-1", Revision: 2, LocatorVersion: 1,
-		Locator: json.RawMessage(`{"future":{"container":"c-1"}}`),
+		Locator: jsontext.Value(`{"future":{"container":"c-1"}}`),
 	}
 	encoded, err := encodeSessionRef(ref)
 	if err != nil {

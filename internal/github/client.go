@@ -17,7 +17,7 @@ import (
 	"crypto/sha1" //nolint:gosec // G505: git object ids are sha1 by protocol; this hash is compared against GitHub's own blob sha and nothing else.
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +27,8 @@ import (
 	"time"
 
 	xotel "latere.ai/x/pkg/otel"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // DefaultBaseURL is GitHub's REST API root.
@@ -411,7 +413,7 @@ func (c *Client) SetPrivate(ctx context.Context, owner, name string) error {
 func (c *Client) do(ctx context.Context, method, path string, body, out any) (int, error) {
 	var reader io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, wirejson.Outbound)
 		if err != nil {
 			return 0, err
 		}
@@ -441,7 +443,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (in
 		return resp.StatusCode, failure(method, path, resp, payload, c.now())
 	}
 	if out != nil && len(payload) > 0 {
-		if err := json.Unmarshal(payload, out); err != nil {
+		if err := json.Unmarshal(payload, out, wirejson.Foreign); err != nil {
 			return resp.StatusCode, fmt.Errorf("decoding %s %s: %w", method, path, err)
 		}
 	}
