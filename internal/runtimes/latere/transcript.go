@@ -4,10 +4,11 @@
 package latere
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // CostMeter is the extra meter a Latere session's usage carries its cost in:
@@ -101,11 +102,11 @@ func normalize(events []wireEvent) []managed.Event {
 		switch event.Type {
 		case "user.message":
 			var message wireUserMessage
-			_ = json.Unmarshal(event.Payload, &message)
+			_ = json.Unmarshal(event.Payload, &message, wirejson.Foreign)
 			normalized.Role, normalized.Kind, normalized.Content = managed.RoleUser, managed.KindMessage, text(message.Content)
 		case "agent.message":
 			var message wireAgentMessage
-			_ = json.Unmarshal(event.Payload, &message)
+			_ = json.Unmarshal(event.Payload, &message, wirejson.Foreign)
 			normalized.Role, normalized.Kind = managed.RoleAgent, managed.KindMessage
 			normalized.Content = text(message.Message.Blocks)
 			if normalized.Content == "" && thinking(message.Message.Blocks) != "" {
@@ -113,20 +114,20 @@ func normalize(events []wireEvent) []managed.Event {
 			}
 		case "agent.tool_use":
 			var use wireToolUse
-			_ = json.Unmarshal(event.Payload, &use)
+			_ = json.Unmarshal(event.Payload, &use, wirejson.Foreign)
 			normalized.Role, normalized.Kind, normalized.Tool, normalized.Content = managed.RoleAgent, managed.KindToolUse, use.Name, string(use.Input)
 		case "tool.result":
 			var result wireToolResult
-			_ = json.Unmarshal(event.Payload, &result)
+			_ = json.Unmarshal(event.Payload, &result, wirejson.Foreign)
 			normalized.Role, normalized.Kind, normalized.Content = managed.RoleSystem, managed.KindToolResult, text(result.Content)
 			normalized.Usage = toolCost(result)
 		case "model.request":
 			var request wireModelRequest
-			_ = json.Unmarshal(event.Payload, &request)
+			_ = json.Unmarshal(event.Payload, &request, wirejson.Foreign)
 			normalized.Usage = callUsage(request)
 		case "session.error":
 			var failure wireSessionError
-			_ = json.Unmarshal(event.Payload, &failure)
+			_ = json.Unmarshal(event.Payload, &failure, wirejson.Foreign)
 			normalized.Content = strings.TrimSpace(failure.Code + ": " + failure.Message)
 		}
 		if event.Thread != "" {

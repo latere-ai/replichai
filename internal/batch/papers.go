@@ -5,7 +5,8 @@ package batch
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -17,6 +18,7 @@ import (
 	"latere.ai/x/pkg/atomicfile"
 
 	"github.com/latere-ai/replichai/internal/paper"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // PapersFile records the inputs a study handed its runs (046): the copy of each
@@ -365,7 +367,7 @@ func loadPapers(root string) (papersRecord, error) {
 	if err != nil {
 		return record, err
 	}
-	if err := json.Unmarshal(body, &record); err != nil {
+	if err := json.Unmarshal(body, &record, wirejson.Foreign); err != nil {
 		return record, fmt.Errorf("read %s: %w", PapersFile, err)
 	}
 	if record.Papers == nil {
@@ -375,7 +377,7 @@ func loadPapers(root string) (papersRecord, error) {
 }
 
 func savePapers(root string, record papersRecord) error {
-	body, err := json.MarshalIndent(record, "", "  ")
+	body, err := json.Marshal(record, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

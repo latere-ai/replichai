@@ -5,7 +5,7 @@ package publish
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +13,7 @@ import (
 	"latere.ai/x/pkg/sanitize"
 
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Transcript file names and layout committed into a reproduction repository.
@@ -40,7 +41,7 @@ func RenderTranscriptFiles(events []provider.Event) (map[string][]byte, error) {
 
 	var j bytes.Buffer
 	for i, e := range events {
-		line, err := json.Marshal(e)
+		line, err := json.Marshal(e, wirejson.Stored, wirejson.Embedding)
 		if err != nil {
 			return nil, fmt.Errorf("encode transcript event %d: %w", i+1, err)
 		}

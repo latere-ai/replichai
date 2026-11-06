@@ -9,12 +9,15 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Session is what the login writes into the session cookie: the identity claims
@@ -62,8 +65,8 @@ var ErrExpired = errors.New("sealed value has expired")
 // to the browser and the server judges age itself. A value taken from a browser
 // and replayed later is refused however long it is kept.
 type envelope struct {
-	Expires int64           `json:"exp"`
-	Value   json.RawMessage `json:"v"`
+	Expires int64          `json:"exp"`
+	Value   jsontext.Value `json:"v"`
 }
 
 // NewCodec builds a codec from a 32-byte key given as 64 hex characters, such
@@ -86,7 +89,7 @@ func NewCodec(hexKey string) (*Codec, error) {
 
 // Seal encrypts v (JSON) into a URL-safe base64 string: nonce ‖ ciphertext.
 func (c *Codec) Seal(v any, ttl time.Duration) (string, error) {
-	value, err := json.Marshal(v)
+	value, err := json.Marshal(v, wirejson.Text)
 	if err != nil {
 		return "", err
 	}

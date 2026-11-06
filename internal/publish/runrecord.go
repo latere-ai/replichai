@@ -6,12 +6,13 @@ package publish
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // EnvironmentFile is the record a local session keeps of what it ran on: the
@@ -109,7 +110,7 @@ func (r Run) WithOutputs(outputs map[string][]byte) (Run, error) {
 			Allowed []string `json:"allowed"`
 		} `json:"network"`
 	}
-	if err := json.Unmarshal(raw, &environment); err != nil {
+	if err := json.Unmarshal(raw, &environment, wirejson.Foreign); err != nil {
 		return r, fmt.Errorf("read %s: %w", EnvironmentFile, err)
 	}
 	r.Harness, r.HarnessVersion = environment.Harness.Name, environment.Harness.Version

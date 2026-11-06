@@ -5,7 +5,7 @@ package managed
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"path"
 	"strings"
 	"time"
@@ -53,7 +53,7 @@ func (m ModelRef) Valid() bool {
 // on the tier being re-resolved later.
 type ModelSelector struct {
 	Preference string    `json:"preference,omitempty"`
-	Exact      *ModelRef `json:"exact,omitempty"`
+	Exact      *ModelRef `json:"exact,omitzero"`
 }
 
 // Model is one model a runtime offers, with the preference tiers it can serve.
@@ -134,9 +134,9 @@ type RepositoryResource struct {
 // an input the caller asked for.
 type Resource struct {
 	Kind       ResourceKind        `json:"kind"`
-	Attachment *AttachmentResource `json:"attachment,omitempty"`
-	Repository *RepositoryResource `json:"repository,omitempty"`
-	Input      *InputResource      `json:"input,omitempty"`
+	Attachment *AttachmentResource `json:"attachment,omitzero"`
+	Repository *RepositoryResource `json:"repository,omitzero"`
+	Input      *InputResource      `json:"input,omitzero"`
 }
 
 // InputResource is a file the session reads and may not change, such as the
@@ -182,7 +182,7 @@ type SessionSpec struct {
 	Task         string          `json:"task"`
 	Sandbox      SandboxSpec     `json:"sandbox"`
 	Resources    []Resource      `json:"resources,omitempty"`
-	Evaluation   *EvaluationSpec `json:"evaluation,omitempty"`
+	Evaluation   *EvaluationSpec `json:"evaluation,omitzero"`
 }
 
 // SessionRef is the durable handle to a session: everything needed to poll it,
@@ -193,11 +193,11 @@ type SessionSpec struct {
 // byte-for-byte but never parses; LocatorVersion versions its shape, and it is
 // size-limited and forbidden from carrying credentials or user content.
 type SessionRef struct {
-	Runtime        RuntimeName     `json:"runtime"`
-	ID             string          `json:"id"`
-	Revision       uint64          `json:"revision"`
-	LocatorVersion int             `json:"locator_version"`
-	Locator        json.RawMessage `json:"locator,omitempty"`
+	Runtime        RuntimeName    `json:"runtime"`
+	ID             string         `json:"id"`
+	Revision       uint64         `json:"revision"`
+	LocatorVersion int            `json:"locator_version"`
+	Locator        jsontext.Value `json:"locator,omitzero"`
 }
 
 // SameIdentity reports whether two references name the same session, ignoring
@@ -326,7 +326,7 @@ type Status struct {
 	Usage          Usage          `json:"usage"`
 	TerminalReason TerminalReason `json:"terminal_reason,omitempty"`
 	Error          string         `json:"error,omitempty"`
-	Verdict        *Verdict       `json:"verdict,omitempty"`
+	Verdict        *Verdict       `json:"verdict,omitzero"`
 }
 
 // Passed reports whether the session finished with a passing verdict. A session
@@ -340,14 +340,14 @@ func (s Status) Passed() bool { return s.Verdict != nil && s.Verdict.Passed() }
 // intact, because the transcript is the evidence for a run and must not be
 // reduced to this package's vocabulary.
 type Event struct {
-	ID      string          `json:"id"`
-	Role    Role            `json:"role"`
-	Kind    EventKind       `json:"kind"`
-	Tool    string          `json:"tool,omitempty"`
-	Content string          `json:"content,omitempty"`
-	Time    time.Time       `json:"time"`
-	Usage   *Usage          `json:"usage,omitempty"`
-	Raw     json.RawMessage `json:"raw,omitempty"`
+	ID      string         `json:"id"`
+	Role    Role           `json:"role"`
+	Kind    EventKind      `json:"kind"`
+	Tool    string         `json:"tool,omitempty"`
+	Content string         `json:"content,omitempty"`
+	Time    time.Time      `json:"time"`
+	Usage   *Usage         `json:"usage,omitzero"`
+	Raw     jsontext.Value `json:"raw,omitzero"`
 }
 
 // Artifact is one file the session produced. Path is a clean, relative,

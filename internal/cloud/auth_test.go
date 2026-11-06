@@ -6,7 +6,7 @@ package cloud
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -90,7 +90,7 @@ func (p *provider) serve(t *testing.T) *httptest.Server {
 		var asked struct {
 			Audience string `json:"audience"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&asked)
+		_ = json.UnmarshalRead(r.Body, &asked)
 		p.audiences = append(p.audiences, asked.Audience)
 		if p.refuseActor {
 			w.WriteHeader(http.StatusBadRequest)
@@ -106,7 +106,7 @@ func (p *provider) serve(t *testing.T) *httptest.Server {
 
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(value)
+	_ = json.MarshalWrite(w, value)
 }
 
 func session(t *testing.T, p *provider) *Session {

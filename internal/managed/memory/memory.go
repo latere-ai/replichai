@@ -7,7 +7,7 @@ package memory
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Name identifies this runtime in a session reference.
@@ -234,7 +235,7 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	id := fmt.Sprintf("session-%d", r.store.next)
 	locator, err := json.Marshal(struct {
 		Store string `json:"store"`
-	}{Store: "memory"})
+	}{Store: "memory"}, wirejson.Stored)
 	if err != nil {
 		return managed.SessionRef{}, fmt.Errorf("encode locator: %w", err)
 	}

@@ -4,13 +4,14 @@
 package credit
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Rates price one model's tokens, in micro-USD per million tokens. That is the
@@ -34,10 +35,10 @@ type Rates struct {
 	CacheRead    int64       `json:"cache_read"`
 	CacheWrite5m int64       `json:"cache_write_5m"`
 	CacheWrite1h int64       `json:"cache_write_1h"`
-	CacheWrite   int64       `json:"cache_write,omitempty"`
+	CacheWrite   int64       `json:"cache_write,omitzero"`
 	Extra        []MeterRate `json:"extra,omitempty"`
 	// Free is explicit; an all-zero row without it is treated as invalid.
-	Free bool `json:"free,omitempty"`
+	Free bool `json:"free,omitzero"`
 }
 
 // MeterRate prices one non-token meter, such as a container second or a hosted
@@ -58,7 +59,7 @@ type MeterRate struct {
 func (r *Rates) UnmarshalJSON(data []byte) error {
 	type wire Rates
 	var decoded wire
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	if err := json.Unmarshal(data, &decoded, wirejson.Foreign); err != nil {
 		return err
 	}
 	*r = Rates(decoded)

@@ -4,7 +4,8 @@
 package local
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -37,17 +38,17 @@ func benchEvents(target int) []managed.Event {
 		batch := []managed.Event{
 			{
 				ID: fmt.Sprintf("worker-0-%d", 4*i), Role: managed.RoleAgent, Kind: "message", Content: text, Time: at,
-				Raw: json.RawMessage(fmt.Sprintf(`{"type":"assistant","message":{"id":"msg_%d","role":"assistant","model":"claude-opus-5","content":[{"type":"text","text":%q}]}}`, i, text)),
+				Raw: jsontext.Value(fmt.Sprintf(`{"type":"assistant","message":{"id":"msg_%d","role":"assistant","model":"claude-opus-5","content":[{"type":"text","text":%q}]}}`, i, text)),
 			},
 			{
 				ID: fmt.Sprintf("worker-0-%d", 4*i+1), Role: managed.RoleAgent, Kind: "tool_use", Tool: "Bash",
 				Content: fmt.Sprintf(`{"command":"python eval.py --split %d --seed %d"}`, i%7, i), Time: at.Add(100 * time.Millisecond),
-				Raw: json.RawMessage(fmt.Sprintf(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_%d","name":"Bash","input":{"command":"python eval.py --split %d --seed %d"}}]}}`, i, i%7, i)),
+				Raw: jsontext.Value(fmt.Sprintf(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_%d","name":"Bash","input":{"command":"python eval.py --split %d --seed %d"}}]}}`, i, i%7, i)),
 			},
 			{
 				ID: fmt.Sprintf("worker-0-%d", 4*i+2), Role: managed.RoleUser, Kind: "tool_result", Time: at.Add(time.Second),
 				Content: strings.ReplaceAll(result, `\n`, "\n"),
-				Raw:     json.RawMessage(fmt.Sprintf(`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_%d","content":"%s"}]}}`, i, result)),
+				Raw:     jsontext.Value(fmt.Sprintf(`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_%d","content":"%s"}]}}`, i, result)),
 			},
 			{
 				ID: fmt.Sprintf("worker-0-%d", 4*i+3), Role: managed.RoleSystem, Kind: "usage", Time: at.Add(1500 * time.Millisecond),
@@ -55,7 +56,7 @@ func benchEvents(target int) []managed.Event {
 					Model:      managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5"},
 					InputFresh: 1200, InputCached: 900, CacheWrite5m: 700, CacheWrite1h: 200, Output: 300,
 				},
-				Raw: json.RawMessage(`{"type":"result","subtype":"success","is_error":false,"num_turns":2,"total_cost_usd":0.4211}`),
+				Raw: jsontext.Value(`{"type":"result","subtype":"success","is_error":false,"num_turns":2,"total_cost_usd":0.4211}`),
 			},
 		}
 		for _, e := range batch {
@@ -149,7 +150,7 @@ func BenchmarkJSONSessionStatusRoundTrip(b *testing.B) {
 	}
 	started := time.Date(2026, 10, 14, 9, 30, 0, 0, time.UTC)
 	status := managed.Status{
-		Ref:       managed.SessionRef{Runtime: Name, ID: s.id, Revision: 7, LocatorVersion: 1, Locator: json.RawMessage(`{"version":1,"dir":"/var/lib/replichai/sessions/7f3a91c2","stages":[{"name":"worker-0","offset":4096}]}`)},
+		Ref:       managed.SessionRef{Runtime: Name, ID: s.id, Revision: 7, LocatorVersion: 1, Locator: jsontext.Value(`{"version":1,"dir":"/var/lib/replichai/sessions/7f3a91c2","stages":[{"name":"worker-0","offset":4096}]}`)},
 		Model:     managed.ModelRef{Provider: "anthropic", ID: "claude-opus-5"},
 		StartedAt: started, FinishedAt: started.Add(41 * time.Minute),
 		Usage: managed.Usage{

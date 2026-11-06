@@ -5,7 +5,8 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"testing"
 
@@ -109,7 +110,7 @@ func TestNoCreditsStillLetsSomebodyUseTheApp(t *testing.T) {
 // countProjects counts the projects in a list response.
 func countProjects(t *testing.T, body []byte) int {
 	t.Helper()
-	var list []json.RawMessage
+	var list []jsontext.Value
 	if err := json.Unmarshal(body, &list); err != nil {
 		t.Fatalf("decode project list: %v (%s)", err, body)
 	}

@@ -8,7 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"net/http"
@@ -51,7 +51,7 @@ func (f *fakeApp) handler() http.Handler {
 		}
 		f.mints++
 		var scope map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&scope)
+		_ = json.UnmarshalRead(r.Body, &scope)
 		f.scopes = append(f.scopes, scope)
 		f.lastMinted = "ghs_inst_" + itoa(f.mints)
 		writeJSON(w, http.StatusCreated, map[string]any{
@@ -200,7 +200,7 @@ func isJWT(b string) bool {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_ = json.MarshalWrite(w, v)
 }
 
 func itoa(n int) string {

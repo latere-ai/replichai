@@ -4,7 +4,8 @@
 package job
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"testing"
 
@@ -16,7 +17,7 @@ import (
 func TestManagedSessionRefRoundTripsAndLegacyNeverUsesCurrentDefault(t *testing.T) {
 	ref := managed.SessionRef{
 		Runtime: "runtime-a", ID: "session-1", Revision: 3, LocatorVersion: 2,
-		Locator: json.RawMessage(`{"future":{"container":"c-1"}}`),
+		Locator: jsontext.Value(`{"future":{"container":"c-1"}}`),
 	}
 	raw, _ := json.Marshal(ref)
 	job := Job{Status: provider.RunStatus{RunID: ref.ID, Runtime: string(ref.Runtime), SessionRef: raw}}
@@ -54,9 +55,9 @@ func TestJobCostUsesPersistedModelProvider(t *testing.T) {
 
 func TestManagedSessionRefRejectsMalformedAndMismatchedPersistence(t *testing.T) {
 	for _, status := range []provider.RunStatus{
-		{SessionRef: json.RawMessage(`not-json`)},
-		{SessionRef: json.RawMessage(`{}`)},
-		{Runtime: "runtime-b", SessionRef: json.RawMessage(`{"runtime":"runtime-a","id":"id","revision":1,"locator_version":1}`)},
+		{SessionRef: jsontext.Value(`not-json`)},
+		{SessionRef: jsontext.Value(`{}`)},
+		{Runtime: "runtime-b", SessionRef: jsontext.Value(`{"runtime":"runtime-a","id":"id","revision":1,"locator_version":1}`)},
 	} {
 		if _, _, err := (Job{Status: status}).ManagedSessionRef(); err == nil {
 			t.Fatalf("invalid status accepted: %+v", status)

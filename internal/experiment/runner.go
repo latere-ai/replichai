@@ -6,13 +6,14 @@ package experiment
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Defaults for a runner. The instrument is mounted read-only, the dataset lands
@@ -202,7 +203,7 @@ func (r *Runner) collect(ctx context.Context, e *Experiment, evidence managed.Ev
 		return Outcome{}, fmt.Errorf("fetch %s: %w", ResultFile, err)
 	}
 	var rep runReport
-	if err := json.Unmarshal(raw, &rep); err != nil {
+	if err := json.Unmarshal(raw, &rep, wirejson.Foreign); err != nil {
 		out.Stderr = fmt.Sprintf("%s was not valid JSON: %v", ResultFile, err)
 		return out, nil
 	}

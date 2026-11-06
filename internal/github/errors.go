@@ -4,7 +4,7 @@
 package github
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +14,8 @@ import (
 
 	"latere.ai/x/pkg/retryafter"
 	"latere.ai/x/pkg/sanitize"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // APIError is GitHub's answer to a request it refused: the status, the message
@@ -98,7 +100,7 @@ func failure(method, path string, resp *http.Response, payload []byte, now time.
 			Field   string `json:"field"`
 		} `json:"errors"`
 	}
-	if json.Unmarshal(payload, &body) == nil && body.Message != "" {
+	if json.Unmarshal(payload, &body, wirejson.Foreign) == nil && body.Message != "" {
 		e.Message = body.Message
 		for _, detail := range body.Errors {
 			switch {

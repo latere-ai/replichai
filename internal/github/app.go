@@ -12,7 +12,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -21,6 +21,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // This file makes github.Client authenticate as a GitHub App instead of with a
@@ -188,7 +190,7 @@ func (a *appAuth) signJWT() (string, error) {
 func (a *appAuth) doJWT(ctx context.Context, jwt, method, path string, body, out any) (int, error) {
 	var reader io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, wirejson.Outbound)
 		if err != nil {
 			return 0, err
 		}
@@ -214,7 +216,7 @@ func (a *appAuth) doJWT(ctx context.Context, jwt, method, path string, body, out
 		return resp.StatusCode, failure(method, path, resp, payload, time.Now())
 	}
 	if out != nil {
-		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		if err := json.UnmarshalRead(resp.Body, out, wirejson.Foreign); err != nil {
 			return resp.StatusCode, fmt.Errorf("decoding %s %s: %w", method, path, err)
 		}
 	}
@@ -246,11 +248,11 @@ func parseRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 // joinB64 encodes a JWT's header and claims as the base64url "header.claims"
 // signing input.
 func joinB64(header, claims map[string]any) (string, error) {
-	h, err := json.Marshal(header)
+	h, err := json.Marshal(header, wirejson.Stored)
 	if err != nil {
 		return "", err
 	}
-	c, err := json.Marshal(claims)
+	c, err := json.Marshal(claims, wirejson.Stored)
 	if err != nil {
 		return "", err
 	}

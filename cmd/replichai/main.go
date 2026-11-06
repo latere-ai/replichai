@@ -15,7 +15,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -39,6 +39,7 @@ import (
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/publish"
 	"github.com/latere-ai/replichai/internal/registry"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 func main() {
@@ -297,7 +298,7 @@ func (p *publisher) recordIdentity(ctx context.Context, stderr *os.File) {
 }
 
 func encodeSessionRef(ref managed.SessionRef) (string, error) {
-	raw, err := json.Marshal(ref)
+	raw, err := json.Marshal(ref, wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		return "", err
 	}
@@ -310,7 +311,7 @@ func decodeSessionRef(encoded string) (managed.SessionRef, error) {
 		return managed.SessionRef{}, fmt.Errorf("decode --session-ref: %w", err)
 	}
 	var ref managed.SessionRef
-	if err := json.Unmarshal(raw, &ref); err != nil {
+	if err := json.Unmarshal(raw, &ref, wirejson.Foreign); err != nil {
 		return managed.SessionRef{}, fmt.Errorf("decode --session-ref: %w", err)
 	}
 	if err := ref.Validate(managed.DefaultMaxLocatorBytes); err != nil {

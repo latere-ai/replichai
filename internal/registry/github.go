@@ -5,11 +5,12 @@ package registry
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/publish"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // GitHubSource reads reproductions from a GitHub organization through
@@ -45,7 +46,7 @@ func (s *GitHubSource) Manifest(ctx context.Context, repo string) (publish.Manif
 		return publish.Manifest{}, fmt.Errorf("%s has no %s: %w", repo, publish.ManifestFile, ErrNoManifest)
 	}
 	var m publish.Manifest
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if err := json.Unmarshal(raw, &m, wirejson.Foreign); err != nil {
 		return publish.Manifest{}, fmt.Errorf("malformed manifest in %s: %w", repo, err)
 	}
 	return m, nil

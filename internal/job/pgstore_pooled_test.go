@@ -5,7 +5,7 @@ package job
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"os"
 	"strings"
 	"testing"
@@ -115,7 +115,7 @@ func TestPGStoreWritesJSONColumnsUnderExecMode(t *testing.T) {
 		Phase: PhaseDone,
 		Status: provider.RunStatus{
 			State:      provider.StateDone,
-			SessionRef: json.RawMessage(`{"runtime":"local"}`),
+			SessionRef: jsontext.Value(`{"runtime":"local"}`),
 			Usage:      provider.Usage{OutputTokens: 7},
 		},
 		RepoName:   "owner/repro",

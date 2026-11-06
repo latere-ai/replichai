@@ -5,7 +5,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -27,6 +27,7 @@ import (
 	"github.com/latere-ai/replichai/internal/registry"
 	"github.com/latere-ai/replichai/internal/runtimes"
 	"github.com/latere-ai/replichai/internal/runtimes/builtin"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // engineRunner drives a job's phases with the real engine. It belongs to the
@@ -386,7 +387,7 @@ type jobObserver interface {
 
 func (e *engineRunner) managedHooks(j *job.Job, observe func(provider.RunStatus)) managed.Hooks {
 	persistRef := func(ctx context.Context, ref managed.SessionRef) error {
-		raw, err := json.Marshal(ref)
+		raw, err := json.Marshal(ref, wirejson.Stored, wirejson.Embedding)
 		if err != nil {
 			return err
 		}
@@ -472,8 +473,7 @@ func providerStatus(status managed.Status) provider.RunStatus {
 	// observed reference immediately before that hook runs: SessionRef.Validate
 	// unmarshals the locator, so the one field here that could refuse to encode
 	// is already proven to be valid JSON.
-	//nolint:errchkjson // status.Ref.Locator is validated by managed.Controller before the Status hook fires, so Marshal cannot fail.
-	raw, _ := json.Marshal(status.Ref)
+	raw, _ := json.Marshal(status.Ref, wirejson.Stored, wirejson.Embedding)
 	result := provider.RunStatus{
 		State: providerState(status.State), RunID: status.Ref.ID, Runtime: string(status.Ref.Runtime), SessionRef: raw,
 		Model: status.Model.ID, ModelProvider: status.Model.Provider, BillingVariant: status.Model.BillingVariant,

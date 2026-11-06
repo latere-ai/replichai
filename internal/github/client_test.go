@@ -6,7 +6,7 @@ package github
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -35,9 +35,9 @@ func TestCreateRepoPrivate(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Error("missing bearer token")
 		}
-		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.UnmarshalRead(r.Body, &got)
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(Repo{Name: "x-a3f9", HTMLURL: "https://github.com/open-hai/x-a3f9", Private: true})
+		_ = json.MarshalWrite(w, Repo{Name: "x-a3f9", HTMLURL: "https://github.com/open-hai/x-a3f9", Private: true})
 	})
 
 	repo, err := c.CreateRepo(context.Background(), "open-hai", "x-a3f9", true)
@@ -236,7 +236,7 @@ func TestGetFileContentReadsALargeFileThroughTheRawPath(t *testing.T) {
 			_, _ = w.Write(want)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"content": "", "encoding": "none", "sha": "big", "size": 2_000_000})
+		_ = json.MarshalWrite(w, map[string]any{"content": "", "encoding": "none", "sha": "big", "size": 2_000_000})
 	})
 	got, ok, err := c.GetFileContent(context.Background(), "open-hai", "x", "verdict.json")
 	if err != nil || !ok {
@@ -255,10 +255,10 @@ func TestListReposPaginates(t *testing.T) {
 	}
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") == "1" {
-			_ = json.NewEncoder(w).Encode(full)
+			_ = json.MarshalWrite(w, full)
 			return
 		}
-		_ = json.NewEncoder(w).Encode([]map[string]string{{"name": "last-one"}})
+		_ = json.MarshalWrite(w, []map[string]string{{"name": "last-one"}})
 	})
 	names, err := c.ListRepos(context.Background(), "open-hai")
 	if err != nil {
@@ -274,7 +274,7 @@ func TestGetRepoRecoversAfterExists(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/repos/open-hai/x-a3f9" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		_ = json.NewEncoder(w).Encode(Repo{Name: "x-a3f9", Private: true})
+		_ = json.MarshalWrite(w, Repo{Name: "x-a3f9", Private: true})
 	})
 	repo, err := c.GetRepo(context.Background(), "open-hai", "x-a3f9")
 	if err != nil {
@@ -377,7 +377,7 @@ func TestSetPublicSendsPrivateFalse(t *testing.T) {
 		if r.Method != http.MethodPatch || r.URL.Path != "/repos/open-hai/x" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.UnmarshalRead(r.Body, &got)
 		w.WriteHeader(http.StatusOK)
 	})
 	if err := c.SetPublic(context.Background(), "open-hai", "x"); err != nil {
@@ -394,7 +394,7 @@ func TestSetPrivateSendsPrivateTrue(t *testing.T) {
 		if r.Method != http.MethodPatch || r.URL.Path != "/repos/open-hai/x" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.UnmarshalRead(r.Body, &got)
 		w.WriteHeader(http.StatusOK)
 	})
 	if err := c.SetPrivate(context.Background(), "open-hai", "x"); err != nil {
@@ -448,7 +448,7 @@ func TestPutFileNewAndUpdate(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		w.WriteHeader(http.StatusCreated)
 	})
 	if err := c.PutFile(context.Background(), "open-hai", "x", "replication.json", "add manifest", []byte(`{"schema":1}`)); err != nil {
@@ -467,7 +467,7 @@ func TestPutFileNewAndUpdate(t *testing.T) {
 			_, _ = w.Write([]byte(`{"sha":"blobsha"}`))
 			return
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		w.WriteHeader(http.StatusOK)
 	})
 	if err := c2.PutFile(context.Background(), "open-hai", "x", "replication.json", "update", []byte(`{}`)); err != nil {
@@ -487,7 +487,7 @@ func TestGetFileContentDecodesBase64(t *testing.T) {
 		// GitHub wraps base64 at 60 columns; the newline checks that it is
 		// stripped.
 		enc := base64.StdEncoding.EncodeToString(want)
-		_ = json.NewEncoder(w).Encode(map[string]any{"content": enc[:4] + "\n" + enc[4:], "encoding": "base64"})
+		_ = json.MarshalWrite(w, map[string]any{"content": enc[:4] + "\n" + enc[4:], "encoding": "base64"})
 	})
 	got, ok, err := c.GetFileContent(context.Background(), "open-hai", "x", "replication.json")
 	if err != nil || !ok {
@@ -542,14 +542,14 @@ func TestFileUnchangedComparesBlobSHA(t *testing.T) {
 	sha := gitBlobSHA(content)
 
 	same := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{"sha": sha, "encoding": "none"})
+		_ = json.MarshalWrite(w, map[string]string{"sha": sha, "encoding": "none"})
 	})
 	if ok, err := same.FileUnchanged(context.Background(), "open-hai", "x", "transcript.jsonl", content); err != nil || !ok {
 		t.Errorf("matching blob sha should be unchanged: ok=%v err=%v", ok, err)
 	}
 
 	diff := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{"sha": "deadbeef", "encoding": "none"})
+		_ = json.MarshalWrite(w, map[string]string{"sha": "deadbeef", "encoding": "none"})
 	})
 	if ok, err := diff.FileUnchanged(context.Background(), "open-hai", "x", "transcript.jsonl", content); err != nil || ok {
 		t.Errorf("a different sha should be changed: ok=%v err=%v", ok, err)

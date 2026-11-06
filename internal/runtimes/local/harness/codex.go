@@ -4,12 +4,14 @@
 package harness
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // CodexHarness drives the Codex CLI. It speaks the OpenAI dialects, so it is
@@ -215,11 +217,11 @@ func (CodexHarness) Needs(machine Machine) Needs {
 // item. Older builds wrapped the same content in a msg field, so both are
 // accepted. Anything else becomes a raw event rather than being interpreted.
 type codexLine struct {
-	Type     string          `json:"type"`
-	ThreadID string          `json:"thread_id"`
-	Msg      json.RawMessage `json:"msg"`
-	Item     json.RawMessage `json:"item"`
-	Usage    *codexTokens    `json:"usage"`
+	Type     string         `json:"type"`
+	ThreadID string         `json:"thread_id"`
+	Msg      jsontext.Value `json:"msg"`
+	Item     jsontext.Value `json:"item"`
+	Usage    *codexTokens   `json:"usage"`
 }
 
 // codexItem is one action the agent took.
@@ -281,7 +283,7 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 	}
 
 	var envelope codexLine
-	if err := json.Unmarshal(line, &envelope); err != nil {
+	if err := json.Unmarshal(line, &envelope, wirejson.Foreign); err != nil {
 		//nolint:nilerr // an unparsable line is evidence, not a failure
 		return raw(), nil
 	}
@@ -306,7 +308,7 @@ func (CodexHarness) Decode(stream string, index int, line []byte) ([]managed.Eve
 		return raw(), nil
 	}
 	var item codexItem
-	if err := json.Unmarshal(body, &item); err != nil {
+	if err := json.Unmarshal(body, &item, wirejson.Foreign); err != nil {
 		//nolint:nilerr // an unparsable line is evidence, not a failure
 		return raw(), nil
 	}

@@ -8,13 +8,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"html"
 	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // ErrNoFullText reports a reference whose full text could not be fetched from
@@ -153,7 +155,7 @@ func openAccessCopies(ctx context.Context, fetcher Fetcher, doi string, tried *[
 		Best      *location  `json:"best_oa_location"`
 		Locations []location `json:"locations"`
 	}
-	if err := json.Unmarshal(body, &work); err != nil {
+	if err := json.Unmarshal(body, &work, wirejson.Foreign); err != nil {
 		*tried = append(*tried, fmt.Sprintf("OpenAlex: %v", err))
 		return nil
 	}

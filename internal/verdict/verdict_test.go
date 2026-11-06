@@ -4,7 +4,7 @@
 package verdict_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"reflect"
 	"strings"
 	"testing"
@@ -443,5 +443,23 @@ func TestAnEmptyListStaysAList(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `"decisions":[]`) {
 		t.Fatalf("an empty decisions list was served as %s", out)
+	}
+}
+
+// verdict.json is written by an agent, not by this program. A file with a
+// repeated key, a mixed-case header key or a stray byte that is not UTF-8 is
+// still read: the last repeated key wins and the bad byte becomes U+FFFD.
+func TestParseReadsAnAgentWrittenFileLeniently(t *testing.T) {
+	b := raw(t, good())
+	text := string(b)
+	text = strings.Replace(text, `"summary":`, "\"summary\":\"first\",\"summary\":", 1)
+	text = strings.Replace(text, `"schema":`, `"Schema":`, 1)
+	text = strings.Replace(text, `"summary":"`, "\"summary\":\"bad\xff", 2)
+	v, _, err := verdict.Parse([]byte(text))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !strings.Contains(v.Summary, "�") || strings.Contains(v.Summary, "first") {
+		t.Errorf("summary = %q; want the last repeated key, with the bad byte replaced", v.Summary)
 	}
 }

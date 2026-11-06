@@ -5,7 +5,8 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -1549,7 +1550,9 @@ func TestSessionArtifactsAndReproduction(t *testing.T) {
 
 	// File tree, sorted.
 	w := do(t, h, "GET", "/jobs/"+j.ID+"/artifacts", "", "me")
-	var tree struct{ Files []string }
+	var tree struct {
+		Files []string `json:"files"`
+	}
 	_ = json.Unmarshal(w.Body.Bytes(), &tree)
 	if w.Code != http.StatusOK || len(tree.Files) != 3 || tree.Files[0] != "README.md" {
 		t.Fatalf("artifacts = %d %+v; want sorted 3 files", w.Code, tree.Files)
@@ -1912,7 +1915,7 @@ func TestSessionFindingsLegacyMismatch(t *testing.T) {
 		t.Fatalf("legacy findings = %d %s", w.Code, w.Body.String())
 	}
 	var body struct {
-		Boundary []map[string]json.RawMessage `json:"boundary"`
+		Boundary []map[string]jsontext.Value `json:"boundary"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)

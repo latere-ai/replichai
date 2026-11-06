@@ -11,7 +11,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -29,6 +29,7 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/seo"
+	"github.com/latere-ai/replichai/internal/wirejson"
 
 	"latere.ai/x/pay"
 )
@@ -530,7 +531,7 @@ func (rt *Router) guard(h http.HandlerFunc) http.HandlerFunc {
 // mid-body, which reaches the client as a truncated success it cannot
 // distinguish from a real one.
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, wirejson.Embedding)
 	if err != nil {
 		// writeError's own body is a map[string]string, which always encodes, so
 		// this cannot recurse.
@@ -575,7 +576,7 @@ func WriteError(w http.ResponseWriter, status int, code string) {
 // mustJSON marshals v, returning an empty object on a marshal error, which is
 // not expected to occur, so a stream write never panics.
 func mustJSON(v any) []byte {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, wirejson.Embedding)
 	if err != nil {
 		return []byte("{}")
 	}

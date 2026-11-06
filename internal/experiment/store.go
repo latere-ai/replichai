@@ -38,7 +38,7 @@ type Experiment struct {
 	Source    Source        `json:"source"`
 	DatasetID string        `json:"dataset_id,omitempty"` // empty for released
 	Command   string        `json:"command"`              // resolved from analysis
-	Outcome   *Outcome      `json:"outcome,omitempty"`    // nil until the run completes
+	Outcome   *Outcome      `json:"outcome,omitzero"`     // nil until the run completes
 	// CohortKind is the synthetic label (007c), CohortGenerated or
 	// CohortModel, and is empty for a non-synthetic source. It is required on
 	// every synthetic experiment and becomes a NOT NULL column when 006b

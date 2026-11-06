@@ -5,7 +5,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/platform"
 	"github.com/latere-ai/replichai/internal/runtimes"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // runRates checks, before a deployment spends money, that the rate card names
@@ -64,9 +66,7 @@ func runRates(ctx context.Context, args []string, stdout, stderr *os.File) error
 	report := card.Covers(ctx, runtimes.ModelResolver{Runtime: runtime})
 
 	if *asJSON {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]any{"source": source, "checks": report})
+		return json.MarshalEncode(jsontext.NewEncoder(stdout, jsontext.WithIndent("  ")), map[string]any{"source": source, "checks": report}, wirejson.Stored)
 	}
 	printRates(stdout, source, report)
 	return nil

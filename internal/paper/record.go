@@ -4,10 +4,12 @@
 package paper
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Record holds the citation data for a paper: its authors, venue, and date. It
@@ -26,7 +28,7 @@ type Record struct {
 	// arXiv journal reference, or a page's citation_journal_title.
 	Venue string `json:"venue,omitempty"`
 	// Year the paper was published, or 0 when no source declares one.
-	Year int `json:"year,omitempty"`
+	Year int `json:"year,omitzero"`
 	// Volume, Issue and Pages are kept as the source spells them, including a
 	// page range such as "1128-1145", because a citation reproduces them rather
 	// than parsing them.
@@ -82,7 +84,7 @@ type crossrefRecord struct {
 // a resolution that already has its key.
 func parseCrossref(body []byte) (string, Record) {
 	var w crossrefRecord
-	if json.Unmarshal(body, &w) != nil {
+	if json.Unmarshal(body, &w, wirejson.Foreign) != nil {
 		return "", Record{}
 	}
 	m := w.Message

@@ -5,7 +5,8 @@ package experiment
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,6 +16,8 @@ import (
 	"strings"
 
 	"latere.ai/x/pkg/relpath"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // FSStore persists rows as JSON files under a directory, so an experiment
@@ -312,7 +315,7 @@ func (a *FSArtifactStore) DeletePrefix(_ context.Context, prefix string) error {
 }
 
 func writeJSON(root *os.Root, name string, v any) error {
-	raw, err := json.MarshalIndent(v, "", "  ")
+	raw, err := json.Marshal(v, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -330,5 +333,5 @@ func readJSON(root *os.Root, name string, v any) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path.Base(name), err)
 	}
-	return json.Unmarshal(raw, v)
+	return json.Unmarshal(raw, v, wirejson.Foreign)
 }

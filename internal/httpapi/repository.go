@@ -5,7 +5,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"time"
@@ -63,7 +63,7 @@ func (rt *Router) provisionRepository(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		PaperKey string `json:"paper_key"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil { // The body is bounded at registration to MaxProvisionBytes.
+	if err := json.UnmarshalRead(r.Body, &body); err != nil { // The body is bounded at registration to MaxProvisionBytes.
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}

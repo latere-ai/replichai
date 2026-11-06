@@ -8,7 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -21,6 +21,7 @@ import (
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/httpapi"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // sessionTTL is how long a signed-in session lasts before a re-login.
@@ -405,7 +406,7 @@ func randToken() string {
 // cannot be encoded answers 500 rather than a 200 with an empty payload the
 // caller cannot distinguish from success.
 func writeJSON(w http.ResponseWriter, v any) {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, wirejson.Text)
 	if err != nil {
 		slog.Error("writeJSON: encoding a response", "type", fmt.Sprintf("%T", v), "error", err)
 		http.Error(w, "response encoding failed", http.StatusInternalServerError)

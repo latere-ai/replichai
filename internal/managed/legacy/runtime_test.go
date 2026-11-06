@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"strings"
 	"testing"
@@ -156,7 +156,7 @@ func TestModelsCapabilitiesValidationAndReferenceErrors(t *testing.T) {
 		t.Fatal("locator version accepted")
 	}
 	bad = ref
-	bad.Locator = json.RawMessage(`{}`)
+	bad.Locator = jsontext.Value(`{}`)
 	if _, err := runtime.ListArtifacts(context.Background(), bad); err == nil {
 		t.Fatal("empty locator accepted")
 	}
@@ -359,7 +359,7 @@ func TestOperationFailuresAndInvalidHandlesSurface(t *testing.T) {
 		}
 	}
 	bad := ref
-	bad.Locator = json.RawMessage(`not-json`)
+	bad.Locator = jsontext.Value(`not-json`)
 	for index, call := range []func() error{
 		func() error {
 			_, err := runtime.FetchArtifact(context.Background(), bad, managed.Artifact{})

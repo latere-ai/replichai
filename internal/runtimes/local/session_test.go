@@ -5,7 +5,8 @@ package local
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"os/exec"
@@ -371,7 +372,7 @@ func TestTheLocatorSurvivesTheContractsSecretCheck(t *testing.T) {
 func TestRedactEventRemovesConfiguredCredentials(t *testing.T) {
 	event := managed.Event{
 		Content: "export ANTHROPIC_API_KEY=sk-secret-123 && run",
-		Raw:     json.RawMessage(`"the key sk-secret-123 leaked here"`),
+		Raw:     jsontext.Value(`"the key sk-secret-123 leaked here"`),
 	}
 	redactEvent(&event, []string{"", "sk-secret-123"})
 	if strings.Contains(event.Content, "sk-secret-123") {
@@ -508,5 +509,27 @@ func TestAnInstalledDependencyTreeCannotBeCommitted(t *testing.T) {
 	}
 	if !slices.Contains(listed, "src.py") || !slices.Contains(listed, "node_modules.txt") {
 		t.Errorf("the reproduction's own files were not staged: %v", listed)
+	}
+}
+
+// A transcript is one event per line. A raw value written over several lines
+// is compacted, so the line count is the event count.
+func TestAppendKeepsAMultiLineRawOnOneLine(t *testing.T) {
+	session := newSession(t)
+	event := managed.Event{ID: "worker-0", Role: managed.RoleAgent, Kind: managed.KindMessage,
+		Content: "x\xffy", Raw: jsontext.Value("{\n  \"a\": 1,\n  \"a\": 2\n}")}
+	if err := session.AppendEvents([]managed.Event{event}); err != nil {
+		t.Fatalf("AppendEvents: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(session.Dir(), eventsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(body), "\n"); got != 1 {
+		t.Fatalf("transcript has %d lines, want 1: %q", got, body)
+	}
+	events, err := session.Events()
+	if err != nil || len(events) != 1 || events[0].Content != "x�y" {
+		t.Fatalf("Events = %+v, %v", events, err)
 	}
 }

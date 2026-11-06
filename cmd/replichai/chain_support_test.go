@@ -6,7 +6,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -67,7 +67,7 @@ func startApp(t *testing.T, provisioner httpapi.RepoProvisioner) (app, auth *htt
 			http.NotFound(w, r)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"actor_token": "actor." + chainSub})
+		_ = json.MarshalWrite(w, map[string]string{"actor_token": "actor." + chainSub})
 	}))
 	t.Cleanup(auth.Close)
 	return app, auth
@@ -282,7 +282,7 @@ func fakeForgeRecording(t *testing.T, files map[string][]byte) (*httptest.Server
 			var body struct {
 				Content string `json:"content"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if err := json.UnmarshalRead(r.Body, &body); err == nil {
 				if raw, err := base64.StdEncoding.DecodeString(body.Content); err == nil {
 					repo, file, _ := strings.Cut(strings.TrimPrefix(path, "/repos/"), "/contents/")
 					writes.mu.Lock()
@@ -305,7 +305,7 @@ func fakeForgeRecording(t *testing.T, files map[string][]byte) (*httptest.Server
 					Path string `json:"path"`
 				} `json:"tree"`
 			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.UnmarshalRead(r.Body, &body)
 			for _, entry := range body.Tree {
 				committed = append(committed, entry.Path)
 			}
@@ -330,7 +330,7 @@ func fakeForgeRecording(t *testing.T, files map[string][]byte) (*httptest.Server
 func write(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+	_ = json.MarshalWrite(w, body)
 }
 
 // bareRepoProvisioner is the platform's half of 045l with the forge replaced by

@@ -5,13 +5,15 @@ package webauth
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	xotel "latere.ai/x/pkg/otel"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // httpClient is this package's outbound client. Its transport is instrumented,
@@ -57,7 +59,7 @@ func Discover(ctx context.Context, issuer string) (Endpoints, error) {
 		UserInfoEndpoint   string `json:"userinfo_endpoint"`
 		EndSessionEndpoint string `json:"end_session_endpoint"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &doc, wirejson.Foreign); err != nil {
 		return Endpoints{}, err
 	}
 	if doc.UserInfoEndpoint == "" {
@@ -93,7 +95,7 @@ func HTTPUserInfo(endpoint string) UserInfoFunc {
 			PreferredUsername string `json:"preferred_username"`
 			Picture           string `json:"picture"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&claims); err != nil {
+		if err := json.UnmarshalRead(resp.Body, &claims, wirejson.Foreign); err != nil {
 			return Profile{}, err
 		}
 		name := strings.TrimSpace(claims.Name)

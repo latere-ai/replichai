@@ -4,7 +4,7 @@
 package httpapi
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"log/slog"
@@ -34,7 +34,7 @@ func (rt *Router) startCheckout(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		AmountMicro int64 `json:"amount_micro"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}

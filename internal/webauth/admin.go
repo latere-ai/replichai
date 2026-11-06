@@ -5,7 +5,7 @@ package webauth
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -243,7 +243,7 @@ func (a *Admin) Settings(w http.ResponseWriter, r *http.Request) {
 type settingsView struct {
 	platform.Settings
 	KnownLatereEnvironments []string                `json:"known_latere_environments,omitempty"`
-	PriceList               *platform.PriceListView `json:"price_list,omitempty"`
+	PriceList               *platform.PriceListView `json:"price_list,omitzero"`
 }
 
 func (a *Admin) view(s platform.Settings) settingsView {
@@ -283,7 +283,7 @@ func (a *Admin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		// the list in force.
 		LatereEnvironments *[]string `json:"latere_environments"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -384,7 +384,7 @@ func (a *Admin) Topup(w http.ResponseWriter, r *http.Request) {
 		// exist yet.
 		Amount int64 `json:"amount"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -410,7 +410,7 @@ func (a *Admin) SetProjectCap(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Cap int64 `json:"cap"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -431,7 +431,7 @@ func (a *Admin) Grant(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 		Tier  string `json:"tier"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}

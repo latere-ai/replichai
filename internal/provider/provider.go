@@ -11,7 +11,7 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"time"
 )
@@ -20,13 +20,13 @@ import (
 // happened during the run, translated to a neutral shape. Raw holds the
 // backend's original event, so the translation loses nothing.
 type Event struct {
-	Role    Role            `json:"role"`
-	Kind    EventKind       `json:"kind"`
-	Tool    string          `json:"tool,omitempty"` // the tool for a tool_use, else empty
-	Content string          `json:"content,omitempty"`
-	Time    time.Time       `json:"time"`
-	Usage   *Usage          `json:"usage,omitempty"`
-	Raw     json.RawMessage `json:"raw,omitempty"` // the backend's original event
+	Role    Role           `json:"role"`
+	Kind    EventKind      `json:"kind"`
+	Tool    string         `json:"tool,omitempty"` // the tool for a tool_use, else empty
+	Content string         `json:"content,omitempty"`
+	Time    time.Time      `json:"time"`
+	Usage   *Usage         `json:"usage,omitzero"`
+	Raw     jsontext.Value `json:"raw,omitzero"` // the backend's original event
 }
 
 // Role is who an event is attributed to. The set is closed: every backend event
@@ -234,8 +234,8 @@ type RunStatus struct {
 	// storage moves to the managed-session contract. SessionRef is the complete,
 	// opaque managed.SessionRef JSON; core code persists it without parsing its
 	// locator. A missing value is decoded only by job's explicit legacy path.
-	Runtime    string          `json:"runtime,omitempty"`
-	SessionRef json.RawMessage `json:"session_ref,omitempty"`
+	Runtime    string         `json:"runtime,omitempty"`
+	SessionRef jsontext.Value `json:"session_ref,omitzero"`
 	// Model is the model the backend ran, in the backend's own naming. The
 	// engine asks for a preference such as "best" and the backend resolves
 	// it, so this is the only place the concrete model appears, and
@@ -249,7 +249,7 @@ type RunStatus struct {
 	// charged for the session, as the Latere platform charges the person who
 	// started it (048). It is the cost of a session this deployment does not
 	// bill, and is zero for every session it does.
-	ChargedCost int64 `json:"charged_cost_micro,omitempty"`
+	ChargedCost int64 `json:"charged_cost_micro,omitzero"`
 }
 
 // Passed reports whether the run finished and met the rubric. A run with no

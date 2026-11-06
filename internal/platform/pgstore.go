@@ -5,7 +5,7 @@ package platform
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"time"
 
@@ -15,6 +15,7 @@ import (
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/draft"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // PGStore is the Postgres implementation of Store, against the same contract
@@ -93,7 +94,7 @@ func (s *PGStore) SyncRates(ctx context.Context, listed []credit.Rates) (bool, e
 		if err := next.Validate(); err != nil {
 			return err
 		}
-		encoded, err := json.Marshal(next)
+		encoded, err := json.Marshal(next, wirejson.Stored, wirejson.Embedding)
 		if err != nil {
 			return err
 		}
@@ -125,12 +126,12 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 	// sent as bytea and reaches the server as a hex literal, which jsonb
 	// refuses with SQLSTATE 22P02. See encodeStatus in internal/job for why
 	// text is bound rather than trusting the DSN's exec mode.
-	encodedCard, err := json.Marshal(next.Rates)
+	encodedCard, err := json.Marshal(next.Rates, wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		return err
 	}
 	card := string(encodedCard)
-	encodedDraft, err := json.Marshal(next.Draft)
+	encodedDraft, err := json.Marshal(next.Draft, wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		return err
 	}
@@ -138,7 +139,7 @@ func (s *PGStore) SetSettings(ctx context.Context, byAdmin access.Principal, nex
 	if len(next.LatereEnvironments) == 0 {
 		next.LatereEnvironments = []string{BaseLatereEnvironment}
 	}
-	encodedEnvironments, err := json.Marshal(next.LatereEnvironments)
+	encodedEnvironments, err := json.Marshal(next.LatereEnvironments, wirejson.Stored, wirejson.Embedding)
 	if err != nil {
 		return err
 	}

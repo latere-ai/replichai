@@ -4,12 +4,14 @@
 package harness
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // ClaudeCodeHarness drives the Claude Code CLI. It speaks the Anthropic
@@ -115,10 +117,10 @@ func (ClaudeCodeHarness) Files(_ Stage, request Request) ([]File, error) {
 	if request.Gateway.Auth == AuthHarness {
 		return nil, nil
 	}
-	settings, err := json.MarshalIndent(map[string]any{
+	settings, err := json.Marshal(map[string]any{
 		"includeCoAuthoredBy": false,
 		"cleanupPeriodDays":   0,
-	}, "", "  ")
+	}, wirejson.Stored, wirejson.Embedding, jsontext.WithIndent("  "))
 	if err != nil {
 		return nil, err
 	}
@@ -175,13 +177,13 @@ type claudeLine struct {
 	Message struct {
 		Model   string `json:"model"`
 		Content []struct {
-			Type     string          `json:"type"`
-			Text     string          `json:"text"`
-			Thinking string          `json:"thinking"`
-			Name     string          `json:"name"`
-			Input    json.RawMessage `json:"input"`
-			Content  json.RawMessage `json:"content"`
-			IsError  bool            `json:"is_error"`
+			Type     string         `json:"type"`
+			Text     string         `json:"text"`
+			Thinking string         `json:"thinking"`
+			Name     string         `json:"name"`
+			Input    jsontext.Value `json:"input"`
+			Content  jsontext.Value `json:"content"`
+			IsError  bool           `json:"is_error"`
 		} `json:"content"`
 		Usage *claudeUsage `json:"usage"`
 	} `json:"message"`
@@ -234,7 +236,7 @@ func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]manage
 	// runtime timestamps, so a test can drive both deterministically.
 	base := managed.Event{ID: EventID(stream, index), Raw: Raw(line)}
 	var parsed claudeLine
-	if err := json.Unmarshal(line, &parsed); err != nil {
+	if err := json.Unmarshal(line, &parsed, wirejson.Foreign); err != nil {
 		// A line this build cannot parse becomes a raw event rather than an
 		// error. A transcript that dropped what it did not understand would
 		// not be evidence, and the harness's stream format is not this
@@ -248,7 +250,7 @@ func (ClaudeCodeHarness) Decode(stream string, index int, line []byte) ([]manage
 	var cost struct {
 		Total float64 `json:"total_cost_usd"`
 	}
-	_ = json.Unmarshal(line, &cost)
+	_ = json.Unmarshal(line, &cost, wirejson.Foreign)
 	parsed.Cost = cost.Total
 
 	model := managed.ModelRef{Provider: "anthropic", ID: firstNonEmpty(parsed.Message.Model, parsed.Model)}
@@ -316,18 +318,18 @@ func claudeContentEvents(base managed.Event, parsed claudeLine, model managed.Mo
 
 // decodeToolResult renders a tool result, whose content is a string in the
 // simple case and a list of blocks otherwise.
-func decodeToolResult(raw json.RawMessage) string {
+func decodeToolResult(raw jsontext.Value) string {
 	if len(raw) == 0 {
 		return ""
 	}
 	var text string
-	if err := json.Unmarshal(raw, &text); err == nil {
+	if err := json.Unmarshal(raw, &text, wirejson.Foreign); err == nil {
 		return text
 	}
 	var blocks []struct {
 		Text string `json:"text"`
 	}
-	if err := json.Unmarshal(raw, &blocks); err == nil {
+	if err := json.Unmarshal(raw, &blocks, wirejson.Foreign); err == nil {
 		parts := make([]string, 0, len(blocks))
 		for _, block := range blocks {
 			parts = append(parts, block.Text)

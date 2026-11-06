@@ -210,15 +210,15 @@ func (p Paper) NeedsDetails() bool {
 // non-nil field is written and marked edited, empty values included, because
 // clearing a venue a source got wrong is as much a correction as setting it.
 type PaperEdit struct {
-	Title     *string   `json:"title,omitempty"`
-	Authors   *[]string `json:"authors,omitempty"`
-	Venue     *string   `json:"venue,omitempty"`
-	Year      *int      `json:"year,omitempty"`
-	Volume    *string   `json:"volume,omitempty"`
-	Issue     *string   `json:"issue,omitempty"`
-	Pages     *string   `json:"pages,omitempty"`
-	Publisher *string   `json:"publisher,omitempty"`
-	Abstract  *string   `json:"abstract,omitempty"`
+	Title     *string   `json:"title,omitzero"`
+	Authors   *[]string `json:"authors,omitzero"`
+	Venue     *string   `json:"venue,omitzero"`
+	Year      *int      `json:"year,omitzero"`
+	Volume    *string   `json:"volume,omitzero"`
+	Issue     *string   `json:"issue,omitzero"`
+	Pages     *string   `json:"pages,omitzero"`
+	Publisher *string   `json:"publisher,omitzero"`
+	Abstract  *string   `json:"abstract,omitzero"`
 }
 
 // Apply writes the correction onto a paper and returns which fields it set, in

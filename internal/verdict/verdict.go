@@ -31,11 +31,14 @@ package verdict
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Schema is the version this package writes and the method asks agents for.
@@ -191,8 +194,8 @@ type Mismatch struct {
 	What          string       `json:"what,omitempty"` // which quantity is compared
 	Reported      string       `json:"reported"`       // as the paper states it
 	Observed      string       `json:"observed"`       // as the run got it
-	ReportedValue *float64     `json:"reported_value,omitempty"`
-	ObservedValue *float64     `json:"observed_value,omitempty"`
+	ReportedValue *float64     `json:"reported_value,omitzero"`
+	ObservedValue *float64     `json:"observed_value,omitzero"`
 	Unit          string       `json:"unit,omitempty"`
 	Note          string       `json:"note,omitempty"` // the interpretation, or the cause
 }
@@ -315,9 +318,9 @@ func (p *parsed) add(field, msg string) {
 }
 
 func parse(raw []byte) (*parsed, error) {
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &top); err != nil {
-		if !json.Valid(raw) {
+	var top map[string]jsontext.Value
+	if err := json.Unmarshal(raw, &top, wirejson.Foreign); err != nil {
+		if !jsontext.Value(raw).IsValid(wirejson.Foreign) {
 			return nil, fmt.Errorf("%s is not JSON: %w", File, err)
 		}
 		return nil, fmt.Errorf("%s is %s, not a JSON object", File, describe(raw))
@@ -347,12 +350,12 @@ func parse(raw []byte) (*parsed, error) {
 // field decodes obj[name] into dst and reports whether it could. An absent or
 // null field leaves dst at its zero value for the rules to judge; a field of
 // the wrong type is a problem at its path.
-func (p *parsed) field(obj map[string]json.RawMessage, at, name string, dst any) bool {
+func (p *parsed) field(obj map[string]jsontext.Value, at, name string, dst any) bool {
 	raw, ok := obj[name]
 	if !ok || isNull(raw) {
 		return true
 	}
-	if err := json.Unmarshal(raw, dst); err != nil {
+	if err := json.Unmarshal(raw, dst, wirejson.Foreign); err != nil {
 		p.add(join(at, name), mistyped(raw, dst))
 		return false
 	}
@@ -361,9 +364,9 @@ func (p *parsed) field(obj map[string]json.RawMessage, at, name string, dst any)
 
 // object decodes raw as a JSON object, or reports at the path that it is not
 // one.
-func (p *parsed) object(raw json.RawMessage, at string) (map[string]json.RawMessage, bool) {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
+func (p *parsed) object(raw jsontext.Value, at string) (map[string]jsontext.Value, bool) {
+	var obj map[string]jsontext.Value
+	if err := json.Unmarshal(raw, &obj, wirejson.Foreign); err != nil || obj == nil {
 		p.add(at, fmt.Sprintf("is %s, want an object", describe(raw)))
 		return nil, false
 	}
@@ -372,13 +375,13 @@ func (p *parsed) object(raw json.RawMessage, at string) (map[string]json.RawMess
 
 // rows decodes the list top[name] one row at a time, keeping each row that
 // decodes and the path it was read from.
-func rows[T any](p *parsed, top map[string]json.RawMessage, name string, decode func(json.RawMessage, string) (T, bool)) ([]T, []string) {
+func rows[T any](p *parsed, top map[string]jsontext.Value, name string, decode func(jsontext.Value, string) (T, bool)) ([]T, []string) {
 	raw, ok := top[name]
 	if !ok || isNull(raw) {
 		return nil, nil
 	}
-	var items []json.RawMessage
-	if err := json.Unmarshal(raw, &items); err != nil {
+	var items []jsontext.Value
+	if err := json.Unmarshal(raw, &items, wirejson.Foreign); err != nil {
 		p.add(name, fmt.Sprintf("is %s, want a list", describe(raw)))
 		p.incomplete[name] = true
 		return nil, nil
@@ -400,7 +403,7 @@ func rows[T any](p *parsed, top map[string]json.RawMessage, name string, decode 
 	return out, paths
 }
 
-func (p *parsed) components(top map[string]json.RawMessage) {
+func (p *parsed) components(top map[string]jsontext.Value) {
 	raw, ok := top["components"]
 	if !ok || isNull(raw) {
 		return
@@ -429,7 +432,7 @@ var mismatchKeys = []string{"mismatch", "mismatches", "additional_mismatches"}
 
 // claim decodes one boundary row. A mismatch that does not decode is a problem
 // at its own path and does not cost the claim its row.
-func (p *parsed) claim(raw json.RawMessage, at string) (Claim, bool) {
+func (p *parsed) claim(raw jsontext.Value, at string) (Claim, bool) {
 	obj, ok := p.object(raw, at)
 	if !ok {
 		return Claim{}, false
@@ -469,12 +472,12 @@ func (p *parsed) claim(raw json.RawMessage, at string) (Claim, bool) {
 // objects reads raw as a list of values, or as a single object standing for a
 // list of one, which is how schema 1 wrote a mismatch. Each value comes back
 // with the path it was read from.
-func (p *parsed) objects(raw json.RawMessage, at string) ([]json.RawMessage, []string, bool) {
+func (p *parsed) objects(raw jsontext.Value, at string) ([]jsontext.Value, []string, bool) {
 	if describe(raw) == "an object" {
-		return []json.RawMessage{raw}, []string{at}, true
+		return []jsontext.Value{raw}, []string{at}, true
 	}
-	var items []json.RawMessage
-	if err := json.Unmarshal(raw, &items); err != nil {
+	var items []jsontext.Value
+	if err := json.Unmarshal(raw, &items, wirejson.Foreign); err != nil {
 		p.add(at, fmt.Sprintf("is %s, want a list of objects", describe(raw)))
 		return nil, nil, false
 	}
@@ -489,7 +492,7 @@ func (p *parsed) objects(raw json.RawMessage, at string) ([]json.RawMessage, []s
 // and its units into the unit. Only a kind that is not a string costs the
 // entry, since without a kind there is nothing to say about it; a value that
 // is not a number is a problem on that field and the entry is kept without it.
-func (p *parsed) mismatch(raw json.RawMessage, at string) (Mismatch, bool) {
+func (p *parsed) mismatch(raw jsontext.Value, at string) (Mismatch, bool) {
 	obj, ok := p.object(raw, at)
 	if !ok {
 		return Mismatch{}, false
@@ -511,32 +514,32 @@ func (p *parsed) mismatch(raw json.RawMessage, at string) (Mismatch, bool) {
 // text reads a field that holds words. A string is kept as written, and any
 // other value as its compact JSON, so a table row an agent wrote as an object
 // reaches the reader as that row.
-func (p *parsed) text(obj map[string]json.RawMessage, at, name string) string {
+func (p *parsed) text(obj map[string]jsontext.Value, at, name string) string {
 	raw, ok := obj[name]
 	if !ok || isNull(raw) {
 		return ""
 	}
 	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
+	if err := json.Unmarshal(raw, &s, wirejson.Foreign); err == nil {
 		return s
 	}
-	var b bytes.Buffer
-	if err := json.Compact(&b, raw); err != nil {
+	compact := jsontext.Value(bytes.Clone(raw))
+	if err := compact.Compact(wirejson.Foreign); err != nil {
 		p.add(join(at, name), "could not be read as text: "+err.Error())
 		return ""
 	}
-	return b.String()
+	return string(compact)
 }
 
 // number reads a field that holds one number, or null when the quantity is
 // not a single number.
-func (p *parsed) number(obj map[string]json.RawMessage, at, name string) *float64 {
+func (p *parsed) number(obj map[string]jsontext.Value, at, name string) *float64 {
 	raw, ok := obj[name]
 	if !ok || isNull(raw) {
 		return nil
 	}
 	var f float64
-	if err := json.Unmarshal(raw, &f); err != nil {
+	if err := json.Unmarshal(raw, &f, wirejson.Foreign); err != nil {
 		if describe(raw) == "a number" {
 			p.add(join(at, name), "is a number out of range")
 		} else {
@@ -559,7 +562,7 @@ func note(delta, note string) string {
 	return delta + "; " + note
 }
 
-func (p *parsed) decision(raw json.RawMessage, at string) (Decision, bool) {
+func (p *parsed) decision(raw jsontext.Value, at string) (Decision, bool) {
 	obj, ok := p.object(raw, at)
 	if !ok {
 		return Decision{}, false
@@ -572,7 +575,7 @@ func (p *parsed) decision(raw json.RawMessage, at string) (Decision, bool) {
 	return d, ok
 }
 
-func (p *parsed) score(raw json.RawMessage, at string) (Score, bool) {
+func (p *parsed) score(raw jsontext.Value, at string) (Score, bool) {
 	obj, ok := p.object(raw, at)
 	if !ok {
 		return Score{}, false
@@ -585,7 +588,7 @@ func (p *parsed) score(raw json.RawMessage, at string) (Score, bool) {
 	return s, ok
 }
 
-func (p *parsed) release(raw json.RawMessage, at string) (Release, bool) {
+func (p *parsed) release(raw jsontext.Value, at string) (Release, bool) {
 	obj, ok := p.object(raw, at)
 	if !ok {
 		return Release{}, false
@@ -732,10 +735,10 @@ func join(path, field string) string {
 	return path + "." + field
 }
 
-func isNull(raw json.RawMessage) bool { return string(bytes.TrimSpace(raw)) == "null" }
+func isNull(raw jsontext.Value) bool { return string(bytes.TrimSpace(raw)) == "null" }
 
 // describe names the kind of a JSON value the way a problem reads it.
-func describe(raw json.RawMessage) string {
+func describe(raw jsontext.Value) string {
 	s := bytes.TrimSpace(raw)
 	if len(s) == 0 {
 		return "empty"
@@ -759,7 +762,7 @@ var timeType = reflect.TypeFor[time.Time]()
 
 // mistyped says why raw could not be decoded into dst, in terms of what was
 // written and what the schema wants there.
-func mistyped(raw json.RawMessage, dst any) string {
+func mistyped(raw jsontext.Value, dst any) string {
 	t := reflect.TypeOf(dst).Elem()
 	if t == timeType {
 		if describe(raw) == "a string" {

@@ -5,7 +5,7 @@ package signin
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -190,19 +190,19 @@ func (a *fakeAuth) serve(w http.ResponseWriter, r *http.Request) {
 		a.spent[token] = true
 		a.next++
 		a.refreshes++
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": fmt.Sprintf("access-%d", a.next), "refresh_token": fmt.Sprintf("rotated-%d", a.next), "expires_in": 900})
+		_ = json.MarshalWrite(w, map[string]any{"access_token": fmt.Sprintf("access-%d", a.next), "refresh_token": fmt.Sprintf("rotated-%d", a.next), "expires_in": 900})
 	case "/actor-tokens":
 		var body struct {
 			Audience string `json:"audience"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer access-") {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		a.audience = body.Audience
 		a.mints++
-		_ = json.NewEncoder(w).Encode(map[string]string{"actor_token": "actor-for-" + strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")})
+		_ = json.MarshalWrite(w, map[string]string{"actor_token": "actor-for-" + strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")})
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -27,6 +27,7 @@ import (
 	"github.com/latere-ai/replichai/internal/project"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/verdict"
+	"github.com/latere-ai/replichai/internal/wirejson"
 )
 
 // Identity is the authenticated caller as the auth middleware (006c) resolved
@@ -244,7 +245,7 @@ func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URL string `json:"url"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -295,7 +296,7 @@ func (rt *Router) editProjectPaper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var edit project.PaperEdit
-	if err := json.NewDecoder(r.Body).Decode(&edit); err != nil {
+	if err := json.UnmarshalRead(r.Body, &edit); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -745,7 +746,7 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 		PaperKey  string `json:"paper_key"`
 		ToProject string `json:"to_project"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -851,7 +852,7 @@ func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
 		Runtime string `json:"runtime"`
 		Model   string `json:"model"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -1074,7 +1075,7 @@ func (rt *Router) resolvePaper(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URL string `json:"url"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -1130,7 +1131,7 @@ func (rt *Router) createProject(w http.ResponseWriter, r *http.Request) {
 		Papers        []string `json:"papers"`
 		Collaborators []string `json:"collaborators"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -1352,7 +1353,7 @@ type Wallet struct {
 // purged.
 type walletEntry struct {
 	credit.Entry
-	ProjectAlive bool `json:"project_alive,omitempty"`
+	ProjectAlive bool `json:"project_alive,omitzero"`
 }
 
 // myCredits reports the caller's own wallet. It is always their own: there is
@@ -1445,7 +1446,7 @@ func (rt *Router) moveCredits(w http.ResponseWriter, r *http.Request, back bool)
 	var body struct {
 		Amount int64 `json:"amount"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -1501,10 +1502,10 @@ func (rt *Router) renameProject(w http.ResponseWriter, r *http.Request) {
 	// field and a cleared one stay distinct, because an owner may clear a
 	// description.
 	var body struct {
-		Title       *string `json:"title,omitempty"`
-		Description *string `json:"description,omitempty"`
+		Title       *string `json:"title,omitzero"`
+		Description *string `json:"description,omitzero"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -1578,7 +1579,7 @@ type ProjectView struct {
 	// It is a pointer because a reader with no stake in the project does not
 	// receive it (028), and an absent figure must not read as a project that
 	// spent nothing. Nil means the figure is withheld; zero is a fact.
-	Spend30d *int64 `json:"spend_30d,omitempty"`
+	Spend30d *int64 `json:"spend_30d,omitzero"`
 	// SignerHandle is where the signer's name links (006r). It is resolved on
 	// every read from the signer's profile as it is now, and deliberately not
 	// snapshotted onto the project: a stored handle would be a second, staler
@@ -1678,7 +1679,7 @@ type PaperCitation struct {
 	Title   string   `json:"title,omitempty"`
 	Authors []string `json:"authors,omitempty"`
 	Venue   string   `json:"venue,omitempty"`
-	Year    int      `json:"year,omitempty"`
+	Year    int      `json:"year,omitzero"`
 }
 
 // citations trims a project's papers down to what a list renders.
@@ -1883,7 +1884,7 @@ func (rt *Router) saveProfile(w http.ResponseWriter, r *http.Request) {
 		Handle      *string `json:"handle"`
 		Public      *bool   `json:"public"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -2023,7 +2024,7 @@ func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = json.UnmarshalRead(r.Body, &body)
 	reason := strings.TrimSpace(body.Reason)
 	if len(reason) > maxWithdrawReason {
 		reason = reason[:maxWithdrawReason]
@@ -2080,7 +2081,7 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		// still go public, but the repository stays private.
 		FlipRepo *bool `json:"flip_repo"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = json.UnmarshalRead(r.Body, &body)
 	if strings.TrimSpace(body.AttestationVersion) == "" {
 		// The sign-off is required: a publish with no recorded attestation is
 		// refused.
@@ -2537,7 +2538,7 @@ func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 		Role  string `json:"role"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -2627,7 +2628,7 @@ func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
 type SessionView struct {
 	job.Job
 	Principal string `json:"principal,omitempty"`
-	Cost      *int64 `json:"cost,omitempty"`
+	Cost      *int64 `json:"cost,omitzero"`
 }
 
 // sessionView projects one session for a reader, keeping the withheld fields
@@ -2664,7 +2665,7 @@ type ProjectDetail struct {
 	// Credits is what this project holds and what it may still commit (011). It
 	// is reported only to somebody who may work here: a reader of a public
 	// project sees the research, not who paid for it.
-	Credits *ProjectCredits `json:"credits,omitempty"`
+	Credits *ProjectCredits `json:"credits,omitzero"`
 }
 
 // ProjectCredits is a project's credits as a member reads them: what the pot
@@ -2870,7 +2871,7 @@ type Transcript struct {
 // serve a viewer.
 type TranscriptEvent struct {
 	provider.Event
-	Usage *provider.Usage `json:"usage,omitempty"`
+	Usage *provider.Usage `json:"usage,omitzero"`
 }
 
 // getSessionTranscript serves a session's transcript as structured events plus
@@ -3171,7 +3172,7 @@ func parseTranscriptEvents(raw []byte) ([]provider.Event, error) {
 			continue
 		}
 		var e provider.Event
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
+		if err := json.Unmarshal([]byte(line), &e, wirejson.Foreign); err != nil {
 			return nil, err
 		}
 		events = append(events, e)
