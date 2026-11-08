@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.38.1 - 2026-11-08
+
 ### Fixed
 
 - A run's live view stays connected while the run sits in one phase for a
