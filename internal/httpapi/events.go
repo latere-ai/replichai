@@ -5,6 +5,7 @@ package httpapi
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -61,10 +62,18 @@ func (rt *Router) jobEvents(w http.ResponseWriter, r *http.Request) {
 
 	ticker := time.NewTicker(rt.sseInterval)
 	defer ticker.Stop()
+	idle := time.NewTimer(rt.sseKeepAlive)
+	defer idle.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-idle.C:
+			if _, err := io.WriteString(w, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+			idle.Reset(rt.sseKeepAlive)
 		case <-ticker.C:
 			next, err := rt.jobs.Get(r.Context(), id)
 			if err != nil {
@@ -75,6 +84,13 @@ func (rt *Router) jobEvents(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				lastUpdate = next.UpdatedAt
+				if !idle.Stop() {
+					select {
+					case <-idle.C:
+					default:
+					}
+				}
+				idle.Reset(rt.sseKeepAlive)
 			}
 			if next.Phase.Terminal() {
 				return

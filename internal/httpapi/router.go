@@ -339,6 +339,9 @@ type Deps struct {
 	// SSEInterval is how often the event stream re-reads a job's state. Zero
 	// selects a sensible default.
 	SSEInterval time.Duration
+	// SSEKeepAlive is how long the event stream may stay silent before it
+	// writes a comment line. Zero selects defaultSSEKeepAlive.
+	SSEKeepAlive time.Duration
 	// SPA, when set, serves the frontend for any GET path not matched by an API
 	// route; it is the public app shell (006e). It is nil in API-only tests.
 	SPA http.Handler
@@ -353,24 +356,25 @@ type Router struct {
 	gated []Route
 	open  []Route
 
-	jobs        JobStore
-	projects    ProjectStore
-	members     MembershipStore
-	profiles    ProfileStore
-	repro       ReproReader
-	repoPub     RepoPublisher
-	repos       RepoProvisioner
-	canceler    Canceler
-	live        LiveTranscript
-	resolver    PaperResolver
-	notifier    Notifier
-	credits     credit.Store
-	reserve     credit.Reserve
-	payments    pay.Provider
-	policy      TopupPolicy
-	baseURL     string
-	sseInterval time.Duration
-	spa         http.Handler
+	jobs         JobStore
+	projects     ProjectStore
+	members      MembershipStore
+	profiles     ProfileStore
+	repro        ReproReader
+	repoPub      RepoPublisher
+	repos        RepoProvisioner
+	canceler     Canceler
+	live         LiveTranscript
+	resolver     PaperResolver
+	notifier     Notifier
+	credits      credit.Store
+	reserve      credit.Reserve
+	payments     pay.Provider
+	policy       TopupPolicy
+	baseURL      string
+	sseInterval  time.Duration
+	sseKeepAlive time.Duration
+	spa          http.Handler
 	// site turns an app path into the absolute URL a crawler needs (042a).
 	// There is one per router, so a canonical link and a sitemap entry are the
 	// same string.
@@ -402,6 +406,12 @@ type Router struct {
 // caller does not choose.
 const defaultSSEInterval = time.Second
 
+// defaultSSEKeepAlive is the longest an event stream stays silent. Cloudflare
+// closes a proxied response after 100 seconds without a byte from the origin,
+// and a job can sit in one phase far longer, so a comment line goes out well
+// inside that limit.
+const defaultSSEKeepAlive = 30 * time.Second
+
 // NewRouter builds a fully wired router. A nil gate is replaced by DenyAll, which
 // is fail-closed.
 func NewRouter(d Deps) *Router {
@@ -413,7 +423,11 @@ func NewRouter(d Deps) *Router {
 	if interval <= 0 {
 		interval = defaultSSEInterval
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, runtimes: d.Runtimes, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
+	keepAlive := d.SSEKeepAlive
+	if keepAlive <= 0 {
+		keepAlive = defaultSSEKeepAlive
+	}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, runtimes: d.Runtimes, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, sseKeepAlive: keepAlive, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
 	rt.anonRegistry.ttl, rt.sitemapBody.ttl = publicTTL, publicTTL
 	rt.routes()
 	return rt

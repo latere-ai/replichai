@@ -290,3 +290,52 @@ func readAllString(r io.Reader) string {
 	b, _ := io.ReadAll(r)
 	return string(b)
 }
+
+// TestSSEKeepAliveOnQuietStream covers a job whose state does not change: the
+// stream still writes a comment line within the keep-alive interval, so a proxy
+// with an idle limit does not close it, and the stream stays open.
+func TestSSEKeepAliveOnQuietStream(t *testing.T) {
+	store := job.NewMemStore()
+	ctx := context.Background()
+	projects, j := publicSession(t, store)
+	_ = store.Advance(ctx, j.ID, job.PhaseResolving, nil)
+	_ = store.Advance(ctx, j.ID, job.PhaseRunning, nil)
+
+	rt := NewRouter(Deps{Jobs: store, Projects: projects, Reproductions: &fakeRepro{}, Gate: allowAll, SSEInterval: 5 * time.Millisecond, SSEKeepAlive: 20 * time.Millisecond})
+	srv := httptest.NewServer(rt.Handler())
+	defer srv.Close()
+
+	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(reqCtx, "GET", srv.URL+"/jobs/"+j.ID+"/events", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// The snapshot arrives once; every later line comes from a quiet job.
+	var status, keepAlives int
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch line {
+		case "event: status":
+			status++
+		case ": keep-alive":
+			keepAlives++
+		}
+		if keepAlives >= 2 {
+			break
+		}
+	}
+	if keepAlives < 2 {
+		t.Fatalf("keep-alives = %d, want at least 2 (stream err: %v)", keepAlives, scanner.Err())
+	}
+	if status != 1 {
+		t.Errorf("status events = %d, want only the snapshot", status)
+	}
+	if reqCtx.Err() != nil {
+		t.Error("stream should still be open")
+	}
+}
