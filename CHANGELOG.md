@@ -10,6 +10,18 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- A run's live view stays connected while the run sits in one phase for a
+  long time. The server now sends a keep-alive line every 30 seconds, so a
+  proxy that closes quiet connections after 100 seconds no longer cuts the
+  stream.
+
+### Changed
+
+- The server reads and writes JSON with Go's `encoding/json/v2`. Responses
+  carry the same fields and values as before.
+
 ## v0.38.0 - 2026-11-05
 
 ### Added
