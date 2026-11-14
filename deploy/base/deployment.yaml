@@ -123,11 +123,9 @@ spec:
               value: eu
             - name: MAILGUN_FROM
               value: "Latere <noreply@latere.ai>"
-            # No OTEL_EXPORTER_OTLP_ENDPOINT here on purpose. The Dash0 operator
-            # injects it, pointing at the node-local collector, and skips any
-            # container that already sets it, emitting only a Warning event. A
-            # value here would leave this service exporting to the retired
-            # collector while the namespace looked migrated.
+            # No OTEL_EXPORTER_OTLP_ENDPOINT is set here, so telemetry export
+            # is off and pkg/otel is a noop. Setting the variable is how a
+            # backend would be turned on.
           resources:
             requests:
               cpu: 20m
