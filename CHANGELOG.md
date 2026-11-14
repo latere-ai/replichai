@@ -10,6 +10,11 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- **The manifest comments say telemetry export is off.** The Dash0 collector
+  is retired and no manifest sets `OTEL_EXPORTER_OTLP_ENDPOINT`.
+
 ## v0.38.1 - 2026-11-08
 
 ### Fixed
