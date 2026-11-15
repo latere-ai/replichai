@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -345,8 +344,8 @@ func (s *store) RefundShare(ctx context.Context, purchaseRef, reversalRef string
 	if refunded < 0 || charged <= 0 {
 		return Reversal{}, ErrNotPositive
 	}
-	return s.reverse(ctx, purchaseRef, reversalRef, func(credited int64) int64 {
-		return share(credited, min(refunded, charged), charged)
+	return s.reverse(ctx, purchaseRef, reversalRef, func(credited, taken int64) int64 {
+		return RefundReversal(credited, charged, refunded, taken)
 	})
 }
 
@@ -354,23 +353,16 @@ func (s *store) RefundShare(ctx context.Context, purchaseRef, reversalRef string
 // back yet, which is what a lost dispute does. It returns the credit taken back
 // by this call.
 func (s *store) RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (Reversal, error) {
-	return s.reverse(ctx, purchaseRef, reversalRef, func(credited int64) int64 { return credited })
+	return s.reverse(ctx, purchaseRef, reversalRef, func(credited, taken int64) int64 { return max(credited-taken, 0) })
 }
 
-// share is floor(whole * part / total) without overflow. part must not exceed
-// total, so the result never exceeds whole.
-func share(whole, part, total int64) int64 {
-	n := new(big.Int).Mul(big.NewInt(whole), big.NewInt(part))
-	return n.Quo(n, big.NewInt(total)).Int64()
-}
-
-// reverse brings the credit taken back for one purchase up to target(credited),
-// by posting the difference under reversalRef. A target at or below what is
-// already taken back posts nothing. The reversals that land on one wallet run
+// reverse takes back owed(credited, taken) of one purchase's credit, where
+// taken is what earlier reversals of the purchase already took back, by posting
+// it under reversalRef. An amount of zero or less posts nothing. The reversals that land on one wallet run
 // one at a time, so the sum of what a purchase has had reversed is read and
 // extended without another reversal in between, and the balance read before and
 // after the post is the balance this reversal alone moved across zero.
-func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, target func(credited int64) int64) (Reversal, error) {
+func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, owed func(credited, taken int64) int64) (Reversal, error) {
 	if strings.TrimSpace(purchaseRef) == "" || strings.TrimSpace(reversalRef) == "" {
 		return Reversal{}, ErrNoRef
 	}
@@ -395,7 +387,7 @@ func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, ta
 	if err != nil {
 		return Reversal{}, err
 	}
-	delta := min(target(orig.Amount), orig.Amount) - taken
+	delta := min(owed(orig.Amount, taken), orig.Amount-taken)
 	if delta <= 0 {
 		return Reversal{}, nil
 	}
