@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1236,4 +1237,99 @@ func TestConcurrentCallersGetTheirOwnSessions(t *testing.T) {
 		t.Fatalf("a session nobody started left a directory behind: %v", err)
 	}
 	_ = driver
+}
+
+// lockingDriver wraps the scripted driver. After its second Launch it makes
+// the session's locator read-only, so the journal write that records the
+// stage fails, and it counts the stages it was told to discard.
+type lockingDriver struct {
+	*localtest.Sandbox
+	t         *testing.T
+	launches  int
+	discarded []hostsandbox.StageHandle
+}
+
+func (d *lockingDriver) Launch(ctx context.Context, spec hostsandbox.StageSpec) (hostsandbox.StageHandle, error) {
+	handle, err := d.Sandbox.Launch(ctx, spec)
+	d.launches++
+	if err == nil && d.launches == 2 {
+		locator := filepath.Join(filepath.Dir(filepath.Dir(spec.LogPath)), "locator.json")
+		if err := os.Chmod(locator, 0o400); err != nil {
+			d.t.Fatalf("lock the locator: %v", err)
+		}
+		d.t.Cleanup(func() { _ = os.Chmod(locator, 0o600) })
+	}
+	return handle, err
+}
+
+func (d *lockingDriver) Discard(ctx context.Context, handle hostsandbox.StageHandle) error {
+	d.discarded = append(d.discarded, handle)
+	return d.Sandbox.Discard(ctx, handle)
+}
+
+// A stage that launched but whose journal write failed is discarded, and the
+// journal still names only the stages that are recorded.
+func TestAStageWhoseJournalWriteFailedIsDiscarded(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("a read-only file does not stop root")
+	}
+	driver := &lockingDriver{Sandbox: localtest.New(localtest.Script{}), t: t}
+	registry, _ := harness.NewRegistry(harness.NewClaudeCode())
+	catalog, _ := local.NewCatalog(local.DefaultCatalogFile(), registry, noCredentials)
+	runtime, err := local.New(local.Config{
+		Sandbox: driver, Harness: harness.NewClaudeCode(), Catalog: catalog,
+		Root: t.TempDir(), Lookup: os.LookupEnv,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ref := start(t, runtime, spec(false))
+	if _, err := runtime.Poll(context.Background(), ref); err == nil {
+		t.Fatal("Poll succeeded although the journal could not be written")
+	}
+	if len(driver.discarded) != 1 {
+		t.Fatalf("discarded %d stages, want the one that was not recorded", len(driver.discarded))
+	}
+	var stored local.Locator
+	body, err := os.ReadFile(filepath.Join(sessionDir(t, ref), "session", "locator.json"))
+	if err != nil {
+		t.Fatalf("read locator: %v", err)
+	}
+	if err := jsonUnmarshal(body, &stored); err != nil {
+		t.Fatalf("decode locator: %v", err)
+	}
+	if len(stored.Stages) != 1 {
+		t.Fatalf("the journal names %d stages, want only the bootstrap", len(stored.Stages))
+	}
+}
+
+// Poll and Cancel on one session never interleave, so a session that was
+// cancelled is never reported running again.
+func TestPollNeverOverwritesACancellation(t *testing.T) {
+	runtime, _ := build(t, localtest.Script{PollsBeforeExit: 1000})
+	ref := start(t, runtime, spec(true))
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 20 {
+				if _, err := runtime.Poll(context.Background(), ref); err != nil {
+					t.Errorf("Poll: %v", err)
+					return
+				}
+			}
+		})
+	}
+	wg.Go(func() {
+		if err := runtime.Cancel(context.Background(), ref); err != nil {
+			t.Errorf("Cancel: %v", err)
+		}
+	})
+	wg.Wait()
+	status, err := runtime.Poll(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if status.State != managed.StateFailed || status.TerminalReason != managed.ReasonCancelled {
+		t.Fatalf("a cancelled session reads %+v", status)
+	}
 }

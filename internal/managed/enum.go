@@ -7,7 +7,9 @@ package managed
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+	"slices"
 )
 
 // State is the externally visible lifecycle of a managed session.
@@ -29,6 +31,34 @@ var stateNames = map[State]string{
 	StateRunning: "running",
 	StateDone:    "done",
 	StateFailed:  "failed",
+}
+
+// stateTransitions is every step a session's state may take. Every valid state
+// is a key and a terminal state maps to nil. StateUnknown is the zero value of
+// a Status nobody filled in, not a state a session is ever in, so it is no key.
+// A session may begin at StatePending or StateRunning.
+var stateTransitions = map[State][]State{
+	StatePending: {StateRunning, StateDone, StateFailed},
+	StateRunning: {StateDone, StateFailed},
+	StateDone:    nil,
+	StateFailed:  nil,
+}
+
+// ErrIllegalStateStep reports a state change the lifecycle does not allow,
+// such as a finished session reported as running again.
+var ErrIllegalStateStep = errors.New("illegal session state change")
+
+// CheckStateStep returns nil when a session in state from may be reported in
+// state to. Reporting the state it is already in is not a change and is
+// allowed; any other step must be one stateTransitions lists.
+func CheckStateStep(from, to State) error {
+	if from == to && from.Valid() {
+		return nil
+	}
+	if slices.Contains(stateTransitions[from], to) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s to %s", ErrIllegalStateStep, from, to)
 }
 
 // Terminal reports whether no further state change is expected, which is the

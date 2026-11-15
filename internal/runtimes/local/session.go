@@ -287,11 +287,33 @@ const maxEventBytes = 4 << 20
 
 // AppendEvents adds decoded events to the transcript. The file is append-only
 // and lives where no stage can write, so the subject of the audit cannot edit
-// its own evidence.
+// its own evidence. An event whose id is already in the transcript is skipped:
+// the pump's offset is journalled after the append, so a poll that failed in
+// between reads the same lines again, and their ids are stable.
 func (s *Session) AppendEvents(events []managed.Event) error {
 	if len(events) == 0 {
 		return nil
 	}
+	existing, err := s.Events()
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool, len(existing))
+	for _, event := range existing {
+		seen[event.ID] = true
+	}
+	fresh := make([]managed.Event, 0, len(events))
+	for _, event := range events {
+		if event.ID != "" && seen[event.ID] {
+			continue
+		}
+		seen[event.ID] = true
+		fresh = append(fresh, event)
+	}
+	if len(fresh) == 0 {
+		return nil
+	}
+	events = fresh
 	path := filepath.Join(s.dir, eventsFile)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err

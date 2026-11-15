@@ -149,6 +149,28 @@ func TestTranscriptAppendsAndSurvivesATruncatedLine(t *testing.T) {
 	}
 }
 
+// Appending an event whose id is already in the transcript adds nothing, so a
+// poll that re-reads a stage's lines after a failed save does not duplicate
+// them.
+func TestAppendSkipsEventsAlreadyInTheTranscript(t *testing.T) {
+	session := newSession(t)
+	batch := []managed.Event{
+		{ID: "worker-0", Kind: managed.KindMessage, Content: "a"},
+		{ID: "worker-1", Kind: managed.KindMessage, Content: "b"},
+	}
+	if err := session.AppendEvents(batch); err != nil {
+		t.Fatalf("AppendEvents: %v", err)
+	}
+	again := append(batch[:2:2], managed.Event{ID: "worker-2", Kind: managed.KindMessage, Content: "c"})
+	if err := session.AppendEvents(again); err != nil {
+		t.Fatalf("AppendEvents: %v", err)
+	}
+	events, err := session.Events()
+	if err != nil || len(events) != 3 {
+		t.Fatalf("Events = %d, %v; want 3", len(events), err)
+	}
+}
+
 // An event whose Raw carries a whole enormous stream line is bounded when it is
 // written, not left to break the read. The line on disk stays under the cap,
 // the event still round-trips, and its Raw is replaced by a marker that names

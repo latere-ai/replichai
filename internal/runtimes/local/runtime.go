@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"latere.ai/x/pkg/hostsandbox"
@@ -67,6 +68,30 @@ type Config struct {
 // the driver and harness specifics to the adapter.
 type Runtime struct {
 	config Config
+	// locks holds one mutex per session directory. Poll, Cancel and Release
+	// each read the journal, act on the stage it names, and write it back, so
+	// two of them interleaving would let a Poll write "running" over a
+	// cancellation or start a stage after Stop.
+	locks sync.Map
+}
+
+// lock takes the mutex of the session ref names and returns its release. The
+// key is the locator's directory, which is what attach opens, so every call
+// that reaches one session contends on one mutex. A reference whose locator
+// cannot be read falls back to its id; attach then refuses it.
+func (r *Runtime) lock(ref managed.SessionRef) func() {
+	key := ref.ID
+	var locator Locator
+	if err := json.Unmarshal(ref.Locator, &locator); err == nil && locator.Dir != "" {
+		key = locator.Dir
+	}
+	entry, _ := r.locks.LoadOrStore(key, &sync.Mutex{})
+	mutex, ok := entry.(*sync.Mutex)
+	if !ok {
+		mutex = &sync.Mutex{}
+	}
+	mutex.Lock()
+	return mutex.Unlock
 }
 
 // New composes a local runtime, refusing a configuration that could not run a
@@ -315,6 +340,7 @@ func (r *Runtime) abandon(ctx context.Context, session *Session, locator Locator
 // carries the run's total cost. Draining first folded the bill from a
 // per-message maximum instead of the session total.
 func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Status, error) {
+	defer r.lock(ref)()
 	session, locator, err := r.attach(ref)
 	if err != nil {
 		return managed.Status{}, err
@@ -599,10 +625,21 @@ func (r *Runtime) launch(ctx context.Context, session *Session, locator *Locator
 	if err != nil {
 		return err
 	}
-	locator.Stages = append(locator.Stages, StageRecord{
+	journal := *locator
+	journal.Stages = append(slices.Clone(locator.Stages), StageRecord{
 		Role: role, Name: name, Handle: handle, StartedAt: r.config.Clock(),
 	})
-	return session.WriteLocator(*locator)
+	if err := session.WriteLocator(journal); err != nil {
+		// A stage the journal does not name is one nothing can stop or
+		// release later, so it is discarded here and the journal keeps its
+		// last good stage list.
+		if discardErr := r.config.Sandbox.Discard(ctx, handle); discardErr != nil && !errors.Is(discardErr, hostsandbox.ErrGone) {
+			return errors.Join(err, fmt.Errorf("discard unrecorded stage %s: %w", name, discardErr))
+		}
+		return err
+	}
+	*locator = journal
+	return nil
 }
 
 // network is the egress policy a stage runs under. Under an allowlist the
@@ -834,6 +871,7 @@ func (r *Runtime) FetchArtifact(_ context.Context, ref managed.SessionRef, artif
 // Cancel stops the running stage and records why the session ended. The
 // directory is left intact, so evidence stays readable until Release.
 func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
+	defer r.lock(ref)()
 	session, locator, err := r.attach(ref)
 	if err != nil {
 		return err
@@ -851,6 +889,9 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 			return err
 		}
 	}
+	if err := managed.CheckStateStep(status.State, managed.StateFailed); err != nil {
+		return err
+	}
 	r.finish(&status, managed.StateFailed, managed.ReasonCancelled, "")
 	status.Ref = ref
 	return session.WriteStatus(status)
@@ -860,6 +901,7 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 // happens to the directory, and the default keeps it, because the workspace is
 // the reproduction and the push may not have taken it yet.
 func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
+	defer r.lock(ref)()
 	session, locator, err := r.attach(ref)
 	if err != nil {
 		if errors.Is(err, managed.ErrNotFound) {
@@ -932,6 +974,13 @@ func (r *Runtime) attach(ref managed.SessionRef) (*Session, Locator, error) {
 // old one, so the reference a caller threaded was always one observation
 // behind the journal it named.
 func (r *Runtime) save(session *Session, locator Locator, status *managed.Status, ref managed.SessionRef) error {
+	stored, err := session.ReadStatus()
+	if err != nil {
+		return err
+	}
+	if err := managed.CheckStateStep(stored.State, status.State); err != nil {
+		return err
+	}
 	if err := session.WriteLocator(locator); err != nil {
 		return err
 	}

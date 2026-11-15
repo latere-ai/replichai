@@ -507,3 +507,25 @@ func TestAnEnvironmentIsCheckedByName(t *testing.T) {
 		t.Fatalf("an offered environment was refused: %v", err)
 	}
 }
+
+func TestCheckStateStepFollowsTheLifecycle(t *testing.T) {
+	allowed := [][2]State{
+		{StatePending, StateRunning}, {StatePending, StateDone}, {StatePending, StateFailed},
+		{StateRunning, StateDone}, {StateRunning, StateFailed},
+		{StateRunning, StateRunning}, {StateDone, StateDone},
+	}
+	for _, step := range allowed {
+		if err := CheckStateStep(step[0], step[1]); err != nil {
+			t.Errorf("%s to %s refused: %v", step[0], step[1], err)
+		}
+	}
+	refused := [][2]State{
+		{StateDone, StateRunning}, {StateFailed, StateRunning}, {StateDone, StateFailed},
+		{StateRunning, StatePending}, {StateUnknown, StateRunning}, {StateUnknown, StateUnknown},
+	}
+	for _, step := range refused {
+		if err := CheckStateStep(step[0], step[1]); !errors.Is(err, ErrIllegalStateStep) {
+			t.Errorf("%s to %s = %v, want ErrIllegalStateStep", step[0], step[1], err)
+		}
+	}
+}

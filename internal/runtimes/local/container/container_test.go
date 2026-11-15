@@ -367,6 +367,13 @@ func TestALostContainerIsGoneNotFinished(t *testing.T) {
 	if err != nil || !status.Gone || status.Succeeded() {
 		t.Fatalf("a lost container = %+v, %v", status, err)
 	}
+	// An engine that failed for any other reason says nothing about the
+	// container: that is an error, not a lost container.
+	e.fail["inspect"] = errors.New("cannot connect to the engine socket")
+	status, err = driver.Observe(context.Background(), handle)
+	if err == nil || status.Gone {
+		t.Fatalf("an engine failure = %+v, %v; want an error and not gone", status, err)
+	}
 }
 
 // TestOutputReadsFromAnOffset checks that Output reads from an offset, so

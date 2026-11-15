@@ -328,11 +328,16 @@ func (s *Sandbox) Observe(ctx context.Context, handle hostsandbox.StageHandle) (
 	output, err := s.config.Run(ctx, []string{string(s.engine), "inspect", "--format",
 		"{{.State.Running}}|{{.State.ExitCode}}", handle.ID}, nil)
 	if err != nil {
-		// A container the engine no longer holds is gone. That is an
+		// A container the engine reports as missing is gone. That is an
 		// observation rather than a failure to observe, and gone is not
-		// finished, so it is never reported as success.
-		//nolint:nilerr // a missing container is an observation
-		return hostsandbox.StageStatus{Gone: true}, nil
+		// finished, so it is never reported as success. Any other failure,
+		// such as an engine that did not answer, says nothing about the
+		// container and is returned.
+		if missingContainer(err) {
+			//nolint:nilerr // a missing container is an observation
+			return hostsandbox.StageStatus{Gone: true}, nil
+		}
+		return hostsandbox.StageStatus{}, fmt.Errorf("inspect container %s: %w", handle.ID, err)
 	}
 	running, code, _ := strings.Cut(strings.TrimSpace(string(output)), "|")
 	if strings.EqualFold(running, "true") {
@@ -346,6 +351,13 @@ func (s *Sandbox) Observe(ctx context.Context, handle hostsandbox.StageHandle) (
 		return hostsandbox.StageStatus{Gone: true}, nil
 	}
 	return hostsandbox.StageStatus{ExitCode: exit}, nil
+}
+
+// missingContainer reports whether an engine error says the named container or
+// object does not exist. Docker and Podman both word it "no such container" or
+// "no such object".
+func missingContainer(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "no such ")
 }
 
 // Output reads the container's log from an offset. The engine writes the log
