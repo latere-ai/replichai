@@ -2,7 +2,7 @@ module github.com/latere-ai/replichai
 
 go 1.27.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/anthropics/anthropic-sdk-go/v2 v2.4.0
