@@ -848,3 +848,36 @@ func TestAFinishedRunIsNotAnnouncedAsAYield(t *testing.T) {
 		t.Errorf("a finished run was logged as a yield: %q", buf.String())
 	}
 }
+
+// TestAReplicaThatLostASessionDoesNotFinishIt checks that a driver whose lease
+// another replica took neither moves the session on nor fails it. Before, the
+// store checked only the transition, so the losing replica finished or failed
+// a session the winner was driving, until its heartbeat noticed up to a third
+// of the lease later.
+func TestAReplicaThatLostASessionDoesNotFinishIt(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
+	r := &fakeRunner{onExecute: func() {
+		// pod-b takes the session while pod-a is inside the run.
+		if won, err := s.Adopt(ctx, j.ID, "pod-b", 0); err != nil || !won {
+			t.Errorf("pod-b Adopt = %v/%v, want it won", won, err)
+		}
+	}}
+	w := NewWorker(s, r, WithWorkerID("pod-a"))
+	if _, err := w.Process(ctx); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	got, _ := s.Get(ctx, j.ID)
+	if got.Phase != PhaseRunning {
+		t.Fatalf("phase = %s, want running: pod-a finished a session pod-b holds", got.Phase)
+	}
+	if held, _ := s.Touch(ctx, j.ID, "pod-b"); !held {
+		t.Error("pod-b no longer holds the session")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if slices.Contains(r.calls, "publish") {
+		t.Errorf("pod-a published a session pod-b holds: %v", r.calls)
+	}
+}

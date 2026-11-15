@@ -514,6 +514,9 @@ func (s *MemStore) Advance(ctx context.Context, id string, to Phase, mutate func
 	if !ok {
 		return ErrNotFound
 	}
+	if err := s.checkHolder(ctx, id); err != nil {
+		return err
+	}
 	if !CanTransition(j.Phase, to) {
 		return illegal(j.Phase, to)
 	}
@@ -525,13 +528,34 @@ func (s *MemStore) Advance(ctx context.Context, id string, to Phase, mutate func
 	return nil
 }
 
-// Observe records the latest run status without a phase change.
-func (s *MemStore) Observe(_ context.Context, id string, status provider.RunStatus) error {
+// checkHolder refuses with ErrLeaseLost when the context names a driver and
+// that driver does not hold the session's lease. The caller holds the lock.
+func (s *MemStore) checkHolder(ctx context.Context, id string) error {
+	worker := workerFrom(ctx)
+	if worker == "" {
+		return nil
+	}
+	if held := s.leases[id]; held.by != worker {
+		return fmt.Errorf("%w: session %s is held by %q", ErrLeaseLost, id, held.by)
+	}
+	return nil
+}
+
+// Observe records the latest run status without a phase change. It refuses a
+// driver that does not hold the session's lease and a session that already
+// finished.
+func (s *MemStore) Observe(ctx context.Context, id string, status provider.RunStatus) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j, ok := s.jobs[id]
 	if !ok {
 		return ErrNotFound
+	}
+	if j.Phase.Terminal() {
+		return fmt.Errorf("%w: session %s is %s", ErrSessionFinished, id, j.Phase)
+	}
+	if err := s.checkHolder(ctx, id); err != nil {
+		return err
 	}
 	j.Status = status
 	j.UpdatedAt = s.clock()

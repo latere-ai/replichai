@@ -598,6 +598,75 @@ func runLeaseContract(t *testing.T, s Store, at func(time.Time)) {
 	}
 }
 
+// runLeaseWriteContract asserts that a driver writes to a session only while it
+// holds the session's lease, and that nothing records progress on a finished
+// one. A replica that lost a session to another used to be able to finish or
+// fail it, and its observations kept the winner's lease fresh; and a late
+// observation after settlement changed the cost the row showed from what the
+// ledger charged.
+func runLeaseWriteContract(t *testing.T, s Store) {
+	t.Helper()
+	ctx := context.Background()
+	as := func(worker string) context.Context { return WithWorker(ctx, worker) }
+	running := provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 7}}
+
+	j, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "lease-write", Kind: KindAudit})
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	// Nobody holds it yet, so no driver may write to it.
+	if err := s.Advance(as("pod-a"), j.ID, PhaseResolving, nil); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("Advance of a session nobody leased = %v, want ErrLeaseLost", err)
+	}
+	if _, ok, err := s.Claim(ctx, "pod-a"); err != nil || !ok {
+		t.Fatalf("Claim = %v/%v", ok, err)
+	}
+
+	// pod-b does not hold it: neither a phase change nor an observation lands.
+	if err := s.Advance(as("pod-b"), j.ID, PhaseRunning, nil); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("Advance by a replica without the lease = %v, want ErrLeaseLost", err)
+	}
+	if err := s.Observe(as("pod-b"), j.ID, running); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("Observe by a replica without the lease = %v, want ErrLeaseLost", err)
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseResolving || got.Status.Usage.InputTokens != 0 {
+		t.Fatalf("a replica without the lease changed the session: %+v", got)
+	}
+
+	// pod-a holds it, so its writes land.
+	if err := s.Advance(as("pod-a"), j.ID, PhaseRunning, nil); err != nil {
+		t.Fatalf("Advance by the holder: %v", err)
+	}
+	if err := s.Observe(as("pod-a"), j.ID, running); err != nil {
+		t.Fatalf("Observe by the holder: %v", err)
+	}
+	// A write that names no driver is an operator's or a test's, and is not
+	// refused by a lease it does not claim.
+	if err := s.Observe(ctx, j.ID, running); err != nil {
+		t.Fatalf("Observe naming no driver: %v", err)
+	}
+
+	// After a terminal phase nothing records progress, whoever asks, and the
+	// status the row settled with stays.
+	for _, p := range []Phase{PhasePublishing, PhaseDone} {
+		if err := s.Advance(as("pod-a"), j.ID, p, nil); err != nil {
+			t.Fatalf("Advance to %s: %v", p, err)
+		}
+	}
+	late := provider.RunStatus{State: provider.StateRunning, Usage: provider.Usage{InputTokens: 9_999}}
+	for _, ctx := range []context.Context{as("pod-a"), ctx} {
+		if err := s.Observe(ctx, j.ID, late); !errors.Is(err, ErrSessionFinished) {
+			t.Fatalf("Observe after the session finished = %v, want ErrSessionFinished", err)
+		}
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Status.Usage.InputTokens != 7 {
+		t.Fatalf("a late observation changed a finished session: %+v", got.Status)
+	}
+	if err := s.Observe(ctx, "no-such-session", running); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Observe of a missing session = %v, want ErrNotFound", err)
+	}
+}
+
 // runImportContract asserts the ownership rule for imported records, which both
 // stores hold: a re-push finds the pusher's own row and nobody else's, and
 // never moves a record between projects.
@@ -665,6 +734,7 @@ func TestMemStoreSatisfiesTheContract(t *testing.T) {
 	runClaimContention(t, NewMemStore())
 	memNow := time.Now()
 	runLeaseContract(t, NewMemStore(WithClock(func() time.Time { return memNow })), func(at time.Time) { memNow = at })
+	runLeaseWriteContract(t, NewMemStore())
 }
 
 // TestPGStoreSatisfiesTheContract runs the same contract against a real
@@ -717,4 +787,8 @@ func TestPGStoreSatisfiesTheContract(t *testing.T) {
 	}
 	pgNow := time.Now()
 	runLeaseContract(t, NewPGStore(pool, WithPGClock(func() time.Time { return pgNow })), func(at time.Time) { pgNow = at })
+	if _, err := pool.Exec(ctx, `TRUNCATE jobs`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	runLeaseWriteContract(t, NewPGStore(pool))
 }

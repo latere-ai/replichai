@@ -107,7 +107,11 @@ func TestAStoppedSessionRecordsOnlyThatItFailed(t *testing.T) {
 		t.Fatalf("observe: %v", err)
 	}
 
-	w := NewWorker(store, nil, WithBudget(projectFloor(store, ledger, 10*credit.Dollar)))
+	// The worker stops a session it drives, so it holds the session's lease.
+	if _, ok, err := store.Claim(ctx, "pod-a"); err != nil || !ok {
+		t.Fatalf("claim: %v/%v", ok, err)
+	}
+	w := NewWorker(store, nil, WithWorkerID("pod-a"), WithBudget(projectFloor(store, ledger, 10*credit.Dollar)))
 	w.watch(ctx, j.ID)
 
 	got, err := store.Get(ctx, j.ID)

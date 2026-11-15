@@ -1352,12 +1352,26 @@ func TestCancelSession(t *testing.T) {
 // publishInto adds a session to a project and points it at a published repo.
 func publishInto(t *testing.T, s JobStore, sub, projectID, repo string) job.Job {
 	t.Helper()
+	return publishIntoWith(t, s, sub, projectID, repo, nil)
+}
+
+// publishIntoWith is publishInto for a session that also recorded a run status,
+// such as usage. The status is recorded while the session is still running: a
+// finished session takes no more progress, so what it settled with is what it
+// shows.
+func publishIntoWith(t *testing.T, s JobStore, sub, projectID, repo string, status *provider.RunStatus) job.Job {
+	t.Helper()
 	ctx := context.Background()
 	j, err := s.Enqueue(ctx, job.Submission{Principal: sub, Ref: "ref", Kind: job.KindAudit, Project: projectID, PaperKey: "arxiv:" + repo})
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
 	adv := s.(*job.MemStore)
+	if status != nil {
+		if err := adv.Observe(ctx, j.ID, *status); err != nil {
+			t.Fatalf("observe: %v", err)
+		}
+	}
 	for _, p := range []job.Phase{job.PhaseResolving, job.PhaseRunning, job.PhasePublishing, job.PhaseDone} {
 		phase := p
 		if err := adv.Advance(ctx, j.ID, phase, func(jb *job.Job) {
@@ -1406,6 +1420,13 @@ func publishedSession(t *testing.T, d Deps, sub, repo string, usage *provider.Us
 		t.Fatalf("enqueue: %v", err)
 	}
 	adv := d.Jobs.(*job.MemStore)
+	// The usage is recorded while the session runs: a finished session takes no
+	// more progress.
+	if usage != nil {
+		if err := adv.Observe(ctx, j.ID, provider.RunStatus{Usage: *usage}); err != nil {
+			t.Fatalf("observe: %v", err)
+		}
+	}
 	// A published session has finished: it reaches done with a committed repo. It
 	// must be terminal, so the transcript reader takes the committed-repo path
 	// rather than the live one (006i).
@@ -1417,11 +1438,6 @@ func publishedSession(t *testing.T, d Deps, sub, repo string, usage *provider.Us
 			}
 		}); err != nil {
 			t.Fatalf("advance %s: %v", phase, err)
-		}
-	}
-	if usage != nil {
-		if err := adv.Observe(ctx, j.ID, provider.RunStatus{Usage: *usage}); err != nil {
-			t.Fatalf("observe: %v", err)
 		}
 	}
 	got, _ := d.Jobs.Get(ctx, j.ID)

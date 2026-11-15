@@ -202,7 +202,9 @@ type Store interface {
 	// Advance moves a job to a new phase through the single transition function,
 	// applying mutate to set fields such as the error on failure, the repository
 	// on publishing, and the latest status. It refuses a transition the state
-	// machine forbids with ErrIllegalTransition.
+	// machine forbids with ErrIllegalTransition. A call whose context names a
+	// driver with WithWorker is refused with ErrLeaseLost unless that driver
+	// holds the session's lease.
 	Advance(ctx context.Context, id string, to Phase, mutate func(*Job)) error
 	// Observe records the latest run status on a job without changing its phase,
 	// so a reader who connects mid-run sees where it is. Progress is not a
@@ -211,7 +213,10 @@ type Store interface {
 	// It also refreshes an existing lease, but it is not what keeps a lease
 	// alive: an observation arrives only when something changed, so a quiet run
 	// makes none, and Touch is the heartbeat (044c). A job nobody has leased
-	// stays unleased.
+	// stays unleased. A call whose context names a driver with WithWorker is
+	// refused with ErrLeaseLost unless that driver holds the lease, so a
+	// replica that lost the session cannot keep the new owner's lease fresh. A
+	// session that already finished is refused with ErrSessionFinished.
 	Observe(ctx context.Context, id string, status provider.RunStatus) error
 	// Active returns the jobs that are not terminal, so a restart can find work
 	// a crash left in flight and reconcile it.

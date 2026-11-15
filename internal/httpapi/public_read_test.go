@@ -52,21 +52,13 @@ func pricedDeps(gate Gate) Deps {
 	return d
 }
 
-// spend gives a finished session a cost by recording usage against the card it
-// was admitted under. Cost is derived on read from the usage and the card, so
+// spent is the run status of a session that burned tokens on the card it was
+// admitted under. Cost is derived on read from the usage and the card, so
 // nothing else is needed.
-func spend(t *testing.T, s JobStore, id string) {
-	t.Helper()
-	model := credit.DefaultCard().Models[0].Model
-	err := s.(*job.MemStore).Observe(context.Background(), id, provider.RunStatus{
-		Model: model,
+func spent() *provider.RunStatus {
+	return &provider.RunStatus{
+		Model: credit.DefaultCard().Models[0].Model,
 		Usage: provider.Usage{InputTokens: 1_000_000, OutputTokens: 250_000},
-	})
-	if err != nil {
-		t.Fatalf("observe: %v", err)
-	}
-	if got, _ := s.Get(context.Background(), id); got.Cost == 0 {
-		t.Fatal("the fixture session still costs nothing; the redaction assertions below would prove nothing")
 	}
 }
 
@@ -79,8 +71,10 @@ func publicProject(t *testing.T, d Deps, h http.Handler, owner string) (project.
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	sess := publishInto(t, d.Jobs, owner, p.ID, "r1")
-	spend(t, d.Jobs, sess.ID)
+	sess := publishIntoWith(t, d.Jobs, owner, p.ID, "r1", spent())
+	if sess.Cost == 0 {
+		t.Fatal("the fixture session costs nothing; the redaction assertions below would prove nothing")
+	}
 	publishable(t, d, owner, "ada")
 	if w := do(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner); w.Code != http.StatusOK {
 		t.Fatalf("publish: status %d (%s)", w.Code, w.Body.String())

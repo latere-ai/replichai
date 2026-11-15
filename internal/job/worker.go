@@ -468,12 +468,19 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 			continue
 		}
 		cause := fmt.Sprintf("interrupted by a restart in %s; no live run to rejoin", j.Phase)
-		if aErr := w.store.Advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = cause }); aErr != nil {
+		if aErr := w.advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = cause }); aErr != nil {
 			return resumed, failed, aErr
 		}
 		failed++
 	}
 	return resumed, failed, nil
+}
+
+// advance moves a session on as this replica, which the store checks against
+// the lease. Every phase write the worker makes goes through it, including the
+// ones made under a fresh context.
+func (w *Worker) advance(ctx context.Context, id string, to Phase, mutate func(*Job)) error {
+	return w.store.Advance(WithWorker(ctx, w.id), id, to, mutate)
 }
 
 // track registers a job as being driven here under a per-job context that
@@ -500,7 +507,10 @@ func (w *Worker) begin(pool context.Context, id string) (context.Context, func()
 
 // register is track's body, called with w.mu held.
 func (w *Worker) register(pool context.Context, id string) (context.Context, func()) {
-	ctx, cancel := context.WithCancel(pool)
+	// The context names this replica as the driver, so every write the session
+	// makes under it, the runner's observations included, is checked against
+	// the lease this replica holds.
+	ctx, cancel := context.WithCancel(WithWorker(pool, w.id))
 	w.running[id] = cancel
 	return ctx, func() {
 		w.mu.Lock()
@@ -563,7 +573,7 @@ func (w *Worker) drive(pool context.Context, j Job) error {
 	if err := w.call("resolve", func() error { return w.runner.Resolve(ctx, &j) }); err != nil {
 		return w.stop(pool, j.ID, err)
 	}
-	if err := w.store.Advance(ctx, j.ID, PhaseRunning, apply(j)); err != nil {
+	if err := w.advance(ctx, j.ID, PhaseRunning, apply(j)); err != nil {
 		return w.stop(pool, j.ID, err)
 	}
 	runErr := w.call("execute", func() error { return w.runner.Execute(ctx, &j, observe) })
@@ -634,7 +644,7 @@ func (w *Worker) drivePublish(pool, ctx context.Context, j Job) error {
 
 // publish moves a job whose run has settled through publishing to done.
 func (w *Worker) publish(pool, ctx context.Context, j Job) error {
-	if err := w.store.Advance(ctx, j.ID, PhasePublishing, apply(j)); err != nil {
+	if err := w.advance(ctx, j.ID, PhasePublishing, apply(j)); err != nil {
 		return w.stop(pool, j.ID, err)
 	}
 	if err := w.call("publish", func() error { return w.runner.Publish(ctx, &j) }); err != nil {
@@ -653,7 +663,7 @@ func (w *Worker) publish(pool, ctx context.Context, j Job) error {
 func (w *Worker) complete(ctx context.Context, j Job) error {
 	var err error
 	for range 3 {
-		if err = w.store.Advance(ctx, j.ID, PhaseDone, apply(j)); err == nil {
+		if err = w.advance(ctx, j.ID, PhaseDone, apply(j)); err == nil {
 			return nil
 		}
 		if ctx.Err() != nil {
@@ -704,11 +714,17 @@ func (w *Worker) stop(pool context.Context, id string, cause error) error {
 func (w *Worker) fail(id string, cause error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err := w.store.Advance(ctx, id, PhaseFailed, func(j *Job) { j.Err = cause.Error() })
+	err := w.advance(ctx, id, PhaseFailed, func(j *Job) { j.Err = cause.Error() })
 	if errors.Is(err, ErrIllegalTransition) {
 		if j, getErr := w.store.Get(ctx, id); getErr == nil && j.Phase.Terminal() {
 			return nil // cancellation/backstop won the terminal transition race
 		}
+	}
+	if errors.Is(err, ErrLeaseLost) {
+		// Another replica drives this session now, and its outcome is the one
+		// that counts. Failing it from here would overwrite that.
+		slog.Info("worker: not failing a session another replica holds", "session", id, "cause", cause)
+		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("record session %s failed: %w", id, err)

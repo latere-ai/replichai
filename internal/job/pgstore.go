@@ -369,12 +369,42 @@ func (s *PGStore) Claim(ctx context.Context, worker string) (Job, bool, error) {
 	return j, true, nil
 }
 
+// querier is what checkHolder reads the lease through, a transaction or a pool.
+type querier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// checkHolder refuses with ErrLeaseLost when the context names a driver and that
+// driver does not hold the session's lease. A context that names none passes. In
+// Advance the row is already locked, so the holder cannot change underneath it.
+func checkHolder(ctx context.Context, q querier, id string) error {
+	worker := workerFrom(ctx)
+	if worker == "" {
+		return nil
+	}
+	var holder string
+	if err := q.QueryRow(ctx, `SELECT COALESCE(adopted_by, '') FROM jobs WHERE id = $1`, id).Scan(&holder); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if holder != worker {
+		return fmt.Errorf("%w: session %s is held by %q", ErrLeaseLost, id, holder)
+	}
+	return nil
+}
+
 // Advance moves a job through the one transition function under a row lock,
-// refusing anything CanTransition forbids.
+// refusing anything CanTransition forbids, and refusing a driver that does not
+// hold the session's lease.
 func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(*Job)) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		j, err := scanJob(tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM jobs WHERE id = $1 FOR UPDATE`, id))
 		if err != nil {
+			return err
+		}
+		if err := checkHolder(ctx, tx, id); err != nil {
 			return err
 		}
 		if !CanTransition(j.Phase, to) {
@@ -413,7 +443,10 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 	})
 }
 
-// Observe records the latest status without a phase change.
+// Observe records the latest status without a phase change. It refuses a driver
+// that does not hold the session's lease, so a replica that lost the session
+// cannot keep the winner's lease fresh, and a session that already finished, so
+// a late observation cannot change what the row shows from what was charged.
 func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunStatus) error {
 	raw, err := encodeStatus(status)
 	if err != nil {
@@ -424,14 +457,30 @@ func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunSta
 			status = $2,
 			updated_at = $3,
 			adopted_at = CASE WHEN adopted_at IS NULL THEN NULL ELSE $3::timestamptz END
-		WHERE id = $1`, id, raw, s.clock())
+		WHERE id = $1
+		  AND phase NOT IN ('done','failed')
+		  AND ($4 = '' OR adopted_by = $4)`, id, raw, s.clock(), workerFrom(ctx))
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	// Nothing was written. Say why: the session is missing, finished, or held by
+	// another replica.
+	var phase Phase
+	var holder string
+	err = s.pool.QueryRow(ctx, `SELECT phase, COALESCE(adopted_by, '') FROM jobs WHERE id = $1`, id).Scan(&phase, &holder)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	if phase.Terminal() {
+		return fmt.Errorf("%w: session %s is %s", ErrSessionFinished, id, phase)
+	}
+	return fmt.Errorf("%w: session %s is held by %q", ErrLeaseLost, id, holder)
 }
 
 // Adopt leases a job in flight to one driver and reports whether this caller

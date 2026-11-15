@@ -58,6 +58,13 @@ const (
 var (
 	// ErrNotFound reports a missing job.
 	ErrNotFound = errors.New("job not found")
+	// ErrLeaseLost reports a write by a replica that does not hold the
+	// session's lease. Another replica owns the session now, so the caller
+	// stops driving it instead of racing the new owner to the finish.
+	ErrLeaseLost = errors.New("this replica does not hold the session's lease")
+	// ErrSessionFinished reports recording progress on a session that already
+	// reached a terminal phase. What it settled with stays.
+	ErrSessionFinished = errors.New("the session already finished")
 	// ErrIllegalTransition reports a phase change the state machine forbids. The
 	// transition function is the only writer of phase and refuses the change,
 	// which is what makes phase a state machine rather than a mutable column.
