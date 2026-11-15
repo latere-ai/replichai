@@ -101,6 +101,13 @@ var (
 	// the job in publishing for restart reconciliation instead of making the
 	// already-completed managed run terminally failed.
 	ErrRetryablePublish = errors.New("retryable publishing failure")
+	// ErrProjectPublic reports a session refused because its project is
+	// published. The store reads the project row in the transaction that
+	// inserts the session, so a publish that commits first is always seen.
+	ErrProjectPublic = errors.New("this project is published and takes no new sessions")
+	// ErrProjectTrashed reports a session refused because its project is in
+	// the trash, read in the same transaction as ErrProjectPublic.
+	ErrProjectTrashed = errors.New("this project is in the trash and takes no new sessions")
 )
 
 // needsPaperKey reports whether a session of this kind must carry a paper key.
