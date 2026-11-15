@@ -111,6 +111,9 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 			return nil
 		case bindClaim:
 		}
+		if err := checkGrantStep(GrantInvited, GrantBound); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `UPDATE access_grants SET principal=$1 WHERE email=$2`, p.Sub, email); err != nil {
 			return err
 		}
@@ -153,14 +156,100 @@ func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) 
 		return ErrNoEmail
 	}
 	now := s.clock()
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO access_grants (email, tier, granted_by, granted_at, revoked_at, revoked_by)
-		VALUES ($1,$2,'',$3,$3,$4)
-		ON CONFLICT (email) DO UPDATE SET
-			revoked_at=EXCLUDED.revoked_at, revoked_by=EXCLUDED.revoked_by, tier=EXCLUDED.tier
-		WHERE access_grants.revoked_at IS NULL`,
-		email, int16(TierNone), now, byAdmin.Sub)
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := lockAdmins(ctx, tx); err != nil {
+			return err
+		}
+		row, found, err := lockGrant(ctx, tx, email)
+		if err != nil {
+			return err
+		}
+		to := GrantRevoked
+		if !found {
+			if isSelf(byAdmin, email, "") {
+				return ErrSelfRevoke
+			}
+			if err := checkGrantCreate(to); err != nil {
+				return err
+			}
+		} else {
+			from := grantStateOf(row.principal, row.revoked)
+			if from == GrantRevoked {
+				return nil
+			}
+			if isSelf(byAdmin, email, row.principal) {
+				return ErrSelfRevoke
+			}
+			if row.tier == TierAdmin {
+				if err := requireOtherAdmin(ctx, tx, email); err != nil {
+					return err
+				}
+			}
+			if err := checkGrantStep(from, to); err != nil {
+				return err
+			}
+		}
+		_, err = tx.Exec(ctx, `
+			INSERT INTO access_grants (email, tier, granted_by, granted_at, revoked_at, revoked_by)
+			VALUES ($1,$2,'',$3,$3,$4)
+			ON CONFLICT (email) DO UPDATE SET
+				revoked_at=EXCLUDED.revoked_at, revoked_by=EXCLUDED.revoked_by, tier=EXCLUDED.tier
+			WHERE access_grants.revoked_at IS NULL`,
+			email, int16(TierNone), now, byAdmin.Sub)
+		return err
+	})
+}
+
+// grantRow is the columns of one locked grant row that a state decision reads.
+type grantRow struct {
+	tier      Tier
+	principal string
+	revoked   bool
+}
+
+// lockAdmins serializes the writes that can change how many active admins there
+// are, so two admins revoking each other cannot both pass the last-admin check.
+func lockAdmins(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('access_grants.admins'))`)
 	return err
+}
+
+// lockGrant reads and row-locks one grant; found is false for an address with
+// no row.
+func lockGrant(ctx context.Context, tx pgx.Tx, email string) (row grantRow, found bool, err error) {
+	var t int16
+	var principal *string
+	err = tx.QueryRow(ctx,
+		`SELECT tier, principal, revoked_at IS NOT NULL FROM access_grants WHERE email=$1 FOR UPDATE`,
+		email).Scan(&t, &principal, &row.revoked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return grantRow{}, false, nil
+	}
+	if err != nil {
+		return grantRow{}, false, err
+	}
+	if row.tier, err = decodeTier(t); err != nil {
+		return grantRow{}, false, err
+	}
+	if principal != nil {
+		row.principal = *principal
+	}
+	return row, true, nil
+}
+
+// requireOtherAdmin returns ErrLastAdmin unless an active admin other than email
+// exists.
+func requireOtherAdmin(ctx context.Context, tx pgx.Tx, email string) error {
+	var others int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM access_grants WHERE tier=$1 AND revoked_at IS NULL AND email<>$2`,
+		int16(TierAdmin), email).Scan(&others); err != nil {
+		return err
+	}
+	if others == 0 {
+		return ErrLastAdmin
+	}
+	return nil
 }
 
 // OverrideActive reports whether an uncleared freeze override is in force for
@@ -351,13 +440,35 @@ func scanGrants(rows pgx.Rows) ([]Grant, error) {
 // revocation: granting is how an admin re-admits somebody, so the two cannot be
 // true of one row at once.
 func (s *PGAccess) upsert(ctx context.Context, email string, tier Tier, by string) error {
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO access_grants (email, tier, granted_by, granted_at) VALUES ($1,$2,$3,$4)
-		ON CONFLICT (email) DO UPDATE SET
-			tier=EXCLUDED.tier, granted_by=EXCLUDED.granted_by, granted_at=EXCLUDED.granted_at,
-			revoked_at=NULL, revoked_by=''`,
-		email, int16(tier), by, s.clock())
-	return err
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := lockAdmins(ctx, tx); err != nil {
+			return err
+		}
+		row, found, err := lockGrant(ctx, tx, email)
+		if err != nil {
+			return err
+		}
+		if found {
+			from := grantStateOf(row.principal, row.revoked)
+			if err := checkGrantStep(from, grantStateOf(row.principal, false)); err != nil {
+				return err
+			}
+			if from != GrantRevoked && row.tier == TierAdmin && tier != TierAdmin {
+				if err := requireOtherAdmin(ctx, tx, email); err != nil {
+					return err
+				}
+			}
+		} else if err := checkGrantCreate(GrantInvited); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `
+			INSERT INTO access_grants (email, tier, granted_by, granted_at) VALUES ($1,$2,$3,$4)
+			ON CONFLICT (email) DO UPDATE SET
+				tier=EXCLUDED.tier, granted_by=EXCLUDED.granted_by, granted_at=EXCLUDED.granted_at,
+				revoked_at=NULL, revoked_by=''`,
+			email, int16(tier), by, s.clock())
+		return err
+	})
 }
 
 // requireAdmin resolves the caller and refuses anyone below TierAdmin.

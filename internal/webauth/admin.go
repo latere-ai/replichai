@@ -520,6 +520,10 @@ func writeAdminError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, access.ErrNotAdmin), errors.Is(err, platform.ErrNotAdmin), errors.Is(err, credit.ErrNotAdmin):
 		httpapi.WriteError(w, http.StatusForbidden, "not_admin")
+	case errors.Is(err, access.ErrLastAdmin):
+		httpapi.WriteError(w, http.StatusConflict, "last_admin")
+	case errors.Is(err, access.ErrSelfRevoke):
+		httpapi.WriteError(w, http.StatusConflict, "self_revoke")
 	case errors.Is(err, access.ErrNoEmail), errors.Is(err, credit.ErrNoEmail):
 		httpapi.WriteError(w, http.StatusBadRequest, "missing_email")
 	case errors.Is(err, platform.ErrNegative), errors.Is(err, credit.ErrNotPositive):

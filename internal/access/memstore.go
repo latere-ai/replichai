@@ -97,6 +97,9 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 	if p.Email != "" {
 		email := normalizeEmail(p.Email)
 		if g, ok := s.grants[email]; ok && g.Principal == "" && !g.Revoked() {
+			if err := checkGrantStep(GrantInvited, GrantBound); err != nil {
+				return TierNone, false, err
+			}
 			g.Principal = p.Sub
 			s.grants[email] = g
 			s.principalEmail[p.Sub] = email
@@ -140,8 +143,30 @@ func (s *MemStore) Grant(ctx context.Context, byAdmin Principal, email string, t
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if g, ok := s.grants[email]; ok {
+		from := grantStateOf(g.Principal, g.Revoked())
+		if err := checkGrantStep(from, grantStateOf(g.Principal, false)); err != nil {
+			return err
+		}
+		if from != GrantRevoked && g.Tier == TierAdmin && tier != TierAdmin && !s.otherAdmin(email) {
+			return ErrLastAdmin
+		}
+	} else if err := checkGrantCreate(GrantInvited); err != nil {
+		return err
+	}
 	s.upsert(email, tier, byAdmin.Sub)
 	return nil
+}
+
+// otherAdmin reports whether an active admin other than email exists. Caller
+// holds the lock.
+func (s *MemStore) otherAdmin(email string) bool {
+	for e, g := range s.grants {
+		if e != email && g.Tier == TierAdmin && !g.Revoked() {
+			return true
+		}
+	}
+	return false
 }
 
 // OverrideActive reports whether an uncleared freeze override is in force.
@@ -193,6 +218,19 @@ func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) 
 		// Already banned: the first revocation is the one that counts, and a
 		// second must not rewrite when it happened.
 		return nil
+	}
+	if isSelf(byAdmin, email, g.Principal) {
+		return ErrSelfRevoke
+	}
+	if ok {
+		if g.Tier == TierAdmin && !s.otherAdmin(email) {
+			return ErrLastAdmin
+		}
+		if err := checkGrantStep(grantStateOf(g.Principal, false), GrantRevoked); err != nil {
+			return err
+		}
+	} else if err := checkGrantCreate(GrantRevoked); err != nil {
+		return err
 	}
 	// An address with no grant gets a revoked, unbound one, so the ban holds
 	// at that person's first sign-in rather than being undone by it.

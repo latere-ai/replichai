@@ -143,3 +143,23 @@ func TestOperatorRoutesAreGated(t *testing.T) {
 		}
 	}
 }
+
+// A row at TierNone is signed in but not granted: the gate and the tier guard
+// both refuse it.
+func TestGateRefusesATierNoneRow(t *testing.T) {
+	store := access.NewMemStore()
+	_ = store.SeedAdmin(ctx, "admin@example.com")
+	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com"}
+	if err := store.Grant(ctx, admin, "none@example.com", access.TierNone); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	id := httpapi.Identity{Sub: "none-sub", Email: "none@example.com"}
+	if ok, reason := Gate(store).Allow(requestAs(&id)); ok || reason != "not_granted" {
+		t.Errorf("a tier-0 row: ok=%v reason=%q, want not_granted", ok, reason)
+	}
+	rec := httptest.NewRecorder()
+	RequireTier(store, access.TierNone)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(rec, requestAs(&id))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("the tier guard admitted a tier-0 row: %d", rec.Code)
+	}
+}

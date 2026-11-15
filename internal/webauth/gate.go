@@ -27,7 +27,7 @@ func Gate(a access.Access) httpapi.Gate {
 		if !ok || id.Sub == "" {
 			return false, "not_authenticated"
 		}
-		_, granted, err := a.Resolve(r.Context(), access.Principal{
+		tier, granted, err := a.Resolve(r.Context(), access.Principal{
 			Sub:   id.Sub,
 			Email: id.Email,
 		})
@@ -37,7 +37,8 @@ func Gate(a access.Access) httpapi.Gate {
 			// person that they have no grant.
 			return false, httpapi.ReasonUnavailable
 		}
-		if !granted {
+		// A row at TierNone is signed in but not granted, so it does not pass.
+		if !granted || !tier.Granted() {
 			return false, "not_granted"
 		}
 		return true, ""
@@ -61,7 +62,7 @@ func RequireTier(a access.Access, min access.Tier) func(http.Handler) http.Handl
 				Sub:   id.Sub,
 				Email: id.Email,
 			})
-			if err != nil || !granted {
+			if err != nil || !granted || !tier.Granted() {
 				httpapi.WriteError(w, http.StatusForbidden, "not_granted")
 				return
 			}

@@ -73,6 +73,11 @@ var (
 	ErrNotLead = errors.New("only a project lead may change its membership")
 	// ErrNoEmail reports a grant seeded with no email.
 	ErrNoEmail = errors.New("a grant needs an email to seed against")
+	// ErrLastAdmin reports a revoke or demotion that would leave the deployment
+	// with no admin.
+	ErrLastAdmin = errors.New("the last admin cannot be revoked or demoted")
+	// ErrSelfRevoke reports an admin revoking their own grant.
+	ErrSelfRevoke = errors.New("an admin cannot revoke their own grant")
 )
 
 // Grant is one row of the ACL: the email it was seeded against, the principal
@@ -106,7 +111,8 @@ type Access interface {
 	Resolve(ctx context.Context, p Principal) (tier Tier, granted bool, err error)
 	// Grant seeds or promotes a grant by email, clearing any revocation on it.
 	// An admin re-admitting somebody is a supported operation, not a reason to
-	// edit a column by hand. Admin only.
+	// edit a column by hand. Admin only. Demoting the last admin is refused
+	// with ErrLastAdmin.
 	Grant(ctx context.Context, byAdmin Principal, email string, tier Tier) error
 	// Revoke bans an email, locking its holder out on the next request. It
 	// records the revocation rather than deleting the row (006q): sign-in
@@ -114,7 +120,8 @@ type Access interface {
 	// the ban would last exactly one request. An address with no grant gets a
 	// revoked one, so a person banned before their first sign-in is refused
 	// there. Admin only; idempotent, and a second revocation does not
-	// overwrite the first.
+	// overwrite the first. It refuses an admin revoking themself
+	// (ErrSelfRevoke) and revoking the last admin (ErrLastAdmin).
 	Revoke(ctx context.Context, byAdmin Principal, email string) error
 	// SelfGrant admits a principal who has just proven their identity, at
 	// TierUser (006q). Only the login calls it: signing in creates the row the

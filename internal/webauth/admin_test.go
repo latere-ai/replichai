@@ -152,3 +152,29 @@ func TestAdminRevokeForgetsTheStoredSignIn(t *testing.T) {
 		t.Fatalf("the retry = %d, forgot %v; want 204 and one forget", w.Code, forgot)
 	}
 }
+
+// An admin revoking themself, or demoting the last admin, is answered 409 with a
+// code the console can name, and the grant is left as it was.
+func TestAdminRefusesSelfRevokeAndLastAdminDemotion(t *testing.T) {
+	admin, adminID, _ := adminSetup(t)
+
+	r := as(adminID, "DELETE", "/admin/access/admin@example.com", "")
+	r.SetPathValue("email", "admin@example.com")
+	w := httptest.NewRecorder()
+	admin.Revoke(w, r)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "self_revoke") {
+		t.Errorf("self revoke = %d %s, want 409 self_revoke", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	admin.Grant(w, as(adminID, "POST", "/admin/access", `{"email":"admin@example.com","tier":"user"}`))
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "last_admin") {
+		t.Errorf("demoting the last admin = %d %s, want 409 last_admin", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	admin.List(w, as(adminID, "GET", "/admin/access", ""))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"admin@example.com"`) {
+		t.Errorf("the admin is gone after the refusals: %d %s", w.Code, w.Body.String())
+	}
+}
