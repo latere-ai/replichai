@@ -510,3 +510,87 @@ func TestConcurrentSessionsRefreshOnce(t *testing.T) {
 		t.Fatalf("the stored credential = %q, %v", token.RefreshToken, err)
 	}
 }
+
+// A refresh waits for another process that holds the credential file's lock,
+// then reads what that process stored instead of presenting the old refresh
+// token. The lock is the file's own, so the wait holds across processes.
+func TestARefreshWaitsForTheCredentialLock(t *testing.T) {
+	var calls int
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]string{"error": "invalid_grant"})
+	}))
+	defer server.Close()
+	store := Store{Dir: t.TempDir()}
+	if err := store.Save(Token{AccessToken: jwt("user-1", "ada@example.org"), RefreshToken: "refresh-0", Expiry: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	release, err := store.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		token Token
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		s := &Session{AuthURL: server.URL, Store: store, HTTP: server.Client(), Now: time.Now}
+		token, err := s.Current(context.Background())
+		done <- result{token, err}
+	}()
+	select {
+	case r := <-done:
+		t.Fatalf("Current returned while another process held the lock: %+v, %v", r.token, r.err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	// The other process finishes its refresh and releases the lock.
+	fresh := Token{AccessToken: jwt("user-1", "ada@example.org"), RefreshToken: "refresh-1", Expiry: time.Now().Add(time.Hour)}
+	if err := store.Save(fresh); err != nil {
+		t.Fatal(err)
+	}
+	if err := release(); err != nil {
+		t.Fatal(err)
+	}
+	r := <-done
+	if r.err != nil || r.token.RefreshToken != "refresh-1" {
+		t.Fatalf("Current = %+v, %v; want the credential the other process stored", r.token, r.err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 0 {
+		t.Errorf("the spent refresh token was presented %d times", calls)
+	}
+}
+
+// A rejection clears the credential only when the file still holds the refresh
+// token that was rejected: a credential stored meanwhile stays signed in.
+func TestARejectionKeepsACredentialStoredMeanwhile(t *testing.T) {
+	store := Store{Dir: t.TempDir()}
+	if err := store.Save(Token{AccessToken: jwt("user-1", "ada@example.org"), RefreshToken: "refresh-0", Expiry: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A login that does not take the lock stores a new credential while
+		// the old token is being refused.
+		fresh := Token{AccessToken: jwt("user-1", "ada@example.org"), RefreshToken: "refresh-9", Expiry: time.Now().Add(time.Hour)}
+		if err := store.Save(fresh); err != nil {
+			t.Error(err)
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]string{"error": "invalid_grant"})
+	}))
+	defer server.Close()
+	s := &Session{AuthURL: server.URL, Store: store, HTTP: server.Client(), Now: time.Now}
+	token, err := s.Current(context.Background())
+	if err != nil || token.RefreshToken != "refresh-9" {
+		t.Fatalf("Current = %+v, %v; want the credential stored meanwhile", token, err)
+	}
+	if kept, err := store.Load(); err != nil || kept.RefreshToken != "refresh-9" {
+		t.Fatalf("the credential stored meanwhile was cleared: %+v, %v", kept, err)
+	}
+}

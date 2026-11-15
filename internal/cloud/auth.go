@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -135,6 +136,17 @@ func (s Store) Clear() error {
 	return err
 }
 
+// Lock takes the cross-process lock on the credential file, held on a sibling
+// lock file so replacing or removing the credential does not release it. Every
+// read-modify-write of the credential runs under it, so two CLI processes
+// refreshing at once take turns. The returned function releases it.
+func (s Store) Lock() (func() error, error) {
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
+		return nil, err
+	}
+	return lockFile(s.Path() + ".lock")
+}
+
 // Session holds a signed-in identity and presents it to the API.
 type Session struct {
 	// AuthURL is the identity provider.
@@ -197,8 +209,18 @@ func (s *Session) Login(ctx context.Context, show func(Prompt)) (Token, error) {
 		return Token{}, fmt.Errorf("device login: %w", err)
 	}
 	token := s.tokenFrom(granted, Token{})
-	if err := s.Store.Save(token); err != nil {
-		return Token{}, err
+	// Stored under the lock, so a refresh in another process does not write
+	// over the new sign-in with the credential it read before.
+	unlock, err := s.Store.Lock()
+	if err != nil {
+		return Token{}, fmt.Errorf("lock the credential: %w", err)
+	}
+	saveErr := s.Store.Save(token)
+	if err := unlock(); err != nil {
+		slog.Warn("cloud: releasing the credential lock", "error", err)
+	}
+	if saveErr != nil {
+		return Token{}, saveErr
 	}
 	return token, nil
 }
@@ -235,11 +257,14 @@ func (s *Session) tokenFrom(granted *oauth2.Token, previous Token) Token {
 // or expired, clears it. A CLI that signed itself out on every transient
 // network failure could not be trusted with a long batch run.
 //
-// One refresh runs at a time in this process, and a caller that waited for
-// another's reads the credential again before refreshing. Auth spends a
-// refresh token once and answers a second presentation with invalid_grant,
-// which signs the terminal out, and the command line can hold several
-// sessions over one file at once, as a batch that runs papers at once does.
+// One refresh runs at a time across processes: it holds the credential file's
+// lock, and a caller that waited for another's reads the credential again
+// before refreshing. Auth spends a refresh token once and answers a second
+// presentation with invalid_grant, which signs the terminal out, and several
+// command line processes can share one file, as a batch that runs papers at
+// once does. A rejection clears the credential only if the file still holds
+// the refresh token that was rejected, so a process that lost the race does
+// not sign out the one that won.
 func (s *Session) Current(ctx context.Context) (Token, error) {
 	token, err := s.Store.Load()
 	if err != nil {
@@ -250,6 +275,15 @@ func (s *Session) Current(ctx context.Context) (Token, error) {
 	}
 	refreshing.Lock()
 	defer refreshing.Unlock()
+	unlock, err := s.Store.Lock()
+	if err != nil {
+		return Token{}, fmt.Errorf("lock the credential: %w", err)
+	}
+	defer func() {
+		if err := unlock(); err != nil {
+			slog.Warn("cloud: releasing the credential lock", "error", err)
+		}
+	}()
 	token, err = s.Store.Load()
 	if err != nil {
 		return Token{}, err
@@ -264,7 +298,18 @@ func (s *Session) Current(ctx context.Context) (Token, error) {
 	granted, err := client.RefreshTokenContext(ctx, token.RefreshToken)
 	if err != nil {
 		if isInvalidGrant(err) {
-			_ = s.Store.Clear()
+			// Read again under the lock: a process that does not take it, such
+			// as a login, may have stored a new credential meanwhile.
+			current, loadErr := s.Store.Load()
+			if loadErr == nil && current.RefreshToken != token.RefreshToken {
+				if !current.Expired(s.now()) {
+					return current, nil
+				}
+				return Token{}, fmt.Errorf("refresh credential: %w", err)
+			}
+			if err := s.Store.Clear(); err != nil {
+				return Token{}, fmt.Errorf("clear the rejected credential: %w", err)
+			}
 			return Token{}, fmt.Errorf("%w: the saved credential was rejected; run `replichai login`", ErrSignedOut)
 		}
 		return Token{}, fmt.Errorf("refresh credential: %w", err)
@@ -285,6 +330,15 @@ var refreshing sync.Mutex
 func (s *Session) SwitchOrg(ctx context.Context, org string) (Token, error) {
 	refreshing.Lock()
 	defer refreshing.Unlock()
+	unlock, err := s.Store.Lock()
+	if err != nil {
+		return Token{}, fmt.Errorf("lock the credential: %w", err)
+	}
+	defer func() {
+		if err := unlock(); err != nil {
+			slog.Warn("cloud: releasing the credential lock", "error", err)
+		}
+	}()
 	token, err := s.Store.Load()
 	if err != nil {
 		return Token{}, err
