@@ -685,10 +685,23 @@ func runImportContract(t *testing.T, s Store) {
 	if err != nil {
 		t.Fatalf("ImportLocal: %v", err)
 	}
-	// Alice re-pushes after a retry: her row, updated in place.
-	again, err := s.ImportLocal(ctx, record("alice", "P", PhaseDone))
-	if err != nil || again.ID != first.ID || again.Phase != PhaseDone {
-		t.Fatalf("re-push = %+v, %v; want the same row moved to done", again, err)
+	// Alice re-pushes the same record after a retry: her row, unchanged.
+	again, err := s.ImportLocal(ctx, record("alice", "P", PhaseFailed))
+	if err != nil || again.ID != first.ID || again.Phase != PhaseFailed {
+		t.Fatalf("re-push = %+v, %v; want the same row", again, err)
+	}
+	// A re-push that would change a finished record is refused, and the row
+	// keeps what it had.
+	if _, err := s.ImportLocal(ctx, record("alice", "P", PhaseDone)); !errors.Is(err, ErrSessionFinished) {
+		t.Fatalf("re-push of a finished record as done: err=%v, want ErrSessionFinished", err)
+	}
+	if kept, _ := s.Get(ctx, first.ID); kept.Phase != PhaseFailed || kept.StopReason != StopError {
+		t.Fatalf("the record changed after a refused re-push: phase %s stop %q", kept.Phase, kept.StopReason)
+	}
+	moved := record("alice", "P", PhaseFailed)
+	moved.RepoName = "open-hai/other"
+	if _, err := s.ImportLocal(ctx, moved); !errors.Is(err, ErrSessionFinished) {
+		t.Fatalf("re-push with another repository: err=%v, want ErrSessionFinished", err)
 	}
 
 	// Bob, a member of another project, pushes the same session id: he gets his

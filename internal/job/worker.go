@@ -357,11 +357,13 @@ func (w *Worker) heartbeat(ctx context.Context) {
 // to publish. A store error is ignored: the next tick is soon, and a transient
 // database error must not cancel a healthy run.
 //
-// A row that went terminal also reports held=false, but for a different
-// reason: the run finished, and the heartbeat ran between its final transition
-// and the driver deregistering. That happens on every successful run, so it is
-// skipped silently. Logging it would write "yielding session X" after each
-// success, and the line matters only during an incident.
+// A row that went terminal also reports held=false. Either this run finished
+// and the heartbeat ran between its final transition and the driver
+// deregistering, or a person cancelled the session on another replica, whose
+// store write is the only signal this replica gets. In both cases the run's
+// context is cancelled: for a finished run that changes nothing, and for a
+// cancel it stops the agent and its spend. It is not logged as a yield, which
+// would write a line after every success.
 func (w *Worker) beat(ctx context.Context) {
 	for _, id := range w.drivingIDs() {
 		held, err := w.store.Touch(ctx, id, w.id)
@@ -373,7 +375,8 @@ func (w *Worker) beat(ctx context.Context) {
 			continue
 		}
 		if j, err := w.store.Get(ctx, id); err == nil && j.Phase.Terminal() {
-			continue // finished; drive is already unwinding
+			w.interrupt(id)
+			continue
 		}
 		slog.InfoContext(ctx, "worker: yielding session; its lease is held elsewhere", "session", id)
 		w.interrupt(id)
@@ -482,7 +485,8 @@ func (w *Worker) reconcile(ctx context.Context, startup bool) (resumed, failed i
 			continue
 		}
 		cause := fmt.Sprintf("interrupted by a restart in %s; no live run to rejoin", j.Phase)
-		if aErr := w.advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = cause }); aErr != nil {
+		stranded := func(jb *Job) { jb.Err, jb.StopReason = cause, StopInterrupted }
+		if aErr := w.advance(ctx, j.ID, PhaseFailed, stranded); aErr != nil {
 			fail(j, "fail", aErr)
 			continue
 		}

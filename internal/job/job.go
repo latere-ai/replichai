@@ -184,6 +184,21 @@ func (j Job) withCost() Job {
 // tell a deliberate stop from a real failure.
 const CancelCause = "cancelled"
 
+// StopReason says why a session is in the failed phase. It is empty in every
+// other phase. The set is closed: a viewer branches on these three values and
+// never on the error text.
+type StopReason string
+
+// The reasons a session stops in failed.
+const (
+	// StopCanceled is a stop a person asked for.
+	StopCanceled StopReason = "canceled"
+	// StopInterrupted is a session a restart found with no live run to rejoin.
+	StopInterrupted StopReason = "interrupted"
+	// StopError is any other failure, including a spend stop.
+	StopError StopReason = "error"
+)
+
 // ProjectStatus summarizes a project's sessions for the list view: the total,
 // how many are still running, the newest session's phase, and when any of them
 // last changed.
@@ -230,6 +245,8 @@ type Job struct {
 	Status     provider.RunStatus `json:"status"`              // latest observation while running
 	RepoName   string             `json:"repo_name,omitempty"` // set once publishing begins
 	Err        string             `json:"error,omitempty"`     // set with the failed phase
+	// StopReason is set with the failed phase and only then.
+	StopReason StopReason `json:"stop_reason,omitempty"`
 	// Tier is the model tier this session runs on, chosen by whoever started it
 	// (031). Empty is not a missing value: it means nobody chose a tier, which
 	// covers every run before the choice existed and every caller that omits
@@ -306,17 +323,14 @@ func (j Job) ManagedSessionRef() (managed.SessionRef, bool, error) {
 
 // Active reports whether the phase is one from which work continues, which
 // are the phases a failure may interrupt.
-func (p Phase) Active() bool {
-	switch p {
-	case PhaseSubmitted, PhaseResolving, PhaseRunning, PhasePublishing:
-		return true
-	default:
-		return false
-	}
-}
+func (p Phase) Active() bool { return len(transitions[p]) > 0 }
 
-// Terminal reports whether no further transition is possible.
-func (p Phase) Terminal() bool { return p == PhaseDone || p == PhaseFailed }
+// Terminal reports whether no further transition is possible. A phase the table
+// does not list is not terminal.
+func (p Phase) Terminal() bool {
+	next, ok := transitions[p]
+	return ok && len(next) == 0
+}
 
 // transitions is the whole state machine: the legal successors of each phase.
 // Failed is reachable from every active phase; done is reachable only from
@@ -326,8 +340,8 @@ var transitions = map[Phase][]Phase{
 	PhaseResolving:  {PhaseRunning, PhaseFailed},
 	PhaseRunning:    {PhasePublishing, PhaseFailed},
 	PhasePublishing: {PhaseDone, PhaseFailed},
-	PhaseDone:       {},
-	PhaseFailed:     {},
+	PhaseDone:       nil,
+	PhaseFailed:     nil,
 }
 
 // ActivePhases lists the phases a session can still leave, sorted by name, for
@@ -338,6 +352,42 @@ func ActivePhases() []Phase {
 		if len(next) > 0 {
 			out = append(out, p)
 		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// phaseNames renders phases as the strings a query binds to a text[] parameter.
+func phaseNames(phases []Phase) []string {
+	out := make([]string, len(phases))
+	for i, p := range phases {
+		out[i] = string(p)
+	}
+	return out
+}
+
+// activeNames is ActivePhases as bound parameters.
+func activeNames() []string { return phaseNames(ActivePhases()) }
+
+// sourcesOf lists the phases from which the table allows a move to the target,
+// sorted by name. A guarded UPDATE matches on it, so the SQL never spells a
+// phase list of its own.
+func sourcesOf(to Phase) []Phase {
+	var out []Phase
+	for from, next := range transitions {
+		if slices.Contains(next, to) {
+			out = append(out, from)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// States lists every phase in the table, sorted by name.
+func States() []Phase {
+	out := make([]Phase, 0, len(transitions))
+	for p := range transitions {
+		out = append(out, p)
 	}
 	slices.Sort(out)
 	return out
@@ -362,4 +412,70 @@ func newID() string {
 	// buffer or aborts the process.
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
+}
+
+// stopFor is the stop reason a row carries after moving to a phase: the one the
+// move set, or error when it set none, in failed, and nothing in any other
+// phase.
+func stopFor(to Phase, set StopReason) StopReason {
+	if to != PhaseFailed {
+		return ""
+	}
+	if set == "" {
+		return StopError
+	}
+	return set
+}
+
+// importStop is the stop reason of an imported record.
+func importStop(in Import) string {
+	if in.Phase != PhaseFailed {
+		return ""
+	}
+	if in.Err == CancelCause {
+		return string(StopCanceled)
+	}
+	return string(StopError)
+}
+
+// projectRefusal is the refusal a project's visibility and trash state call
+// for, or nil when it takes sessions.
+func projectRefusal(visibility string, trashed bool) error {
+	if trashed {
+		return ErrProjectTrashed
+	}
+	if visibility == "public" {
+		return ErrProjectPublic
+	}
+	return nil
+}
+
+// sameImport answers a re-push of a record that already exists. The record is
+// finished, so its content cannot change: the same content succeeds without a
+// write, anything else is refused. A record under another project is refused
+// as moved.
+func sameImport(existing Job, in Import) (Job, error) {
+	if existing.ProjectID != in.Project {
+		return Job{}, ErrImportedElsewhere
+	}
+	have, err := encodeStatus(existing.Status)
+	if err != nil {
+		return Job{}, err
+	}
+	sent, err := encodeStatus(in.Status)
+	if err != nil {
+		return Job{}, err
+	}
+	var round provider.RunStatus
+	if err := json.Unmarshal([]byte(sent), &round); err != nil {
+		return Job{}, fmt.Errorf("decode status: %w", err)
+	}
+	if sent, err = encodeStatus(round); err != nil {
+		return Job{}, err
+	}
+	if existing.Phase == in.Phase && existing.RepoName == in.RepoName && existing.Ref == in.Ref &&
+		existing.PaperKey == in.PaperKey && existing.Err == in.Err && have == sent {
+		return existing, nil
+	}
+	return Job{}, fmt.Errorf("%w: record %s cannot change after it was imported", ErrSessionFinished, in.ExternalID)
 }

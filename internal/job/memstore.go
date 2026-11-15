@@ -37,6 +37,9 @@ type MemStore struct {
 	// about the session.
 	leases map[string]lease
 	clock  func() time.Time
+	// projects reads a project's visibility and trash state for the check a
+	// new session makes. Nil means no project is refused.
+	projects ProjectLookup
 	// credits and reserve are the enqueue gate (011). Both nil means unmetered,
 	// which is the mode for an offline run and every test that is not about
 	// money.
@@ -49,6 +52,41 @@ type MemStore struct {
 type lease struct {
 	by string
 	at time.Time
+}
+
+// ProjectLookup reads one project's visibility and whether it is in the trash.
+// found is false for a project the lookup does not know, which no check
+// refuses.
+type ProjectLookup func(ctx context.Context, id string) (visibility string, trashed, found bool, err error)
+
+// WithProjects makes the store refuse a session for a project that is public or
+// in the trash, as the Postgres store does by reading the project row.
+func WithProjects(f ProjectLookup) MemOption {
+	return func(s *MemStore) { s.projects = f }
+}
+
+// UseProjects sets the project lookup after construction, for a composition
+// that builds the job store before the project store it reads.
+func (s *MemStore) UseProjects(f ProjectLookup) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.projects = f
+}
+
+// checkProject refuses a session for a project that is public or in the trash.
+// The caller holds the lock.
+func (s *MemStore) checkProject(ctx context.Context, project string) error {
+	if s.projects == nil || project == "" {
+		return nil
+	}
+	visibility, trashed, found, err := s.projects(ctx, project)
+	if err != nil {
+		return fmt.Errorf("read project %s: %w", project, err)
+	}
+	if !found {
+		return nil
+	}
+	return projectRefusal(visibility, trashed)
 }
 
 // MemOption configures a MemStore.
@@ -126,7 +164,7 @@ func NewMemStore(opts ...MemOption) *MemStore {
 // credit path: Enqueue takes the start reserve inside the write, and a boolean
 // asking it not to would let a single missed branch charge an operator for
 // compute they bought themselves. This function has no path to takeReserve.
-func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
+func (s *MemStore) ImportLocal(ctx context.Context, in Import) (Job, error) {
 	if strings.TrimSpace(in.Ref) == "" {
 		return Job{}, ErrEmptyRef
 	}
@@ -143,23 +181,23 @@ func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := s.checkProject(ctx, in.Project); err != nil {
+		return Job{}, err
+	}
 	// The import is idempotent on (principal, external id): an operator's
-	// re-push of the same session updates their own row, so an interrupted
-	// upload is resumed by running it again, and never finds another
-	// operator's row. A re-push under a different project is refused rather
-	// than moving the record, which is the same rule the Postgres store's
-	// conflict clause enforces.
+	// re-push finds their own row and never another operator's. The record is
+	// finished, so a re-push with the same content returns it and any other is
+	// refused, which is the rule the Postgres store applies under a row lock.
 	for _, id := range s.order {
 		existing := s.jobs[id]
 		if existing.Origin.OrDefault() != OriginLocal || existing.Principal != in.Principal || existing.ExternalID != in.ExternalID {
 			continue
 		}
-		if existing.ProjectID != in.Project {
-			return Job{}, ErrImportedElsewhere
+		same, err := sameImport(existing, in)
+		if err != nil {
+			return Job{}, err
 		}
-		applyImport(&existing, in, now)
-		s.jobs[id] = existing
-		return existing.withCost(), nil
+		return cloneJob(same), nil
 	}
 	id := newID()
 	imported := Job{
@@ -178,6 +216,7 @@ func (s *MemStore) ImportLocal(_ context.Context, in Import) (Job, error) {
 // arrived.
 func applyImport(j *Job, in Import, now time.Time) {
 	j.Phase, j.Status, j.RepoName, j.Err = in.Phase, in.Status, in.RepoName, in.Err
+	j.StopReason = StopReason(importStop(in))
 	j.Ref, j.PaperKey, j.ProjectID = in.Ref, in.PaperKey, in.Project
 	j.UpdatedAt = now
 	if j.PhaseAt == nil {
@@ -212,6 +251,9 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.checkProject(ctx, sub.Project); err != nil {
+		return Job{}, err
+	}
 	// The double-trigger guard: at most one non-terminal session per paper, per
 	// project and per principal. An empty key, which only an experiment has,
 	// is never guarded. This mirrors the two partial unique indexes Postgres
@@ -442,6 +484,7 @@ func (s *MemStore) Cancel(ctx context.Context, id string) (Job, error) {
 	now := s.clock()
 	j.Phase = PhaseFailed
 	j.Err = CancelCause
+	j.StopReason = StopCanceled
 	j.UpdatedAt = now
 	j.PhaseAt = clonePhaseAt(j.PhaseAt)
 	if j.PhaseAt == nil {
@@ -566,6 +609,27 @@ func (s *MemStore) Observe(ctx context.Context, id string, status provider.RunSt
 	return nil
 }
 
+// SetRepo records the repository a session was given. It is refused like an
+// observation: for a session that finished or one another driver holds.
+func (s *MemStore) SetRepo(ctx context.Context, id, repo string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if j.Phase.Terminal() {
+		return fmt.Errorf("%w: session %s is %s", ErrSessionFinished, id, j.Phase)
+	}
+	if err := s.checkHolder(ctx, id); err != nil {
+		return err
+	}
+	j.RepoName = repo
+	j.UpdatedAt = s.clock()
+	s.jobs[id] = j
+	return nil
+}
+
 // Accrued sums what every in-flight session in a project has cost so far.
 func (s *MemStore) Accrued(_ context.Context, project string) (int64, error) {
 	s.mu.Lock()
@@ -602,6 +666,7 @@ func (s *MemStore) transition(j *Job, to Phase, mutate func(*Job)) {
 	now := s.clock()
 	j.Phase = to
 	j.UpdatedAt = now
+	j.StopReason = stopFor(to, j.StopReason)
 	if j.PhaseAt == nil {
 		j.PhaseAt = map[Phase]time.Time{}
 	} else {

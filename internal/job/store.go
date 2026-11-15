@@ -94,8 +94,11 @@ type Store interface {
 	// ImportLocal records a session that was executed elsewhere. It never
 	// takes a credit reserve and never prices anything, because whoever ran
 	// the session bought the compute from the vendor. Re-importing the same
-	// (runtime, external id) updates that row rather than creating a second
-	// one, so an interrupted upload is resumed by running it again.
+	// (runtime, external id) with the same content returns that row and writes
+	// nothing. A record is finished, so a re-import that would change its
+	// phase, repository or status is refused with ErrSessionFinished. A project
+	// that is published or in the trash refuses with ErrProjectPublic or
+	// ErrProjectTrashed, as Enqueue does.
 	ImportLocal(ctx context.Context, in Import) (Job, error)
 
 	// Enqueue records a new submission as a submitted job, which is a session
@@ -106,7 +109,9 @@ type Store interface {
 	// it can afford holds the start reserve against its pot (011). Both checks
 	// run in the writing transaction, so neither is racy and neither can be
 	// skipped by a new caller. An audit with no paper key is refused with
-	// ErrNoPaperKey, because it would belong to no paper of its project.
+	// ErrNoPaperKey, because it would belong to no paper of its project. A
+	// project that is published or in the trash is refused with ErrProjectPublic
+	// or ErrProjectTrashed, read in the same transaction as the insert.
 	Enqueue(ctx context.Context, s Submission) (Job, error)
 	// Get returns one job by id, or ErrNotFound.
 	Get(ctx context.Context, id string) (Job, error)
@@ -162,7 +167,7 @@ type Store interface {
 	// has already committed it.
 	SpendSince(ctx context.Context, ids []string, since time.Time) (map[string]int64, error)
 	// Cancel stops a non-terminal session, moving it to failed with a "cancelled"
-	// cause, and returns the resulting job. It is idempotent: cancelling an
+	// cause and the stop reason canceled, and returns the resulting job. It is idempotent: cancelling an
 	// already-terminal session returns it unchanged. It does not go through the
 	// phase machine, because a stop must succeed from any active phase.
 	Cancel(ctx context.Context, id string) (Job, error)
@@ -218,6 +223,11 @@ type Store interface {
 	// replica that lost the session cannot keep the new owner's lease fresh. A
 	// session that already finished is refused with ErrSessionFinished.
 	Observe(ctx context.Context, id string, status provider.RunStatus) error
+	// SetRepo records the repository a session was given, so a restart in the
+	// running phase knows it. It is refused as Observe is: with
+	// ErrSessionFinished for a session that finished and with ErrLeaseLost for
+	// a driver that does not hold the lease.
+	SetRepo(ctx context.Context, id, repo string) error
 	// Active returns the jobs that are not terminal, so a restart can find work
 	// a crash left in flight and reconcile it.
 	Active(ctx context.Context) ([]Job, error)

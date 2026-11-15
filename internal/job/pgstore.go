@@ -88,7 +88,7 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 }
 
 // jobColumns is the column list every read selects, in scan order.
-const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier, origin, external_id, runtime, model, payer`
+const jobColumns = `id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error, created_at, updated_at, phase_at, rate_card, tier, origin, external_id, runtime, model, payer, stop_reason`
 
 // encodeStatus serializes a run status for the status column.
 //
@@ -138,7 +138,7 @@ func scanJob(row pgx.Row) (Job, error) {
 	)
 	err := row.Scan(&j.ID, &j.Kind, &j.Principal, &j.ProjectID, &j.Ref, &j.PaperKey, &j.Phase,
 		&statusRaw, &j.RepoName, &j.Err, &j.CreatedAt, &j.UpdatedAt, &phaseAtRaw, &ratesRaw, &j.Tier,
-		&j.Origin, &j.ExternalID, &j.Runtime, &j.Model, &j.Payer)
+		&j.Origin, &j.ExternalID, &j.Runtime, &j.Model, &j.Payer, &j.StopReason)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -213,6 +213,9 @@ func (s *PGStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 
 	var j Job
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := checkProjectTx(ctx, tx, sub.Project); err != nil {
+			return err
+		}
 		if sub.Payer.PaysProject() {
 			if err := s.takeReserveTx(ctx, tx, sub.Project, id, reserve); err != nil {
 				return err
@@ -274,33 +277,79 @@ func (s *PGStore) ImportLocal(ctx context.Context, in Import) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	// The insert is idempotent on (origin, principal, external id), which the
-	// partial unique index enforces: an operator's re-push updates their own
-	// row rather than opening a second session for one run, and cannot find
-	// another operator's row. The update is also restricted to the project the
-	// record already belongs to: a row that would move projects is left
-	// unchanged and the conflict is reported, so a re-push cannot move a
-	// record.
-	row := s.pool.QueryRow(ctx, `
-		INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error,
-		                  created_at, updated_at, phase_at, rate_card, tier, origin, external_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'{}','',$14,$15)
-		ON CONFLICT (origin, principal, external_id) WHERE external_id <> '' DO UPDATE SET
-			ref = EXCLUDED.ref, paper_key = EXCLUDED.paper_key,
-			phase = EXCLUDED.phase, status = EXCLUDED.status, repo_name = EXCLUDED.repo_name,
-			error = EXCLUDED.error, updated_at = EXCLUDED.updated_at, phase_at = EXCLUDED.phase_at
-		WHERE jobs.project_id = EXCLUDED.project_id
-		RETURNING `+jobColumns,
-		id, KindAudit, in.Principal, in.Project, in.Ref, in.PaperKey, in.Phase, status, in.RepoName, in.Err,
-		started, now, phaseAt, OriginLocal, in.ExternalID)
-	imported, err := scanJob(row)
-	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, ErrNotFound) {
-		// No row came back: the conflict clause found the record under another
-		// project and left it unchanged. scanJob reports an empty result as a
-		// missing job, which this is not.
-		return Job{}, ErrImportedElsewhere
+	stop := importStop(in)
+	var imported Job
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := checkProjectTx(ctx, tx, in.Project); err != nil {
+			return err
+		}
+		// A record is keyed on (origin, principal, external id), which the
+		// partial unique index enforces, so a re-push finds the operator's own
+		// row and never another operator's. Two pushes of a new record can
+		// both miss it; the insert then reports a conflict and the second
+		// reads the row the first wrote.
+		for range 2 {
+			existing, err := scanJob(tx.QueryRow(ctx, `SELECT `+jobColumns+`
+				FROM jobs WHERE origin = $1 AND principal = $2 AND external_id = $3 FOR UPDATE`,
+				OriginLocal, in.Principal, in.ExternalID))
+			if err == nil {
+				imported, err = sameImport(existing, in)
+				return err
+			}
+			if !errors.Is(err, ErrNotFound) {
+				return err
+			}
+			row := tx.QueryRow(ctx, `
+				INSERT INTO jobs (id, kind, principal, project_id, ref, paper_key, phase, status, repo_name, error,
+				                  created_at, updated_at, phase_at, rate_card, tier, origin, external_id, stop_reason)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'{}','',$14,$15,$16)
+				ON CONFLICT (origin, principal, external_id) WHERE external_id <> '' DO NOTHING
+				RETURNING `+jobColumns,
+				id, KindAudit, in.Principal, in.Project, in.Ref, in.PaperKey, in.Phase, status, in.RepoName, in.Err,
+				started, now, phaseAt, OriginLocal, in.ExternalID, stop)
+			imported, err = scanJob(row)
+			if err == nil {
+				return nil
+			}
+			if !errors.Is(err, ErrNotFound) {
+				return err
+			}
+		}
+		return fmt.Errorf("import %s: the record kept changing under the insert", in.ExternalID)
+	})
+	if err != nil {
+		return Job{}, err
 	}
-	return imported, err
+	return imported, nil
+}
+
+// checkProjectTx reads the project row under a share lock, so a publish or a
+// trash that commits first is seen and one that comes after waits for this
+// transaction. A project that has no row is not refused here: the foreign key
+// refuses it. The jobs migration runs before the projects one, so a database
+// that has not been given the projects table yet has no project to refuse.
+func checkProjectTx(ctx context.Context, tx pgx.Tx, project string) error {
+	if project == "" {
+		return nil
+	}
+	var present bool
+	if err := tx.QueryRow(ctx, `SELECT to_regclass('projects') IS NOT NULL`).Scan(&present); err != nil {
+		return fmt.Errorf("look for the projects table: %w", err)
+	}
+	if !present {
+		return nil
+	}
+	var visibility string
+	var trashed bool
+	err := tx.QueryRow(ctx,
+		`SELECT visibility, deleted_at IS NOT NULL FROM projects WHERE id = $1 FOR SHARE`, project).Scan(&visibility, &trashed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read project %s: %w", project, err)
+	}
+	return projectRefusal(visibility, trashed)
 }
 
 // reserveAmount reads how much a project-paid start holds. It is read before
@@ -352,13 +401,13 @@ func (s *PGStore) Claim(ctx context.Context, worker string) (Job, bool, error) {
 			adopted_by = $5,
 			adopted_at = $2
 		WHERE id = (
-			SELECT id FROM jobs WHERE phase = $4
+			SELECT id FROM jobs WHERE phase = ANY($4)
 			ORDER BY created_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
 		RETURNING `+jobColumns,
-		PhaseResolving, now, string(PhaseResolving), PhaseSubmitted, worker)
+		PhaseResolving, now, string(PhaseResolving), phaseNames(sourcesOf(PhaseResolving)), worker)
 	j, err := scanJob(row)
 	if errors.Is(err, ErrNotFound) {
 		return Job{}, false, nil
@@ -416,6 +465,7 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 		now := s.clock()
 		j.Phase = to
 		j.UpdatedAt = now
+		j.StopReason = stopFor(to, j.StopReason)
 		if j.PhaseAt == nil {
 			j.PhaseAt = map[Phase]time.Time{}
 		}
@@ -431,9 +481,9 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 		}
 		if _, err = tx.Exec(ctx, `
 			UPDATE jobs SET phase=$2, ref=$3, project_id=$4, repo_name=$5, error=$6,
-				status=$7, updated_at=$8, phase_at=$9
+				status=$7, updated_at=$8, phase_at=$9, stop_reason=$10
 			WHERE id=$1`,
-			id, j.Phase, j.Ref, j.ProjectID, j.RepoName, j.Err, status, now, phaseAt); err != nil {
+			id, j.Phase, j.Ref, j.ProjectID, j.RepoName, j.Err, status, now, phaseAt, string(j.StopReason)); err != nil {
 			return err
 		}
 		if to.Terminal() {
@@ -458,19 +508,41 @@ func (s *PGStore) Observe(ctx context.Context, id string, status provider.RunSta
 			updated_at = $3,
 			adopted_at = CASE WHEN adopted_at IS NULL THEN NULL ELSE $3::timestamptz END
 		WHERE id = $1
-		  AND phase NOT IN ('done','failed')
-		  AND ($4 = '' OR adopted_by = $4)`, id, raw, s.clock(), workerFrom(ctx))
+		  AND phase = ANY($5)
+		  AND ($4 = '' OR adopted_by = $4)`, id, raw, s.clock(), workerFrom(ctx), activeNames())
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 1 {
 		return nil
 	}
-	// Nothing was written. Say why: the session is missing, finished, or held by
-	// another replica.
+	return s.explainRefusal(ctx, id)
+}
+
+// SetRepo records the repository a session was given, so a restart in the
+// running phase knows it. The write is refused like an observation: for a
+// session that finished or one another replica holds.
+func (s *PGStore) SetRepo(ctx context.Context, id, repo string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE jobs SET repo_name = $2, updated_at = $3
+		WHERE id = $1
+		  AND phase = ANY($5)
+		  AND ($4 = '' OR adopted_by = $4)`, id, repo, s.clock(), workerFrom(ctx), activeNames())
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	return s.explainRefusal(ctx, id)
+}
+
+// explainRefusal says why a guarded write matched no row: the session is
+// missing, finished, or held by another replica.
+func (s *PGStore) explainRefusal(ctx context.Context, id string) error {
 	var phase Phase
 	var holder string
-	err = s.pool.QueryRow(ctx, `SELECT phase, COALESCE(adopted_by, '') FROM jobs WHERE id = $1`, id).Scan(&phase, &holder)
+	err := s.pool.QueryRow(ctx, `SELECT phase, COALESCE(adopted_by, '') FROM jobs WHERE id = $1`, id).Scan(&phase, &holder)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -491,9 +563,9 @@ func (s *PGStore) Adopt(ctx context.Context, id, worker string, ttl time.Duratio
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE jobs SET adopted_by=$2, adopted_at=$3
 		WHERE id=$1
-		  AND phase NOT IN ('done','failed')
+		  AND phase = ANY($5)
 		  AND (adopted_at IS NULL OR adopted_by=$2 OR adopted_at < $4)`,
-		id, worker, now, now.Add(-ttl))
+		id, worker, now, now.Add(-ttl), activeNames())
 	if err != nil {
 		return false, err
 	}
@@ -506,8 +578,8 @@ func (s *PGStore) Adopt(ctx context.Context, id, worker string, ttl time.Duratio
 func (s *PGStore) Touch(ctx context.Context, id, worker string) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE jobs SET adopted_at=$3
-		WHERE id=$1 AND adopted_by=$2 AND phase NOT IN ('done','failed')`,
-		id, worker, s.clock())
+		WHERE id=$1 AND adopted_by=$2 AND phase = ANY($4)`,
+		id, worker, s.clock(), activeNames())
 	if err != nil {
 		return false, err
 	}
@@ -594,11 +666,11 @@ func (s *PGStore) StatusByProjects(ctx context.Context, ids []string) (map[strin
 	rows, err := s.pool.Query(ctx, `
 		SELECT project_id,
 			COUNT(*) AS total,
-			COUNT(*) FILTER (WHERE phase NOT IN ('done','failed')) AS running,
+			COUNT(*) FILTER (WHERE phase = ANY($2)) AS running,
 			(array_agg(phase ORDER BY created_at DESC, id DESC))[1] AS latest,
 			COUNT(*) FILTER (WHERE repo_name <> '') AS published,
 			MAX(updated_at) AS latest_at
-		FROM jobs WHERE project_id = ANY($1) AND deleted_at IS NULL GROUP BY project_id`, ids)
+		FROM jobs WHERE project_id = ANY($1) AND deleted_at IS NULL GROUP BY project_id`, ids, activeNames())
 	if err != nil {
 		return nil, err
 	}
@@ -659,11 +731,11 @@ func (s *PGStore) Cancel(ctx context.Context, id string) (Job, error) {
 	var j Job
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		row := tx.QueryRow(ctx, `
-			UPDATE jobs SET phase='failed', error=$2, updated_at=$3,
-				phase_at = phase_at || jsonb_build_object('failed', to_jsonb($3::timestamptz))
-			WHERE id=$1 AND phase NOT IN ('done','failed')
+			UPDATE jobs SET phase=$4, error=$2, updated_at=$3, stop_reason=$6,
+				phase_at = phase_at || jsonb_build_object($4::text, to_jsonb($3::timestamptz))
+			WHERE id=$1 AND phase = ANY($5)
 			RETURNING `+jobColumns,
-			id, CancelCause, now)
+			id, CancelCause, now, PhaseFailed, phaseNames(sourcesOf(PhaseFailed)), string(StopCanceled))
 		var err error
 		if j, err = scanJob(row); err != nil {
 			return err
@@ -690,8 +762,8 @@ func (s *PGStore) Cancel(ctx context.Context, id string) (Job, error) {
 // token class was added.
 func (s *PGStore) Accrued(ctx context.Context, project string) (int64, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT `+jobColumns+` FROM jobs WHERE project_id = $1 AND phase NOT IN ($2,$3)`,
-		project, PhaseDone, PhaseFailed)
+		`SELECT `+jobColumns+` FROM jobs WHERE project_id = $1 AND phase = ANY($2)`,
+		project, activeNames())
 	if err != nil {
 		return 0, err
 	}
@@ -709,8 +781,8 @@ func (s *PGStore) Accrued(ctx context.Context, project string) (int64, error) {
 
 // Active returns every non-terminal job.
 func (s *PGStore) Active(ctx context.Context) ([]Job, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE phase NOT IN ($1,$2) ORDER BY created_at`,
-		PhaseDone, PhaseFailed)
+	rows, err := s.pool.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE phase = ANY($1) ORDER BY created_at`,
+		activeNames())
 	if err != nil {
 		return nil, err
 	}

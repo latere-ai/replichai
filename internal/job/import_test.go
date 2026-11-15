@@ -93,24 +93,24 @@ func TestOnlyATerminalSessionMayBeImported(t *testing.T) {
 
 // TestReimportingUpdatesOneRow checks that re-pushing the same session updates
 // its row, so an interrupted upload is resumed by running it again.
-func TestReimportingUpdatesOneRow(t *testing.T) {
+func TestReimportingChangesNothing(t *testing.T) {
 	store := NewMemStore()
 	first, err := store.ImportLocal(context.Background(), imported("p-1"))
 	if err != nil {
 		t.Fatalf("ImportLocal: %v", err)
 	}
+	same, err := store.ImportLocal(context.Background(), imported("p-1"))
+	if err != nil || same.ID != first.ID {
+		t.Fatalf("re-importing the same record = %+v, %v; want the same row", same, err)
+	}
 	changed := imported("p-1")
 	changed.RepoName = "open-hai/a-paper-xyz-2"
 	changed.Status.Usage.OutputTokens = 999
-	second, err := store.ImportLocal(context.Background(), changed)
-	if err != nil {
-		t.Fatalf("re-import: %v", err)
+	if _, err := store.ImportLocal(context.Background(), changed); !errors.Is(err, ErrSessionFinished) {
+		t.Fatalf("re-import with other content: err=%v, want ErrSessionFinished", err)
 	}
-	if second.ID != first.ID {
-		t.Fatalf("a re-push opened a second session: %s then %s", first.ID, second.ID)
-	}
-	if second.RepoName != "open-hai/a-paper-xyz-2" || second.Status.Usage.OutputTokens != 999 {
-		t.Fatalf("the re-push did not update the row: %+v", second)
+	if kept, _ := store.Get(context.Background(), first.ID); kept.RepoName != first.RepoName || kept.Status.Usage.OutputTokens != first.Status.Usage.OutputTokens {
+		t.Fatalf("a refused re-import changed the row: %+v", kept)
 	}
 	// A different session is a different row.
 	other := imported("p-1")
