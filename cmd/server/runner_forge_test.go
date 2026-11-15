@@ -109,8 +109,7 @@ func (p *transcriptProvider) Transcript(context.Context, provider.RunHandle) ([]
 }
 
 // TestResolveCreatesAndNamesRepo checks AC7: Resolve creates and names the
-// repository through the forge, sets RepoName on the job, which is persisted at
-// the transition into running, and records the paper identity into the
+// repository through the forge, sets RepoName on the job, and records the paper identity into the
 // repository. A DOI resolves offline, so no fetcher is needed.
 func TestResolveCreatesAndNamesRepo(t *testing.T) {
 	f := newRunnerForge(nil)
@@ -128,6 +127,34 @@ func TestResolveCreatesAndNamesRepo(t *testing.T) {
 	}
 	if _, ok := f.files[publish.IdentityFile]; !ok {
 		t.Errorf("resolve did not record the paper identity into the repo")
+	}
+}
+
+// TestResolveWritesTheRepoToTheRow checks that the repository name is on the
+// stored row as soon as Prepare returns it, so a restart while the session runs
+// knows the repository.
+func TestResolveWritesTheRepoToTheRow(t *testing.T) {
+	ctx := context.Background()
+	store := job.NewMemStore()
+	queued, err := store.Enqueue(ctx, job.Submission{Principal: "p", Kind: job.KindAudit, Ref: "doi:10.1234/foo-bar", PaperKey: "doi:10.1234/foo-bar"})
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if _, ok, err := store.Claim(ctx, "pod-a"); err != nil || !ok {
+		t.Fatalf("Claim: %v %v", ok, err)
+	}
+	f := newRunnerForge(nil)
+	e := &engineRunner{gh: f, owner: "open-hai", jobs: store}
+	j := &queued
+	if err := e.Resolve(job.WithWorker(ctx, "pod-a"), j); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	stored, err := store.Get(ctx, queued.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if stored.RepoName == "" || stored.RepoName != j.RepoName || stored.Phase != job.PhaseResolving {
+		t.Fatalf("stored repo %q phase %s; want %q in resolving", stored.RepoName, stored.Phase, j.RepoName)
 	}
 }
 

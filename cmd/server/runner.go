@@ -299,8 +299,8 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 	// With a forge configured, create the reproduction's repository up front and
 	// record the resolved identity into it, so the run can mount it and commit
 	// live (006i). The name is allocated collision-free through the registry.
-	// RepoName is set on the job here and persisted at the transition into
-	// running, so it is durable before the mount and survives a restart.
+	// RepoName is set on the job here and written to the row at once, so a
+	// restart while the session runs knows the repository it was given.
 	if e.gh != nil && j.RepoName == "" {
 		name, err := e.gh.Prepare(ctx, e.owner, id)
 		if err != nil {
@@ -312,6 +312,11 @@ func (e *engineRunner) Resolve(ctx context.Context, j *job.Job) error {
 			slog.WarnContext(ctx, "resolve: recording the paper identity", "session", j.ID, "error", err)
 		}
 		j.RepoName = e.owner + "/" + name
+		if store, ok := e.jobs.(jobRepoSetter); ok {
+			if err := store.SetRepo(ctx, j.ID, j.RepoName); err != nil {
+				return fmt.Errorf("record repository %s: %w", j.RepoName, err)
+			}
+		}
 	}
 	return nil
 }
@@ -379,6 +384,11 @@ func (e *engineRunner) Close(ctx context.Context, ref managed.SessionRef) error 
 	}
 	_, err := e.controller.Cancel(e.actAs(ctx, job.SessionOwner(ctx)), ref, managed.Hooks{})
 	return err
+}
+
+// jobRepoSetter is the job store's write of a session's repository name.
+type jobRepoSetter interface {
+	SetRepo(ctx context.Context, id, repo string) error
 }
 
 type jobObserver interface {
