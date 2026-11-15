@@ -141,11 +141,15 @@ func (m *Minter) TokenFunc(subject string) func(context.Context) (string, error)
 }
 
 // refresh trades the stored refresh token for an access token and stores the
-// refresh token Auth rotated it to. A refresh token Auth refuses is
-// forgotten, so the person is asked to sign in again rather than refused on
-// every later call.
+// refresh token Auth rotated it to. A refresh token Auth refuses is removed by
+// the store in the same step that read it, so the person is asked to sign in
+// again rather than refused on every later call.
 func (m *Minter) refresh(ctx context.Context, subject string, p *person) error {
-	var refused bool
+	// The new access token is held aside until the store has committed the
+	// rotated refresh token. Adopting it earlier would leave this process
+	// holding an access token for a refresh token the database never stored.
+	var access string
+	var accessUntil time.Time
 	err := m.store.Rotate(ctx, subject, func(current string) (string, error) {
 		form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {current}}
 		if m.config.ClientSecret == "" {
@@ -158,8 +162,7 @@ func (m *Minter) refresh(ctx context.Context, subject string, p *person) error {
 		}
 		status, err := m.post(ctx, "/token", strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", "", true, &body)
 		if status == http.StatusBadRequest || status == http.StatusUnauthorized {
-			refused = true
-			return "", fmt.Errorf("%w: Auth refused the stored sign-in", ErrNoSignIn)
+			return "", fmt.Errorf("%w: %w: Auth refused the stored sign-in", ErrNoSignIn, ErrRefused)
 		}
 		if err != nil {
 			return "", fmt.Errorf("refresh the Latere sign-in: %w", err)
@@ -171,18 +174,17 @@ func (m *Minter) refresh(ctx context.Context, subject string, p *person) error {
 		if lifetime <= 0 {
 			lifetime = 15 * time.Minute
 		}
-		p.access, p.accessUntil = body.AccessToken, m.now().Add(lifetime)
+		access, accessUntil = body.AccessToken, m.now().Add(lifetime)
 		if body.RefreshToken == "" {
 			return current, nil
 		}
 		return body.RefreshToken, nil
 	})
-	if refused {
-		if forgetErr := m.store.Forget(context.WithoutCancel(ctx), subject); forgetErr != nil {
-			return errors.Join(err, forgetErr)
-		}
+	if err != nil {
+		return err
 	}
-	return err
+	p.access, p.accessUntil = access, accessUntil
+	return nil
 }
 
 // mintActor asks Auth for a token addressed to the platform's API, from the

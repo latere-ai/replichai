@@ -10,6 +10,7 @@
 package signin
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -26,6 +27,13 @@ import (
 // They have to sign in to ReplicHAI again.
 var ErrNoSignIn = errors.New("ReplicHAI holds no Latere sign-in for this person; sign in to ReplicHAI again")
 
+// ErrRefused is what a Rotate callback returns when Auth refused the refresh
+// token it was handed. The store removes that sign-in, in the step that read
+// the refused token, and returns the error. Removing it there, under the lock,
+// means a sign-in that landed after the refusal is kept, where a delete issued
+// later would erase it.
+var ErrRefused = errors.New("the stored sign-in was refused")
+
 // Store keeps one sealed refresh token per person.
 type Store interface {
 	// Put records the person's refresh token, replacing any earlier one.
@@ -34,7 +42,8 @@ type Store interface {
 	// lock every process honors, and stores what it returns in its place.
 	// A refresh token is spent once, so two processes refreshing one
 	// person's sign-in at once must take turns. ErrNoSignIn when none is
-	// held; an error from next stores nothing.
+	// held; an error from next stores nothing, except one wrapping
+	// ErrRefused, which removes the token next was handed.
 	Rotate(ctx context.Context, subject string, next func(current string) (string, error)) error
 	// Forget removes the person's sign-in.
 	Forget(ctx context.Context, subject string) error
@@ -135,6 +144,17 @@ func (m *MemStore) Rotate(_ context.Context, subject string, next func(string) (
 		return err
 	}
 	replacement, err := next(current)
+	if errors.Is(err, ErrRefused) {
+		// Removed only while the row still holds the token that was refused: a
+		// Put does not take the person's lock, so a fresh sign-in may have
+		// replaced it while Auth was answering.
+		m.mu.Lock()
+		if bytes.Equal(m.rows[subject], sealed) {
+			delete(m.rows, subject)
+		}
+		m.mu.Unlock()
+		return err
+	}
 	if err != nil {
 		return err
 	}

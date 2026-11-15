@@ -41,7 +41,8 @@ func (s *PGStore) Put(ctx context.Context, subject, refresh string) error {
 
 // Rotate replaces the person's refresh token with what next returns.
 func (s *PGStore) Rotate(ctx context.Context, subject string, next func(string) (string, error)) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	var refused error
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var sealed []byte
 		err := tx.QueryRow(ctx, `SELECT sealed FROM platform_sign_ins WHERE subject = $1 FOR UPDATE`, subject).Scan(&sealed)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -55,6 +56,16 @@ func (s *PGStore) Rotate(ctx context.Context, subject string, next func(string) 
 			return err
 		}
 		replacement, err := next(current)
+		if errors.Is(err, ErrRefused) {
+			// The row is locked and holds the refused token, so this removes
+			// that token and no later one. The commit keeps the delete while
+			// the error still reaches the caller.
+			if _, derr := tx.Exec(ctx, `DELETE FROM platform_sign_ins WHERE subject = $1`, subject); derr != nil {
+				return errors.Join(err, derr)
+			}
+			refused = err
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -65,6 +76,10 @@ func (s *PGStore) Rotate(ctx context.Context, subject string, next func(string) 
 		_, err = tx.Exec(ctx, `UPDATE platform_sign_ins SET sealed = $2, updated_at = $3 WHERE subject = $1`, subject, resealed, s.now())
 		return err
 	})
+	if err != nil {
+		return err
+	}
+	return refused
 }
 
 // Forget removes the person's sign-in.

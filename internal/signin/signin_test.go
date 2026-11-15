@@ -101,6 +101,68 @@ func runStoreContract(t *testing.T, store Store) {
 	if err := store.Rotate(ctx, "alice", func(string) (string, error) { return "x", nil }); !errors.Is(err, ErrNoSignIn) {
 		t.Fatalf("Rotate after Forget = %v", err)
 	}
+
+	// A refused token is removed by the rotation that read it.
+	if err := store.Put(ctx, "bob", "spent"); err != nil {
+		t.Fatal(err)
+	}
+	refusal := fmt.Errorf("%w: Auth said no", ErrRefused)
+	if err := store.Rotate(ctx, "bob", func(string) (string, error) { return "", refusal }); !errors.Is(err, ErrRefused) {
+		t.Fatalf("a refused rotation = %v, want ErrRefused", err)
+	}
+	if err := store.Rotate(ctx, "bob", func(string) (string, error) { return "x", nil }); !errors.Is(err, ErrNoSignIn) {
+		t.Fatalf("a refused sign-in is still stored: %v", err)
+	}
+	// A sign-in stored while the refusal is being decided is not erased by it.
+	if err := store.Put(ctx, "carol", "spent"); err != nil {
+		t.Fatal(err)
+	}
+	var stored sync.WaitGroup
+	if err := store.Rotate(ctx, "carol", func(string) (string, error) {
+		stored.Go(func() {
+			if err := store.Put(ctx, "carol", "fresh"); err != nil {
+				t.Error(err)
+			}
+		})
+		return "", refusal
+	}); !errors.Is(err, ErrRefused) {
+		t.Fatalf("a refused rotation = %v, want ErrRefused", err)
+	}
+	stored.Wait()
+	if err := store.Rotate(ctx, "carol", func(current string) (string, error) { seen = current; return current, nil }); err != nil || seen != "fresh" {
+		t.Fatalf("the fresh sign-in after a refusal = %q, %v", seen, err)
+	}
+}
+
+// uncommitted is a Store whose Rotate runs the callback and then fails without
+// storing anything, as a database whose commit fails does.
+type uncommitted struct{ Store }
+
+func (u uncommitted) Rotate(ctx context.Context, subject string, next func(string) (string, error)) error {
+	if err := u.Store.Rotate(ctx, subject, func(current string) (string, error) {
+		_, err := next(current)
+		return "", err
+	}); err != nil {
+		return err
+	}
+	return errors.New("commit failed")
+}
+
+// An access token minted for a refresh token the store did not keep is not
+// adopted: the process would hold a token for a sign-in the database has since
+// lost.
+func TestARotationThatDoesNotCommitLeavesNoTokenCached(t *testing.T) {
+	inner := NewMemStore(sealer(t))
+	if err := inner.Put(context.Background(), "alice", "initial"); err != nil {
+		t.Fatal(err)
+	}
+	minter, _ := newMinter(t, uncommitted{inner})
+	if _, err := minter.Token(context.Background(), "alice"); err == nil {
+		t.Fatal("Token succeeded though the rotation did not commit")
+	}
+	if got := minter.person("alice"); got.access != "" || !got.accessUntil.IsZero() {
+		t.Errorf("an access token was cached before the commit: %q", got.access)
+	}
 }
 
 func TestMemStoreSatisfiesTheContract(t *testing.T) {
