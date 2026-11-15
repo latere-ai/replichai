@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
@@ -40,14 +41,22 @@ func Frozen(ctx context.Context, credits credit.Store, ov access.FreezeOverrides
 
 // FrozenWrites is every write a frozen account may still make, and the only
 // place the list is kept. A frozen account keeps what it needs to see and take
-// its own work and to pay what it owes: it may read everything it could read
-// (projects, sessions, transcripts, and the project archive download, which is
-// its export), and these two writes. The checkout is its only way to become
-// solvent again, and the payment webhook carries no identity and credits the
-// account back. Any other write is refused with 402 account_frozen.
+// its own work, to pay what it owes, and to stop or retract what it has: it may
+// read everything it could read (projects, sessions, transcripts, and the
+// project archive download, which is its export), and these writes. The
+// checkout is its only way to become solvent again, and the payment webhook
+// carries no identity and credits the account back. Cancelling a session,
+// withdrawing a publication, reclaiming credits from a project and moving a
+// project to the trash spend nothing, so they stay open. A pattern names path
+// parameters in braces, as the router does. Any other write is refused with 402
+// account_frozen.
 var FrozenWrites = []httpapi.Route{
 	{Method: http.MethodPost, Pattern: "/me/credits/checkout"},
 	{Method: http.MethodPost, Pattern: "/stripe/webhook"},
+	{Method: http.MethodPost, Pattern: "/jobs/{id}/cancel"},
+	{Method: http.MethodPost, Pattern: "/projects/{id}/private"},
+	{Method: http.MethodPost, Pattern: "/projects/{id}/credits/reclaim"},
+	{Method: http.MethodDelete, Pattern: "/projects/{id}"},
 }
 
 // AllowedWhileFrozen reports whether a request may pass a frozen account: any
@@ -58,7 +67,31 @@ func AllowedWhileFrozen(method, path string) bool {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 		return true
 	}
-	return slices.Contains(FrozenWrites, httpapi.Route{Method: method, Pattern: path})
+	return slices.ContainsFunc(FrozenWrites, func(r httpapi.Route) bool {
+		return r.Method == method && matchPattern(r.Pattern, path)
+	})
+}
+
+// matchPattern reports whether path has the same segments as pattern, where a
+// segment written in braces matches any one non-empty segment.
+func matchPattern(pattern, path string) bool {
+	want := strings.Split(pattern, "/")
+	got := strings.Split(path, "/")
+	if len(want) != len(got) {
+		return false
+	}
+	for i, w := range want {
+		if strings.HasPrefix(w, "{") && strings.HasSuffix(w, "}") {
+			if got[i] == "" {
+				return false
+			}
+			continue
+		}
+		if w != got[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // FreezeGate refuses a write from a negative-wallet account with 402

@@ -119,7 +119,7 @@ func TestFreezeGateThawsAndRespectsAOneShotOverride(t *testing.T) {
 // TestAFrozenAccountKeepsReadAndExportAndItsWayToPay checks the whole allowed
 // set. A frozen account may read everything it could read, which includes the
 // project archive download that is its export, and may make exactly the writes
-// FrozenWrites lists, the checkout and the payment webhook. Every other write is
+// FrozenWrites lists, the checkout, the payment webhook and the four writes that stop spending or retract. Every other write is
 // refused with 402, whatever its method.
 func TestAFrozenAccountKeepsReadAndExportAndItsWayToPay(t *testing.T) {
 	ctx := context.Background()
@@ -144,6 +144,10 @@ func TestAFrozenAccountKeepsReadAndExportAndItsWayToPay(t *testing.T) {
 		{"OPTIONS", "/projects"},
 		{"POST", "/me/credits/checkout"},
 		{"POST", "/stripe/webhook"},
+		{"POST", "/jobs/j1/cancel"},
+		{"POST", "/projects/p1/private"},
+		{"POST", "/projects/p1/credits/reclaim"},
+		{"DELETE", "/projects/p1"},
 	} {
 		if code := driveAs(gate, req.method, req.path, email); code != passthrough {
 			t.Errorf("%s %s while frozen = %d, want it allowed", req.method, req.path, code)
@@ -153,10 +157,11 @@ func TestAFrozenAccountKeepsReadAndExportAndItsWayToPay(t *testing.T) {
 		{"POST", "/projects"},
 		{"POST", "/projects/p1/sessions"},
 		{"POST", "/projects/p1/papers"},
-		{"POST", "/jobs/j1/cancel"},
-		{"POST", "/projects/p1/credits/reclaim"},
+		{"POST", "/projects/p1/credits"},
 		{"POST", "/projects/p1/public"},
-		{"DELETE", "/projects/p1"},
+		{"POST", "/projects/p1/private/extra"},
+		{"DELETE", "/projects/"},
+		{"POST", "/jobs/j1/retry"},
 		{"DELETE", "/jobs/j1"},
 		{"PATCH", "/me/profile"},
 		{"PUT", "/admin/settings"},
@@ -174,6 +179,10 @@ func TestTheFrozenWritesListIsTheWholeSet(t *testing.T) {
 	want := []httpapi.Route{
 		{Method: "POST", Pattern: "/me/credits/checkout"},
 		{Method: "POST", Pattern: "/stripe/webhook"},
+		{Method: "POST", Pattern: "/jobs/{id}/cancel"},
+		{Method: "POST", Pattern: "/projects/{id}/private"},
+		{Method: "POST", Pattern: "/projects/{id}/credits/reclaim"},
+		{Method: "DELETE", Pattern: "/projects/{id}"},
 	}
 	if len(FrozenWrites) != len(want) {
 		t.Fatalf("FrozenWrites = %v, want %v", FrozenWrites, want)
