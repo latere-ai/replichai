@@ -65,10 +65,10 @@ type store struct {
 	// zero, by any path. It retires the freeze waiver at the moment the wallet
 	// is solvent again, rather than by a write on every later read.
 	onSolvent func(ctx context.Context, email string)
-	// lockPurchase serializes the reversals of one purchase across processes.
-	// Nil means this process's own mutex is the only guard, which is all a
-	// single in-memory ledger needs.
-	lockPurchase func(ctx context.Context, ref string) (unlock func(), err error)
+	// lockWallet serializes the reversals that land on one wallet across
+	// processes. Nil means this process's own mutex is the only guard, which is
+	// all a single in-memory ledger needs.
+	lockWallet func(ctx context.Context, key string) (unlock func(), err error)
 }
 
 // reverseMu serializes the reversals of purchases inside this process. A
@@ -130,25 +130,25 @@ type PGStore struct {
 func NewPGStore(pool *pgxpool.Pool, auth Authority, members Members, opts ...Option) *PGStore {
 	pg := pgledger.New(pool)
 	s := &PGStore{pg: pg, dbpool: pool}
-	s.store = store{led: pg, auth: auth, members: members, lockPurchase: advisoryLock(pool)}
+	s.store = store{led: pg, auth: auth, members: members, lockWallet: advisoryLock(pool)}
 	for _, opt := range opts {
 		opt(&s.store)
 	}
 	return s
 }
 
-// advisoryLock takes a Postgres advisory lock keyed on ref, on a connection of
-// its own, so replicas serialize the reversals of one purchase. The lock is
-// held until the returned function runs.
-func advisoryLock(pool *pgxpool.Pool) func(ctx context.Context, ref string) (func(), error) {
-	return func(ctx context.Context, ref string) (func(), error) {
+// advisoryLock takes a Postgres advisory lock keyed on key, on a connection of
+// its own, so replicas serialize the reversals that land on one wallet. The
+// lock is held until the returned function runs.
+func advisoryLock(pool *pgxpool.Pool) func(ctx context.Context, key string) (func(), error) {
+	return func(ctx context.Context, key string) (func(), error) {
 		conn, err := pool.Acquire(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("lock purchase %s: %w", ref, err)
+			return nil, fmt.Errorf("lock %s: %w", key, err)
 		}
-		if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, "purchase:"+ref); err != nil {
+		if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, "reversal:"+key); err != nil {
 			conn.Release()
-			return nil, fmt.Errorf("lock purchase %s: %w", ref, err)
+			return nil, fmt.Errorf("lock %s: %w", key, err)
 		}
 		return func() {
 			// A fresh context: the caller's may be cancelled by now, and a lock
@@ -156,10 +156,10 @@ func advisoryLock(pool *pgxpool.Pool) func(ctx context.Context, ref string) (fun
 			// that cannot unlock is closed instead, which ends its session and
 			// so the lock with it.
 			bg := context.WithoutCancel(ctx)
-			if _, err := conn.Exec(bg, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, "purchase:"+ref); err != nil {
-				slog.WarnContext(ctx, "credit: purchase lock not released, closing its connection", "ref", ref, "error", err)
+			if _, err := conn.Exec(bg, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, "reversal:"+key); err != nil {
+				slog.WarnContext(ctx, "credit: reversal lock not released, closing its connection", "key", key, "error", err)
 				if cerr := conn.Conn().Close(bg); cerr != nil {
-					slog.WarnContext(ctx, "credit: closing a connection that holds a purchase lock", "ref", ref, "error", cerr)
+					slog.WarnContext(ctx, "credit: closing a connection that holds a reversal lock", "key", key, "error", cerr)
 				}
 			}
 			conn.Release()
@@ -341,9 +341,9 @@ const reversalPage = 500
 // Reversals already recorded for the purchase count toward that total, so a
 // replay or an out-of-order delivery takes back nothing extra. It returns the
 // credit taken back by this call.
-func (s *store) RefundShare(ctx context.Context, purchaseRef, reversalRef string, refunded, charged int64) (int64, error) {
+func (s *store) RefundShare(ctx context.Context, purchaseRef, reversalRef string, refunded, charged int64) (Reversal, error) {
 	if refunded < 0 || charged <= 0 {
-		return 0, ErrNotPositive
+		return Reversal{}, ErrNotPositive
 	}
 	return s.reverse(ctx, purchaseRef, reversalRef, func(credited int64) int64 {
 		return share(credited, min(refunded, charged), charged)
@@ -353,7 +353,7 @@ func (s *store) RefundShare(ctx context.Context, purchaseRef, reversalRef string
 // RefundRemainder takes back whatever credit of a purchase has not been taken
 // back yet, which is what a lost dispute does. It returns the credit taken back
 // by this call.
-func (s *store) RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (int64, error) {
+func (s *store) RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (Reversal, error) {
 	return s.reverse(ctx, purchaseRef, reversalRef, func(credited int64) int64 { return credited })
 }
 
@@ -366,35 +366,42 @@ func share(whole, part, total int64) int64 {
 
 // reverse brings the credit taken back for one purchase up to target(credited),
 // by posting the difference under reversalRef. A target at or below what is
-// already taken back posts nothing.
-func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, target func(credited int64) int64) (int64, error) {
+// already taken back posts nothing. The reversals that land on one wallet run
+// one at a time, so the sum of what a purchase has had reversed is read and
+// extended without another reversal in between, and the balance read before and
+// after the post is the balance this reversal alone moved across zero.
+func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, target func(credited int64) int64) (Reversal, error) {
 	if strings.TrimSpace(purchaseRef) == "" || strings.TrimSpace(reversalRef) == "" {
-		return 0, ErrNoRef
-	}
-	reverseMu.Lock()
-	defer reverseMu.Unlock()
-	if s.lockPurchase != nil {
-		unlock, err := s.lockPurchase(ctx, purchaseRef)
-		if err != nil {
-			return 0, err
-		}
-		defer unlock()
+		return Reversal{}, ErrNoRef
 	}
 	orig, ok, err := s.EntryByExternalRef(ctx, purchaseRef)
 	if err != nil {
-		return 0, err
+		return Reversal{}, err
 	}
 	email, wallet := WalletEmail(orig.Holder)
 	if !ok || !wallet || orig.Amount <= 0 || orig.Kind != KindTopup {
-		return 0, ErrUnknownPurchase
+		return Reversal{}, ErrUnknownPurchase
+	}
+	reverseMu.Lock()
+	defer reverseMu.Unlock()
+	if s.lockWallet != nil {
+		unlock, err := s.lockWallet(ctx, string(orig.Holder))
+		if err != nil {
+			return Reversal{}, err
+		}
+		defer unlock()
 	}
 	taken, err := s.reversed(ctx, orig.Holder, purchaseRef)
 	if err != nil {
-		return 0, err
+		return Reversal{}, err
 	}
 	delta := min(target(orig.Amount), orig.Amount) - taken
 	if delta <= 0 {
-		return 0, nil
+		return Reversal{}, nil
+	}
+	before, err := s.Balance(ctx, orig.Holder)
+	if err != nil {
+		return Reversal{}, err
 	}
 	if err := s.led.Adjust(ctx, ledger.Posting{
 		Holder: ledger.Holder(Wallet(email)),
@@ -404,9 +411,15 @@ func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, ta
 		Actor:  "stripe:refund:" + reversalRef,
 		Labels: map[string]string{labelReverses: purchaseRef},
 	}, false); err != nil {
-		return 0, err
+		return Reversal{}, err
 	}
-	return delta, nil
+	after, err := s.Balance(ctx, orig.Holder)
+	if err != nil {
+		// The reversal is posted; only whether it froze the account is unknown.
+		slog.WarnContext(ctx, "credit: balance not read after a reversal", "reversal", reversalRef, "error", err)
+		return Reversal{Took: delta}, nil
+	}
+	return Reversal{Took: delta, Froze: before >= 0 && after < 0}, nil
 }
 
 // reversed sums the credit already taken back from one purchase, as a positive

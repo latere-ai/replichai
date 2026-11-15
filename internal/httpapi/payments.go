@@ -86,7 +86,7 @@ func (rt *Router) startCheckout(w http.ResponseWriter, r *http.Request) {
 // the balance once.
 func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if rt.payments == nil {
-		w.WriteHeader(http.StatusOK) // Nothing is configured, so the event is acknowledged and dropped.
+		writeError(w, http.StatusServiceUnavailable, "payments_unconfigured")
 		return
 	}
 	body, err := io.ReadAll(r.Body)
@@ -100,7 +100,7 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	ev, err := rt.payments.ParseWebhook(body, r.Header)
 	if errors.Is(err, pay.ErrUnconfigured) {
-		w.WriteHeader(http.StatusOK)
+		writeError(w, http.StatusServiceUnavailable, "payments_unconfigured")
 		return
 	}
 	if err != nil {
@@ -172,7 +172,9 @@ func chargeTotals(raw []byte) (refunded, charged int64, ok bool) {
 // currency paid, which is the FX-drift rule: a purchase converted at one rate
 // and refunded at another leaves nothing unaccounted. The reversal is keyed on
 // its own id so it is deduplicated independently. A refund of a purchase this
-// ledger never recorded is acknowledged and dropped rather than retried.
+// ledger has not recorded yet answers 500 so the processor retries it after the
+// purchase's own event lands; one that is recorded but is not a wallet top-up
+// is acknowledged and dropped.
 func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 	if rt.credits == nil {
 		return http.StatusOK
@@ -186,20 +188,19 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 		slog.ErrorContext(r.Context(), "stripe webhook: looking up the purchase", "ref", ev.Ref, "error", err)
 		return http.StatusInternalServerError
 	}
+	if !ok {
+		slog.WarnContext(r.Context(), "stripe webhook: refund before its purchase is recorded, asking for a retry", "ref", ev.Ref, "reversal", ev.ReversalRef)
+		return http.StatusInternalServerError
+	}
 	email, isWallet := credit.WalletEmail(orig.Holder)
-	if !ok || !isWallet || orig.Amount <= 0 {
-		slog.WarnContext(r.Context(), "stripe webhook: refund for an unknown or unreversable purchase", "ref", ev.Ref, "reversal", ev.ReversalRef)
+	if !isWallet || orig.Amount <= 0 {
+		slog.WarnContext(r.Context(), "stripe webhook: refund for an unreversable purchase", "ref", ev.Ref, "reversal", ev.ReversalRef)
 		return http.StatusOK
 	}
-	// The balance is read before the reversal to detect whether it makes the
-	// balance negative, so the freeze e-mail is sent once, when the balance
-	// crosses zero, and not again on a further refund of an already negative
-	// wallet.
-	before, _ := rt.credits.Balance(r.Context(), orig.Holder)
-	var took int64
+	var rev credit.Reversal
 	switch ev.Kind {
 	case pay.KindDisputed:
-		took, err = rt.credits.RefundRemainder(r.Context(), ev.Ref, ev.ReversalRef)
+		rev, err = rt.credits.RefundRemainder(r.Context(), ev.Ref, ev.ReversalRef)
 	default:
 		refunded, charged, usable := chargeTotals(ev.Raw)
 		if !usable {
@@ -208,7 +209,7 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 			slog.ErrorContext(r.Context(), "stripe webhook: refund carries no usable amounts, nothing reversed", "ref", ev.Ref, "reversal", ev.ReversalRef)
 			return http.StatusOK
 		}
-		took, err = rt.credits.RefundShare(r.Context(), ev.Ref, ev.ReversalRef, refunded, charged)
+		rev, err = rt.credits.RefundShare(r.Context(), ev.Ref, ev.ReversalRef, refunded, charged)
 	}
 	if errors.Is(err, credit.ErrUnknownPurchase) {
 		slog.WarnContext(r.Context(), "stripe webhook: refund for an unknown or unreversable purchase", "ref", ev.Ref, "reversal", ev.ReversalRef)
@@ -218,11 +219,11 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 		slog.ErrorContext(r.Context(), "stripe webhook: refund not recorded", "email", email, "error", err)
 		return http.StatusInternalServerError
 	}
-	if took > 0 && before >= 0 && rt.notifier != nil {
-		if after, err := rt.credits.Balance(r.Context(), orig.Holder); err == nil && after < 0 {
-			if err := rt.notifier.AccountFrozen(r.Context(), email); err != nil {
-				notify.LogFailure("account_frozen", email, err)
-			}
+	// The store decides, under its lock, whether this reversal is the one that
+	// moved the wallet below zero, so concurrent refunds send the mail once.
+	if rev.Froze && rt.notifier != nil {
+		if err := rt.notifier.AccountFrozen(r.Context(), email); err != nil {
+			notify.LogFailure("account_frozen", email, err)
 		}
 	}
 	return http.StatusOK

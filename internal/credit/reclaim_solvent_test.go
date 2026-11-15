@@ -27,7 +27,7 @@ func TestReclaimingIntoANegativeWalletEndsTheWaiver(t *testing.T) {
 			if err := s.Allocate(ctx, lead, "p1", "Project One", 10*Dollar); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.RefundRemainder(ctx, "pi_r", "dp_r"); err != nil { // wallet at -$10
+			if _, err := tookOf(s.RefundRemainder(ctx, "pi_r", "dp_r")); err != nil { // wallet at -$10
 				t.Fatal(err)
 			}
 			told = nil

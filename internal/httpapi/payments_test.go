@@ -280,10 +280,10 @@ func TestStripeWebhookRefundReversesTheCreditedAmount(t *testing.T) {
 		t.Fatalf("balance after one refund = %d, want 0 (the credit reversed exactly once)", bal())
 	}
 
-	// A refund for a purchase this ledger never recorded is acknowledged and
-	// dropped. It is neither retried nor treated as an error.
-	if code := deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_unknown", ReversalRef: "re_x"}); code != http.StatusOK {
-		t.Fatalf("refund of unknown purchase = %d, want 200", code)
+	// A refund for a purchase this ledger has not recorded is answered with a
+	// non-2xx status, so the processor retries it once the purchase lands.
+	if code := deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_unknown", ReversalRef: "re_x"}); code != http.StatusInternalServerError {
+		t.Fatalf("refund of unknown purchase = %d, want 500", code)
 	}
 }
 

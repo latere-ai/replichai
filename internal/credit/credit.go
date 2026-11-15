@@ -95,6 +95,16 @@ type Holder string
 // is the seed-by-email rule a grant follows (006c).
 func Wallet(email string) Holder { return Holder("user:" + normalizeEmail(email)) }
 
+// Reversal is what one refund or dispute took back from a purchase.
+type Reversal struct {
+	// Took is the credit taken back by this call, in micro-USD. It is zero for
+	// a replay or a delivery that is already covered by earlier reversals.
+	Took int64
+	// Froze is true when this reversal alone moved the wallet from a
+	// non-negative balance to a negative one.
+	Froze bool
+}
+
 // WalletBalance is one wallet's email and its settled balance in micro-USD. It
 // is what NegativeWallets returns, so the admin surface names the debtor and
 // shows what they owe without a second read.
@@ -263,14 +273,15 @@ type Store interface {
 	// what earlier reversals of the purchase already took back. refunded is the
 	// total refunded on the charge so far and charged is the charge, in one
 	// unit. It is idempotent on reversalRef and returns the credit it took back,
-	// which is zero for a replay. ErrUnknownPurchase when the ledger never
+	// which is zero for a replay, and whether that moved the wallet from
+	// solvent to negative. ErrUnknownPurchase when the ledger never
 	// recorded the purchase.
-	RefundShare(ctx context.Context, purchaseRef, reversalRef string, refunded, charged int64) (int64, error)
+	RefundShare(ctx context.Context, purchaseRef, reversalRef string, refunded, charged int64) (Reversal, error)
 	// RefundRemainder takes back what is left of a purchase's credit, which is
 	// what a lost dispute does. The total taken back for a purchase never
 	// exceeds what it credited. ErrUnknownPurchase when the ledger never
 	// recorded the purchase.
-	RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (int64, error)
+	RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (Reversal, error)
 	// EntryByExternalRef finds the entry carrying ref, if any. A refund uses it to
 	// reverse a purchase by the exact micro-USD it credited (022c).
 	EntryByExternalRef(ctx context.Context, ref string) (Entry, bool, error)
