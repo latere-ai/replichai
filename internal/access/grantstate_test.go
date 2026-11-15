@@ -5,32 +5,19 @@ package access
 
 import (
 	"errors"
+	"fmt"
 	"os"
-	"slices"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"latere.ai/x/pkg/statemachine"
+	"latere.ai/x/pkg/statemachine/statemachinetest"
 )
 
-// TestGrantTransitionsAreWellFormed checks the declared table: every state is a
-// key, every target is a state, nothing loops on itself, and the derived state
-// of a row is one the table names.
-func TestGrantTransitionsAreWellFormed(t *testing.T) {
-	for from, tos := range grantTransitions {
-		for _, to := range tos {
-			if to == from {
-				t.Errorf("%s lists itself", from)
-			}
-			if _, ok := grantTransitions[to]; !ok {
-				t.Errorf("%s -> %s: target is not a state", from, to)
-			}
-		}
-	}
-	for _, s := range grantInitial {
-		if _, ok := grantTransitions[s]; !ok {
-			t.Errorf("initial state %s is not a state", s)
-		}
-	}
+// TestGrantStateIsDerivedFromTheRow checks the state a row's columns name.
+func TestGrantStateIsDerivedFromTheRow(t *testing.T) {
 	cases := []struct {
 		principal string
 		revoked   bool
@@ -46,26 +33,195 @@ func TestGrantTransitionsAreWellFormed(t *testing.T) {
 			t.Errorf("grantStateOf(%q, %v) = %s, want %s", c.principal, c.revoked, got, c.want)
 		}
 	}
+	if !Grants.Can(GrantRevoked, GrantBound) {
+		t.Error("a revoked row that kept its principal is re-admitted to bound")
+	}
 }
 
-// TestCheckGrantStep walks every ordered pair of states: a pair is allowed
-// exactly when the table lists it, and a pair of one state is no change.
-func TestCheckGrantStep(t *testing.T) {
-	states := []GrantState{GrantInvited, GrantBound, GrantRevoked}
-	for _, from := range states {
-		for _, to := range states {
-			err := checkGrantStep(from, to)
-			want := from == to || slices.Contains(grantTransitions[from], to)
-			if (err == nil) != want {
-				t.Errorf("%s -> %s: err = %v, want allowed %v", from, to, err, want)
-			}
-			if err != nil && !errors.Is(err, ErrIllegalGrantTransition) {
-				t.Errorf("%s -> %s: %v does not wrap ErrIllegalGrantTransition", from, to, err)
-			}
-		}
+// grantWriters is a grant store as the table checks drive it: the store's own
+// writers for each state, and a way to put a row in a state directly.
+type grantWriters struct {
+	access Access
+	admin  Principal
+	// regrant is Grant, reporting the state the row was in; empty for no row.
+	regrant func(email string) (GrantState, error)
+	// revoke is Revoke, reporting whether this call recorded the revocation.
+	revoke func(email string) (bool, error)
+	// insert writes a row in state s with no writer involved.
+	insert func(t *testing.T, email, principal string, s GrantState)
+}
+
+// driver adapts the writers to statemachinetest. Each state is reached through
+// the writer that lands there: Revoke for revoked, Grant for invited (an
+// address re-admitted without a principal), and a first sign-in's bind, by a
+// fresh principal presenting the email, for bound. A writer that finds the row
+// already past the step reports it as refused.
+func (w *grantWriters) driver(prefix string) statemachinetest.Driver[GrantState] {
+	var n atomic.Int64
+	refused := func(to GrantState, why string) error {
+		return fmt.Errorf("%w: %s to %s: %s", statemachine.ErrIllegalTransition, "grant", to, why)
 	}
-	if err := checkGrantCreate(GrantBound); !errors.Is(err, ErrIllegalGrantTransition) {
-		t.Errorf("a new row starting bound = %v, want illegal", err)
+	state := func(t *testing.T, email string) GrantState {
+		t.Helper()
+		gs, err := w.access.GrantsFor(ctx, w.admin, []string{email})
+		if err != nil || len(gs) != 1 {
+			t.Fatalf("reading %s: %v, %d rows", email, err, len(gs))
+		}
+		return grantStateOf(gs[0].Principal, gs[0].Revoked())
+	}
+	return statemachinetest.Driver[GrantState]{
+		Enter: func(t *testing.T, s GrantState) string {
+			email := fmt.Sprintf("%s-%d@example.com", prefix, n.Add(1))
+			w.insert(t, email, "sub-of-"+email, s)
+			return email
+		},
+		Move: func(email string, to GrantState) error {
+			switch to {
+			case GrantRevoked:
+				did, err := w.revoke(email)
+				if err == nil && !did {
+					return refused(to, "already revoked")
+				}
+				return err
+			case GrantInvited:
+				from, err := w.regrant(email)
+				if err == nil && from != GrantRevoked {
+					return refused(to, "the row was not revoked")
+				}
+				return err
+			case GrantBound:
+				gs, err := w.access.GrantsFor(ctx, w.admin, []string{email})
+				if err != nil || len(gs) != 1 {
+					return fmt.Errorf("reading %s: %v", email, err)
+				}
+				if gs[0].Revoked() {
+					if _, err := w.regrant(email); err != nil {
+						return err
+					}
+				}
+				// A second sign-in on the same address is somebody else's.
+				p := Principal{Sub: fmt.Sprintf("signin-%d", n.Add(1)), Email: email}
+				_, granted, err := w.access.Resolve(ctx, p)
+				if err == nil && !granted {
+					return refused(to, "the address is not claimable")
+				}
+				return err
+			}
+			return refused(to, "no writer")
+		},
+		State: state,
+	}
+}
+
+func driveGrantTable(t *testing.T, w *grantWriters, prefix string) {
+	t.Helper()
+	d := w.driver(prefix)
+	statemachinetest.Exhaustive(t, Grants, d)
+	statemachinetest.Race(t, Grants, d)
+}
+
+func TestMemStoreWritersFollowTheGrantTable(t *testing.T) {
+	s := NewMemStore()
+	if err := s.SeedAdmin(ctx, "driver-admin@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	admin := Principal{Sub: "driver-admin", Email: "driver-admin@example.com"}
+	if _, ok, err := s.Resolve(ctx, admin); err != nil || !ok {
+		t.Fatalf("admin resolve: %v %v", ok, err)
+	}
+	w := &grantWriters{
+		access: s, admin: admin,
+		regrant: func(email string) (GrantState, error) { return s.grant(email, TierUser, admin.Sub) },
+		revoke:  func(email string) (bool, error) { return s.revoke(ctx, admin, email) },
+		insert: func(t *testing.T, email, principal string, st GrantState) {
+			t.Helper()
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			g := Grant{Email: email, Tier: TierUser, GrantedAt: time.Now()}
+			switch st {
+			case GrantBound:
+				g.Principal = principal
+				s.principalEmail[principal] = email
+			case GrantRevoked:
+				at := time.Now()
+				g.Tier, g.RevokedAt = TierNone, &at
+			}
+			s.grants[email] = g
+		},
+	}
+	driveGrantTable(t, w, "mem")
+}
+
+func TestPGStoreWritersFollowTheGrantTable(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set TEST_DATABASE_URL to run the Postgres access contract")
+	}
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "TRUNCATE access_grants"); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	s := NewPGAccess(pool)
+	if err := s.SeedAdmin(ctx, "driver-admin@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	admin := Principal{Sub: "driver-admin", Email: "driver-admin@example.com"}
+	if _, ok, err := s.Resolve(ctx, admin); err != nil || !ok {
+		t.Fatalf("admin resolve: %v %v", ok, err)
+	}
+	w := &grantWriters{
+		access: s, admin: admin,
+		regrant: func(email string) (GrantState, error) { return s.upsert(ctx, email, TierUser, admin.Sub) },
+		revoke:  func(email string) (bool, error) { return s.revoke(ctx, admin, email) },
+		insert: func(t *testing.T, email, principal string, st GrantState) {
+			t.Helper()
+			var bound *string
+			var revokedAt *time.Time
+			tier := TierUser
+			switch st {
+			case GrantBound:
+				bound = &principal
+			case GrantRevoked:
+				now := time.Now()
+				revokedAt, tier = &now, TierNone
+			}
+			if _, err := pool.Exec(ctx,
+				`INSERT INTO access_grants (email, tier, principal, granted_by, granted_at, revoked_at, revoked_by)
+				 VALUES ($1,$2,$3,'',now(),$4,'')`, email, int16(tier), bound, revokedAt); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	driveGrantTable(t, w, "pg")
+}
+
+// A revoked row that kept its principal is re-admitted to bound, not invited.
+func TestRegrantingARevokedBoundRowReturnsItToBound(t *testing.T) {
+	s := NewMemStore()
+	if err := s.SeedAdmin(ctx, "a@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	admin := Principal{Sub: "a", Email: "a@example.com"}
+	user := Principal{Sub: "u", Email: "u@example.com"}
+	if _, _, err := s.SelfGrant(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Revoke(ctx, admin, user.Email); err != nil {
+		t.Fatal(err)
+	}
+	from, err := s.grant(user.Email, TierUser, admin.Sub)
+	if err != nil || from != GrantRevoked {
+		t.Fatalf("regrant = %s, %v", from, err)
+	}
+	if got := grantOf(t, s, admin, user.Email); got == nil || grantStateOf(got.Principal, got.Revoked()) != GrantBound {
+		t.Errorf("after re-admitting: %+v, want bound", got)
 	}
 }
 

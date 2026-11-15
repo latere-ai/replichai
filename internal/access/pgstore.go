@@ -111,7 +111,7 @@ func (s *PGAccess) Resolve(ctx context.Context, p Principal) (Tier, bool, error)
 			return nil
 		case bindClaim:
 		}
-		if err := checkGrantStep(GrantInvited, GrantBound); err != nil {
+		if err := Grants.Check(GrantInvited, GrantBound); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE access_grants SET principal=$1 WHERE email=$2`, p.Sub, email); err != nil {
@@ -132,7 +132,8 @@ func (s *PGAccess) Grant(ctx context.Context, byAdmin Principal, email string, t
 	if email == "" {
 		return ErrNoEmail
 	}
-	return s.upsert(ctx, email, tier, byAdmin.Sub)
+	_, err := s.upsert(ctx, email, tier, byAdmin.Sub)
+	return err
 }
 
 // Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
@@ -148,15 +149,23 @@ func (s *PGAccess) Grant(ctx context.Context, byAdmin Principal, email string, t
 // ensures a re-login by the same person resolves to this row instead of
 // creating a new, unrevoked one.
 func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) error {
+	_, err := s.revoke(ctx, byAdmin, email)
+	return err
+}
+
+// revoke is Revoke, reporting whether this call recorded the revocation; it is
+// false when the address was already revoked.
+func (s *PGAccess) revoke(ctx context.Context, byAdmin Principal, email string) (bool, error) {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
-		return err
+		return false, err
 	}
 	email = normalizeEmail(email)
 	if email == "" {
-		return ErrNoEmail
+		return false, ErrNoEmail
 	}
 	now := s.clock()
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	var recorded bool
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if err := lockAdmins(ctx, tx); err != nil {
 			return err
 		}
@@ -169,13 +178,13 @@ func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) 
 			if isSelf(byAdmin, email, "") {
 				return ErrSelfRevoke
 			}
-			if err := checkGrantCreate(to); err != nil {
+			if err := Grants.CheckStart(to); err != nil {
 				return err
 			}
 		} else {
 			from := grantStateOf(row.principal, row.revoked)
 			if from == GrantRevoked {
-				return nil
+				return nil // already banned; the first revocation is the one that counts
 			}
 			if isSelf(byAdmin, email, row.principal) {
 				return ErrSelfRevoke
@@ -185,7 +194,7 @@ func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) 
 					return err
 				}
 			}
-			if err := checkGrantStep(from, to); err != nil {
+			if err := Grants.Check(from, to); err != nil {
 				return err
 			}
 		}
@@ -196,8 +205,10 @@ func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) 
 				revoked_at=EXCLUDED.revoked_at, revoked_by=EXCLUDED.revoked_by, tier=EXCLUDED.tier
 			WHERE access_grants.revoked_at IS NULL`,
 			email, int16(TierNone), now, byAdmin.Sub)
+		recorded = err == nil
 		return err
 	})
+	return recorded && err == nil, err
 }
 
 // grantRow is the columns of one locked grant row that a state decision reads.
@@ -439,8 +450,9 @@ func scanGrants(rows pgx.Rows) ([]Grant, error) {
 // upsert writes a grant's tier while preserving any binding, and clears any
 // revocation: granting is how an admin re-admits somebody, so the two cannot be
 // true of one row at once.
-func (s *PGAccess) upsert(ctx context.Context, email string, tier Tier, by string) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+func (s *PGAccess) upsert(ctx context.Context, email string, tier Tier, by string) (GrantState, error) {
+	var from GrantState // empty for an address with no row
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if err := lockAdmins(ctx, tx); err != nil {
 			return err
 		}
@@ -449,16 +461,18 @@ func (s *PGAccess) upsert(ctx context.Context, email string, tier Tier, by strin
 			return err
 		}
 		if found {
-			from := grantStateOf(row.principal, row.revoked)
-			if err := checkGrantStep(from, grantStateOf(row.principal, false)); err != nil {
-				return err
+			from = grantStateOf(row.principal, row.revoked)
+			if to := grantStateOf(row.principal, false); from != to {
+				if err := Grants.Check(from, to); err != nil {
+					return err
+				}
 			}
 			if from != GrantRevoked && row.tier == TierAdmin && tier != TierAdmin {
 				if err := requireOtherAdmin(ctx, tx, email); err != nil {
 					return err
 				}
 			}
-		} else if err := checkGrantCreate(GrantInvited); err != nil {
+		} else if err := Grants.CheckStart(GrantInvited); err != nil {
 			return err
 		}
 		_, err = tx.Exec(ctx, `
@@ -469,6 +483,7 @@ func (s *PGAccess) upsert(ctx context.Context, email string, tier Tier, by strin
 			email, int16(tier), by, s.clock())
 		return err
 	})
+	return from, err
 }
 
 // requireAdmin resolves the caller and refuses anyone below TierAdmin.

@@ -97,7 +97,7 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 	if p.Email != "" {
 		email := normalizeEmail(p.Email)
 		if g, ok := s.grants[email]; ok && g.Principal == "" && !g.Revoked() {
-			if err := checkGrantStep(GrantInvited, GrantBound); err != nil {
+			if err := Grants.Check(GrantInvited, GrantBound); err != nil {
 				return TierNone, false, err
 			}
 			g.Principal = p.Sub
@@ -141,21 +141,31 @@ func (s *MemStore) Grant(ctx context.Context, byAdmin Principal, email string, t
 	if email == "" {
 		return ErrNoEmail
 	}
+	_, err := s.grant(email, tier, byAdmin.Sub)
+	return err
+}
+
+// grant seeds or promotes a grant and reports the state the row was in, empty
+// for an address with no row.
+func (s *MemStore) grant(email string, tier Tier, by string) (GrantState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var from GrantState
 	if g, ok := s.grants[email]; ok {
-		from := grantStateOf(g.Principal, g.Revoked())
-		if err := checkGrantStep(from, grantStateOf(g.Principal, false)); err != nil {
-			return err
+		from = grantStateOf(g.Principal, g.Revoked())
+		if to := grantStateOf(g.Principal, false); from != to {
+			if err := Grants.Check(from, to); err != nil {
+				return from, err
+			}
 		}
 		if from != GrantRevoked && g.Tier == TierAdmin && tier != TierAdmin && !s.otherAdmin(email) {
-			return ErrLastAdmin
+			return from, ErrLastAdmin
 		}
-	} else if err := checkGrantCreate(GrantInvited); err != nil {
-		return err
+	} else if err := Grants.CheckStart(GrantInvited); err != nil {
+		return "", err
 	}
-	s.upsert(email, tier, byAdmin.Sub)
-	return nil
+	s.upsert(email, tier, by)
+	return from, nil
 }
 
 // otherAdmin reports whether an active admin other than email exists. Caller
@@ -204,12 +214,19 @@ func (s *MemStore) ClearOverride(_ context.Context, email string) error {
 // Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
 // records rather than deletes.
 func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) error {
+	_, err := s.revoke(ctx, byAdmin, email)
+	return err
+}
+
+// revoke is Revoke, reporting whether this call recorded the revocation; it is
+// false when the address was already revoked.
+func (s *MemStore) revoke(ctx context.Context, byAdmin Principal, email string) (bool, error) {
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
-		return err
+		return false, err
 	}
 	email = normalizeEmail(email)
 	if email == "" {
-		return ErrNoEmail
+		return false, ErrNoEmail
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -217,20 +234,20 @@ func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) 
 	if ok && g.Revoked() {
 		// Already banned: the first revocation is the one that counts, and a
 		// second must not rewrite when it happened.
-		return nil
+		return false, nil
 	}
 	if isSelf(byAdmin, email, g.Principal) {
-		return ErrSelfRevoke
+		return false, ErrSelfRevoke
 	}
 	if ok {
 		if g.Tier == TierAdmin && !s.otherAdmin(email) {
-			return ErrLastAdmin
+			return false, ErrLastAdmin
 		}
-		if err := checkGrantStep(grantStateOf(g.Principal, false), GrantRevoked); err != nil {
-			return err
+		if err := Grants.Check(grantStateOf(g.Principal, false), GrantRevoked); err != nil {
+			return false, err
 		}
-	} else if err := checkGrantCreate(GrantRevoked); err != nil {
-		return err
+	} else if err := Grants.CheckStart(GrantRevoked); err != nil {
+		return false, err
 	}
 	// An address with no grant gets a revoked, unbound one, so the ban holds
 	// at that person's first sign-in rather than being undone by it.
@@ -243,7 +260,7 @@ func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) 
 	s.grants[email] = g
 	// The binding stays. It ensures a re-login by the same person resolves to
 	// the revoked row instead of creating a new one.
-	return nil
+	return true, nil
 }
 
 // List returns every grant, sorted by email. Admin only.
