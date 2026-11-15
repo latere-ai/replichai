@@ -797,3 +797,57 @@ func TestAFailureReadsAsOneValidLine(t *testing.T) {
 		}
 	}
 }
+
+// A Running entry read from a state file belongs to a process that has gone,
+// so it is read back as Interrupted, and a resume runs it again against what
+// it recorded.
+func TestARunningEntryOnDiskIsReadAsInterrupted(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "batch.json")
+	file := File{Papers: []Entry{{Paper: "10.1/a"}, {Paper: "10.1/b"}}}
+	killed := State{Version: stateVersion, Entries: []EntryState{
+		{Paper: "10.1/a", Run: 1, Phase: Done},
+		{Paper: "10.1/b", Run: 1, Phase: Running, Session: "s-old"},
+	}}
+	if err := killed.Save(statePath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if loaded.Entries[1].Phase != Interrupted || loaded.Entries[0].Phase != Done {
+		t.Fatalf("phases after loading = %s, %s", loaded.Entries[0].Phase, loaded.Entries[1].Phase)
+	}
+	if report := loaded.Report(); !strings.Contains(report, "was interrupted before it finished") {
+		t.Fatalf("the report does not name the interrupted run:\n%s", report)
+	}
+
+	r := newRunner()
+	resumed, err := Run(context.Background(), file, r, Options{Parallel: 1, StatePath: statePath, Resume: true})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if len(r.executed) != 1 || r.executed[0] != "10.1/b" || resumed.Summarize().Done != 2 {
+		t.Fatalf("resume executed %v, summary %+v", r.executed, resumed.Summarize())
+	}
+	if got := r.priors["10.1/b"]; got.Session != "s-old" {
+		t.Fatalf("the interrupted run was not handed its session: %+v", got)
+	}
+}
+
+// An entry's phase moves only along phaseTransitions.
+func TestAPhaseChangeFollowsTheTable(t *testing.T) {
+	for from, targets := range phaseTransitions {
+		for _, to := range []Phase{Pending, Running, Done, Failed, Interrupted} {
+			entry := EntryState{Phase: from}
+			err := entry.advance(to)
+			if slices.Contains(targets, to) != (err == nil) {
+				t.Errorf("%s to %s: err = %v", from, to, err)
+			}
+		}
+	}
+	entry := EntryState{Phase: Done}
+	if err := entry.advance(Running); !errors.Is(err, ErrIllegalPhase) {
+		t.Fatalf("a finished entry started again = %v, want ErrIllegalPhase", err)
+	}
+}

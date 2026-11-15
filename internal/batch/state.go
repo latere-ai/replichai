@@ -52,7 +52,10 @@ func (s State) Save(path string) error {
 	return atomicfile.Write(path, append(body, '\n'), 0o600)
 }
 
-// LoadState reads a project's progress back.
+// LoadState reads a project's progress back. A state file is written by one
+// batch process at a time, which marks an entry Running only while it works on
+// it, so any Running entry read back belongs to a process that has gone and is
+// returned as Interrupted. A resume runs it again.
 func LoadState(path string) (State, error) {
 	//nolint:gosec // the path is this batch's own state file
 	body, err := os.ReadFile(path)
@@ -62,6 +65,14 @@ func LoadState(path string) (State, error) {
 	var state State
 	if err := json.Unmarshal(body, &state, wirejson.Foreign); err != nil {
 		return State{}, fmt.Errorf("parse %s: %w", path, err)
+	}
+	for index := range state.Entries {
+		if state.Entries[index].Phase != Running {
+			continue
+		}
+		if err := state.Entries[index].advance(Interrupted); err != nil {
+			return State{}, fmt.Errorf("read %s: %w", path, err)
+		}
 	}
 	return state, nil
 }
@@ -100,7 +111,7 @@ func (s State) mergedWith(entries []Resolved, now time.Time) State {
 			merged.Entries[index] = earlier
 			continue
 		}
-		// Failed, running or pending: keep what is needed to reattach and
+		// Failed, interrupted or pending: keep what is needed to reattach and
 		// drop the phase, so the run is tried again against the repository
 		// it already has.
 		merged.Entries[index].PaperKey = earlier.PaperKey
@@ -237,6 +248,8 @@ func (s State) Report() string {
 			switch {
 			case entry.Phase == Failed:
 				fmt.Fprintf(&b, "- %s failed: %s\n", labels[index], sanitize.OneLine(entry.Error, errorLineLimit))
+			case entry.Phase == Interrupted:
+				fmt.Fprintf(&b, "- %s was interrupted before it finished.\n", labels[index])
 			case !entry.Phase.Terminal():
 				fmt.Fprintf(&b, "- %s did not run.\n", labels[index])
 			case s.Publishing && entry.Repo == "":

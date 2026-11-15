@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -246,13 +247,46 @@ func looksStructured(line string) bool {
 type Phase string
 
 // The phases an entry moves through. A batch is resumed by skipping the
-// terminal ones and reattaching the rest.
+// finished ones and running the rest again, each as a new entry that keeps
+// what it needs to reattach.
 const (
 	Pending Phase = "pending"
 	Running Phase = "running"
 	Done    Phase = "done"
 	Failed  Phase = "failed"
+	// Interrupted is a Running entry found in a state file when it is read
+	// back. One batch process writes a state file at a time and marks an
+	// entry Running only while it works on it, so a Running entry read from
+	// disk belongs to a process that has gone, killed before it recorded an
+	// outcome. A resume runs it again.
+	Interrupted Phase = "interrupted"
 )
+
+// phaseTransitions is every step an entry's phase takes within one process's
+// work on it, with every phase a key and a phase with no further step mapped
+// to nil. Done and Failed are outcomes. Interrupted is reached only by reading
+// a state file back (LoadState); a resume does not move it on, it starts a
+// new entry at Pending.
+var phaseTransitions = map[Phase][]Phase{
+	Pending:     {Running},
+	Running:     {Done, Failed, Interrupted},
+	Interrupted: nil,
+	Done:        nil,
+	Failed:      nil,
+}
+
+// ErrIllegalPhase reports a phase change the table does not allow.
+var ErrIllegalPhase = errors.New("illegal entry phase change")
+
+// advance moves the entry to phase to, refusing a step phaseTransitions does
+// not list.
+func (e *EntryState) advance(to Phase) error {
+	if !slices.Contains(phaseTransitions[e.Phase], to) {
+		return fmt.Errorf("%w: %s to %s", ErrIllegalPhase, e.Phase, to)
+	}
+	e.Phase = to
+	return nil
+}
 
 // Terminal reports whether an entry needs no further work.
 func (p Phase) Terminal() bool { return p == Done || p == Failed }
@@ -450,7 +484,13 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 			// What an earlier attempt recorded is passed to the runner with
 			// the entry, so a retry can return to its repository.
 			prior := state.Entries[index]
-			state.Entries[index].Phase = Running
+			if err := state.Entries[index].advance(Running); err != nil {
+				state.Entries[index].Phase, state.Entries[index].Error = Failed, err.Error()
+				anyFails = true
+				save()
+				mu.Unlock()
+				return
+			}
 			state.Entries[index].Started = options.Clock()
 			save()
 			mu.Unlock()
@@ -471,11 +511,16 @@ func Run(ctx context.Context, file File, runner Runner, options Options) (State,
 			record := &state.Entries[index]
 			record.Finished = options.Clock()
 			record.absorb(outcome)
+			outcomePhase := Done
 			if err != nil {
-				record.Phase, record.Error = Failed, err.Error()
+				outcomePhase, record.Error = Failed, err.Error()
+			}
+			if advanceErr := record.advance(outcomePhase); advanceErr != nil {
+				record.Phase, record.Error = Failed, advanceErr.Error()
+				err = advanceErr
+			}
+			if err != nil {
 				anyFails = true
-			} else {
-				record.Phase = Done
 			}
 			save()
 			mu.Unlock()
