@@ -62,8 +62,8 @@ type store struct {
 	auth    Authority
 	members Members
 	// onSolvent is called when money entering a wallet leaves it at or above
-	// zero. It lifts the account freeze at the moment the debt is paid, rather
-	// than by a write on every later read.
+	// zero, by any path. It retires the freeze waiver at the moment the wallet
+	// is solvent again, rather than by a write on every later read.
 	onSolvent func(ctx context.Context, email string)
 	// lockPurchase serializes the reversals of one purchase across processes.
 	// Nil means this process's own mutex is the only guard, which is all a
@@ -80,16 +80,17 @@ var reverseMu sync.Mutex
 // Option configures a store.
 type Option func(*store)
 
-// WithOnSolvent registers fn to be called the moment a top-up leaves a wallet
-// solvent. The composition root uses it to retire the freeze override, so the
-// top-up that made the wallet solvent is the single event that clears it.
+// WithOnSolvent registers fn to be called the moment money entering a wallet
+// leaves it solvent, whether it came from a top-up, an admin grant or a reclaim
+// from a project. The composition root uses it to retire the freeze override.
 func WithOnSolvent(fn func(ctx context.Context, email string)) Option {
 	return func(s *store) { s.onSolvent = fn }
 }
 
 // solvent calls onSolvent for a wallet that just received money, when its
-// balance is at or above zero. It is best-effort: a read failure here leaves
-// the override for the next top-up to retire.
+// balance is at or above zero. Every path that puts money in a wallet calls it:
+// a top-up, an admin grant and a reclaim from a project. It is best-effort: a
+// read failure here leaves the override for the next deposit to retire.
 func (s *store) solvent(ctx context.Context, email string) {
 	if s.onSolvent == nil {
 		return
@@ -483,7 +484,13 @@ func (s *store) Reclaim(ctx context.Context, by access.Principal, project, proje
 	if err := s.requireLead(ctx, by, project); err != nil {
 		return err
 	}
-	return s.move(ctx, Pot(project), Wallet(by.Email), amount, reasonReclaim, by.Email, project, projectName)
+	if err := s.move(ctx, Pot(project), Wallet(by.Email), amount, reasonReclaim, by.Email, project, projectName); err != nil {
+		return err
+	}
+	// Reclaimed credit can lift a negative wallet to zero, which ends the
+	// freeze waiver just as a top-up does.
+	s.solvent(ctx, by.Email)
+	return nil
 }
 
 // move is the shared body of every transfer, so the two sides and their

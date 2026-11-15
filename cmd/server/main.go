@@ -860,13 +860,13 @@ func migrateAll(ctx context.Context, migrationURL string) error {
 	return nil
 }
 
-// thawOnSolvent clears an account's freeze override as soon as a top-up leaves
-// its wallet solvent (022d). The override is a waiver of a debt; paying the
-// debt ends it, and a later debt is a separate decision.
+// thawOnSolvent clears an account's freeze override as soon as money entering
+// its wallet leaves it solvent (022d), by any path. The override is a waiver of
+// a debt; clearing the debt ends it, and a later debt is a separate decision.
 func thawOnSolvent(ov access.FreezeOverrides) func(context.Context, string) {
 	return func(ctx context.Context, email string) {
 		if err := ov.ClearOverride(ctx, email); err != nil {
-			slog.WarnContext(ctx, "freeze override not retired after top-up", "email", email, "error", err)
+			slog.WarnContext(ctx, "freeze override not retired once the wallet was solvent", "email", email, "error", err)
 		}
 	}
 }
