@@ -17,7 +17,7 @@ import {
   restoreProject,
   trashProject,
 } from '../api'
-import { invalidateProjects, useProjects } from '../projects-store'
+import { invalidateProjects, retryProjects, useProjects, useProjectsFailed } from '../projects-store'
 import { countOf, type I18n } from '../i18n'
 import { generic, purgeErrLabel, trashErrLabel } from '../errors'
 import { formatUSD } from '../money'
@@ -54,6 +54,8 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
   // The shared list: the rail reads the same one, so the count up there and the
   // rows down here cannot disagree.
   const list = useProjects()
+  // A read that failed is said so, and is not the same as having no projects.
+  const loadFailed = useProjectsFailed()
   // The project the reader has asked to throw away, held while they confirm.
   const [dropping, setDropping] = useState<ProjectView | null>(null)
   // The filter narrows what is already loaded and fetches nothing, so it can
@@ -157,8 +159,16 @@ export function ProjectsScreen({ i18n, me, onOpen }: { i18n: I18n; me: Me; onOpe
       )}
 
       <div className="card">
+        {loadFailed && (
+          <p className="err small" style={{ margin: 0, padding: '10px 14px' }} data-test="projects-load-failed">
+            <Ico name="alert" size={13} /> {t('projectsLoadFailed')}{' '}
+            <button type="button" className="btn ghost sm" onClick={retryProjects}>
+              {t('retry')}
+            </button>
+          </p>
+        )}
         {list === null ? (
-          <div className="empty">…</div>
+          loadFailed ? null : <div className="empty">…</div>
         ) : projects.length === 0 ? (
           <Empty icon="folder" text={t('noProjects')} />
         ) : shown.length === 0 ? (

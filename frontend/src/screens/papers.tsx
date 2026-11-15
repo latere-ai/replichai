@@ -68,7 +68,7 @@ export function PapersCard({
   // Something was spent, so the wallet is re-read too.
   onChanged: () => void
   // Papers and sessions moved; re-read them without touching the wallet.
-  onRefresh: () => void
+  onRefresh: () => void | Promise<void>
 }) {
   const { t } = i18n
   const [url, setUrl] = useState('')
@@ -142,7 +142,9 @@ export function PapersCard({
     setErr('')
     try {
       await startSession(project.id, key, choice)
-      refresh()
+      // The button stays busy until the new session is in the list, so the
+      // person never sees it free again over a list that does not show it.
+      await refresh()
       onChanged()
     } catch (e) {
       setErr(startErrLabel(t, e, me.credits))
@@ -332,6 +334,7 @@ export function PapersCard({
                   href={pathOf({ name: 'session', projectId: project.id, jobId: s.id })}
                   onOpen={() => onOpenSession(s)}
                   onChanged={refresh}
+                  onSettled={onChanged}
                   onDelete={setDropping}
                 />
               ))}
@@ -355,6 +358,7 @@ export function PapersCard({
                   href={pathOf({ name: 'session', projectId: project.id, jobId: s.id })}
                   onOpen={() => onOpenSession(s)}
                   onChanged={refresh}
+                  onSettled={onChanged}
                   onDelete={setDropping}
                 />
               ))}

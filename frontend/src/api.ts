@@ -40,6 +40,8 @@ export type Usage = {
   CacheWriteTokens?: number
 }
 
+export type StopReason = 'canceled' | 'interrupted' | 'error'
+
 export type Job = {
   id: string
   kind: string
@@ -61,6 +63,9 @@ export type Job = {
   // the test for a result; this field alone is not.
   repo_name?: string
   error?: string
+  // Why a failed session stopped: a person canceled it, the server restarted
+  // under it, or it hit a fault. Present when the phase is failed.
+  stop_reason?: StopReason
   created_at?: string
   // phase_at records when the session entered each phase. The timeline is drawn
   // from it.
@@ -215,14 +220,14 @@ export type LedgerEntry = {
   created_at: string
 }
 
-export const getWallet = () => fetch('/me/credits').then(json<Wallet>)
+export const getWallet = () => apiFetch('/me/credits').then(json<Wallet>)
 
 // startCheckout opens a hosted payment page for a top-up of amountMicro, in
 // micro-USD, and returns its URL for the browser to follow. The webhook credits
 // the wallet, not the return from that page, so the client only sends
 // the person to pay and re-reads the balance when they come back.
 export const startCheckout = (amountMicro: number) =>
-  fetch('/me/credits/checkout', {
+  apiFetch('/me/credits/checkout', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ amount_micro: amountMicro }),
@@ -236,14 +241,14 @@ export const startCheckout = (amountMicro: number) =>
 type CreditMove = { wallet: number; project: ProjectCredits | null }
 
 export const allocateCredits = (id: string, amount: number) =>
-  fetch(`/projects/${id}/credits`, {
+  apiFetch(`/projects/${id}/credits`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ amount }),
   }).then(json<CreditMove>)
 
 export const reclaimCredits = (id: string, amount: number) =>
-  fetch(`/projects/${id}/credits/reclaim`, {
+  apiFetch(`/projects/${id}/credits/reclaim`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ amount }),
@@ -297,6 +302,26 @@ export type PublishBlocker = {
   ref?: string
   reason: string
   review?: string
+}
+
+// A refusal with status 401 means the sign-in lapsed. One handler is told, so
+// the app asks the person to sign in again, rather than every screen showing
+// an empty list.
+let onUnauthorized: (() => void) | null = null
+
+// setUnauthorizedHandler registers the app's reaction to a lapsed sign-in and
+// returns the way to remove it. Only a signed-in app registers one: a reader with
+// no account is refused some routes by design and has nothing to sign in again to.
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn
+}
+
+// apiFetch is fetch for every call in this module: the same request, with a 401
+// reported to the registered handler before the caller sees the response.
+async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const r = await fetch(input, init)
+  if (r.status === 401) onUnauthorized?.()
+  return r
 }
 
 // ApiError carries both halves of a refusal: the status, and the machine-
@@ -355,9 +380,9 @@ async function ok(r: Response): Promise<void> {
   if (!r.ok) throw await refusal(r)
 }
 
-export const getMe = () => fetch('/me').then(json<Me>)
+export const getMe = () => apiFetch('/me').then(json<Me>)
 
-export const getJob = (id: string) => fetch(`/jobs/${id}`).then(json<Job>)
+export const getJob = (id: string) => apiFetch(`/jobs/${id}`).then(json<Job>)
 
 // A previewed paper reference: the resolved identity the New-project screen
 // shows before anything is created.
@@ -367,7 +392,7 @@ export type ResolvedPaper = { key: string; title: string; scheme: string; slug: 
 // status: 400 for a reference that is not a DOI/arXiv/URL, 502 when the source
 // could not be reached.
 export const resolvePaper = (url: string) =>
-  fetch('/resolve', {
+  apiFetch('/resolve', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -438,11 +463,11 @@ type PaperEdit = {
 }
 
 // listPapers returns the papers a project is about.
-export const listPapers = (id: string) => fetch(`/projects/${id}/papers`).then(json<ProjectPaper[]>)
+export const listPapers = (id: string) => apiFetch(`/projects/${id}/papers`).then(json<ProjectPaper[]>)
 
 // addPaper records another paper on a project. It starts nothing.
 export const addPaper = (id: string, url: string) =>
-  fetch(`/projects/${id}/papers`, {
+  apiFetch(`/projects/${id}/papers`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -451,7 +476,7 @@ export const addPaper = (id: string, url: string) =>
 // editPaper corrects a paper's record. What it writes stays written: the server
 // marks each corrected field so the next lookup fills only what is still empty.
 export const editPaper = (id: string, key: string, edit: PaperEdit) =>
-  fetch(`/projects/${id}/papers?key=${encodeURIComponent(key)}`, {
+  apiFetch(`/projects/${id}/papers?key=${encodeURIComponent(key)}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(edit),
@@ -460,11 +485,11 @@ export const editPaper = (id: string, key: string, edit: PaperEdit) =>
 // refreshPapers fills in the details of every paper in the project that is
 // missing them, and reports how many it completed.
 export const refreshPapers = (id: string) =>
-  fetch(`/projects/${id}/papers/refresh`, { method: 'POST' }).then(json<{ filled: number; papers: ProjectPaper[] }>)
+  apiFetch(`/projects/${id}/papers/refresh`, { method: 'POST' }).then(json<{ filled: number; papers: ProjectPaper[] }>)
 
 // removePaper drops a paper the project has never run.
 export const removePaper = (id: string, key: string) =>
-  fetch(`/projects/${id}/papers?key=${encodeURIComponent(key)}`, { method: 'DELETE' }).then(ok)
+  apiFetch(`/projects/${id}/papers?key=${encodeURIComponent(key)}`, { method: 'DELETE' }).then(ok)
 
 // movePaper refiles a paper, and the sessions that are runs of it, under
 // another project. It is the lead's at both ends, and is refused 409
@@ -474,7 +499,7 @@ export const removePaper = (id: string, key: string) =>
 // The key travels in the body, not the path: a paper key such as
 // "doi:10.1145/…" spans several path segments and would route nowhere.
 export const movePaper = (id: string, key: string, toProject: string) =>
-  fetch(`/projects/${id}/papers/move`, {
+  apiFetch(`/projects/${id}/papers/move`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ paper_key: key, to_project: toProject }),
@@ -487,7 +512,7 @@ export const movePaper = (id: string, key: string, toProject: string) =>
 // empty is not sent, so the server's default applies; a tier the server does
 // not offer is refused 400.
 export const startSession = (id: string, paperKey: string, choice?: { tier?: string; runtime?: string; model?: string }) =>
-  fetch(`/projects/${id}/sessions`, {
+  apiFetch(`/projects/${id}/sessions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -515,7 +540,7 @@ export type ModelTier = {
 // deployment with no backend still lists the tiers, without prices, so the
 // choice can still be offered.
 export const listModels = () =>
-  fetch('/models').then(json<{ tiers: ModelTier[]; runtimes?: RuntimeOption[]; drafting?: boolean }>)
+  apiFetch('/models').then(json<{ tiers: ModelTier[]; runtimes?: RuntimeOption[]; drafting?: boolean }>)
 
 // One Effort level as a runtime would run it now for the person asking: the
 // stored tier, the model its next turn runs on, and that model's price in
@@ -548,7 +573,7 @@ export type RuntimeOption = {
 // the project's own field changes only when somebody saves it. The project pays
 // for the call whether or not they keep the answer.
 export const draftDescription = (id: string) =>
-  fetch(`/projects/${id}/description/draft`, { method: 'POST' }).then(json<{ description: string; model: string; cost_micro: number }>)
+  apiFetch(`/projects/${id}/description/draft`, { method: 'POST' }).then(json<{ description: string; model: string; cost_micro: number }>)
 
 // createProject opens a named project holding its papers, with seeded
 // collaborators. It starts no session, so it cannot be refused for money; the
@@ -559,7 +584,7 @@ export async function createProject(
   papers: string[],
   collaborators: string[],
 ): Promise<{ status: number; data: CreatedProject }> {
-  const r = await fetch('/projects', {
+  const r = await apiFetch('/projects', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ title, papers, collaborators }),
@@ -570,7 +595,7 @@ export async function createProject(
 
 // renameProject renames an owned project.
 export const renameProject = (id: string, title: string) =>
-  fetch(`/projects/${id}`, {
+  apiFetch(`/projects/${id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -579,7 +604,7 @@ export const renameProject = (id: string, title: string) =>
 // describeProject writes what a project is about. Empty clears it, which
 // is a deliberate edit and not the same as leaving the field alone.
 export const describeProject = (id: string, description: string) =>
-  fetch(`/projects/${id}`, {
+  apiFetch(`/projects/${id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ description }),
@@ -587,7 +612,7 @@ export const describeProject = (id: string, description: string) =>
 
 // cancelSession stops a running session. Owner-only. It returns the resulting
 // job, which is failed with a "cancelled" cause.
-export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { method: 'POST' }).then(json<Job>)
+export const cancelSession = (id: string) => apiFetch(`/jobs/${id}/cancel`, { method: 'POST' }).then(json<Job>)
 
 // deleteSession removes one finished session from the app. Owner-only, and
 // refused 409 `session_running` while it is still in flight; stop it first.
@@ -596,24 +621,24 @@ export const cancelSession = (id: string) => fetch(`/jobs/${id}/cancel`, { metho
 // holds a repository with no reproduction record, which blocks its whole project
 // from going public and can be resolved no other way. The repository itself is
 // made private, not destroyed.
-export const deleteSession = (id: string) => fetch(`/jobs/${id}`, { method: 'DELETE' }).then(ok)
+export const deleteSession = (id: string) => apiFetch(`/jobs/${id}`, { method: 'DELETE' }).then(ok)
 
 // listProjects returns every project the caller may work in, their own and the
 // ones they were invited to, newest-modified first, each with a session count.
 // The session cookie scopes the result server-side.
-export const listProjects = () => fetch('/projects').then(json<ProjectView[]>)
+export const listProjects = () => apiFetch('/projects').then(json<ProjectView[]>)
 
 // trashProject moves an owned project to the trash. It rejects 409
 // `sessions_running` while anything is still in flight there.
-export const trashProject = (id: string) => fetch(`/projects/${id}`, { method: 'DELETE' }).then(ok)
+export const trashProject = (id: string) => apiFetch(`/projects/${id}`, { method: 'DELETE' }).then(ok)
 
 // restoreProject takes one back out.
-export const restoreProject = (id: string) => fetch(`/projects/${id}/restore`, { method: 'POST' }).then(ok)
+export const restoreProject = (id: string) => apiFetch(`/projects/${id}/restore`, { method: 'POST' }).then(ok)
 
 // purgeProject removes a trashed project for good. It rejects 409
 // `credits_remaining` while its pot still holds money, and `not_trashed` for one
 // that was never thrown away; the reversible step cannot be skipped.
-export const purgeProject = (id: string) => fetch(`/projects/${id}?purge=1`, { method: 'DELETE' }).then(ok)
+export const purgeProject = (id: string) => apiFetch(`/projects/${id}?purge=1`, { method: 'DELETE' }).then(ok)
 
 // archiveUrl is where a project's whole output is downloaded from: one zip
 // of every session's committed tree, built server-side from the repositories the
@@ -623,30 +648,30 @@ export const purgeProject = (id: string) => fetch(`/projects/${id}?purge=1`, { m
 export const archiveUrl = (id: string) => `/projects/${id}/archive`
 
 // listTrash returns the caller's own trashed projects, newest-trashed first.
-export const listTrash = () => fetch('/projects/trash').then(json<ProjectView[]>)
+export const listTrash = () => apiFetch('/projects/trash').then(json<ProjectView[]>)
 
 // getProject returns one project and its sessions, newest first.
-export const getProject = (id: string) => fetch(`/projects/${id}`).then(json<ProjectDetail>)
+export const getProject = (id: string) => apiFetch(`/projects/${id}`).then(json<ProjectDetail>)
 
 // listPublic returns the public zone: every public project, newest first.
-export const listPublic = () => fetch('/public').then(json<ProjectView[]>)
+export const listPublic = () => apiFetch('/public').then(json<ProjectView[]>)
 
 // Project members (owner-only): list, invite by email, remove by email.
-export const listMembers = (id: string) => fetch(`/projects/${id}/members`).then(json<Member[]>)
+export const listMembers = (id: string) => apiFetch(`/projects/${id}/members`).then(json<Member[]>)
 export const addMember = (id: string, email: string) =>
-  fetch(`/projects/${id}/members`, {
+  apiFetch(`/projects/${id}/members`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email }),
   }).then(ok)
 export const removeMember = (id: string, email: string) =>
-  fetch(`/projects/${id}/members/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
+  apiFetch(`/projects/${id}/members/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
 
 // The caller's own researcher profile. getProfile answers an empty profile
 // before one is ever saved, so the settings screen renders the same on first use.
-export const getProfile = () => fetch('/me/profile').then(json<Profile>)
+export const getProfile = () => apiFetch('/me/profile').then(json<Profile>)
 export const saveProfile = (p: Profile) =>
-  fetch('/me/profile', {
+  apiFetch('/me/profile', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(p),
@@ -656,7 +681,7 @@ export const saveProfile = (p: Profile) =>
 // link from a published reproduction can look up who signed it. An unknown
 // handle and a private profile are the same 404 on purpose.
 export const getPublicProfile = (handle: string) =>
-  fetch(`/profiles/${encodeURIComponent(handle)}`).then(json<PublicProfile>)
+  apiFetch(`/profiles/${encodeURIComponent(handle)}`).then(json<PublicProfile>)
 
 // The version of the responsibility-attestation text a sign-off records. It
 // changes whenever the text a signer affirms changes.
@@ -680,7 +705,7 @@ export type SignOff = {
 // tell a validation refusal, 400, from a project whose tree never cleared the
 // gate, 409.
 export const makeProjectPublic = (id: string, signOff: SignOff, flipRepo = true) =>
-  fetch(`/projects/${id}/public`, {
+  apiFetch(`/projects/${id}/public`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ ...signOff, attestation_version: ATTESTATION_VERSION, flip_repo: flipRepo }),
@@ -691,7 +716,7 @@ export const makeProjectPublic = (id: string, signOff: SignOff, flipRepo = true)
 // a withdrawal retracts a publication and does not erase the attestation, so the
 // returned project still carries its signed_off_* fields.
 export const withdrawProject = (id: string, reason: string) =>
-  fetch(`/projects/${id}/private`, {
+  apiFetch(`/projects/${id}/private`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ reason }),
@@ -699,12 +724,12 @@ export const withdrawProject = (id: string, reason: string) =>
 
 // getTranscript returns a session's trajectory and token usage. It rejects with
 // the HTTP status: 409 while the run has not published a transcript yet.
-export const getTranscript = (id: string) => fetch(`/jobs/${id}/transcript`).then(json<Transcript>)
+export const getTranscript = (id: string) => apiFetch(`/jobs/${id}/transcript`).then(json<Transcript>)
 
 // getReproduction returns a session's manifest verdict; listArtifacts its
 // repository file tree; getArtifact one file's text. They read through the app,
 // so they work even when the underlying repository stays private.
-export const getReproduction = (id: string) => fetch(`/jobs/${id}/reproduction`).then(json<Reproduction>)
+export const getReproduction = (id: string) => apiFetch(`/jobs/${id}/reproduction`).then(json<Reproduction>)
 
 // getFindings returns the run's own verdict.json: the boundary table,
 // the decisions, the scorecard, and what the authors released. It is a separate
@@ -712,11 +737,11 @@ export const getReproduction = (id: string) => fetch(`/jobs/${id}/reproduction`)
 // one is the agent's claims, and a session that has one may not have the other.
 // A run without findings answers 404, which surfaces as an ApiError the pane
 // turns into a stated reason rather than an empty table.
-export const getFindings = (id: string) => fetch(`/jobs/${id}/verdict`).then(json<Findings>)
-export const listArtifacts = (id: string) => fetch(`/jobs/${id}/artifacts`).then(json<{ files: string[] }>)
+export const getFindings = (id: string) => apiFetch(`/jobs/${id}/verdict`).then(json<Findings>)
+export const listArtifacts = (id: string) => apiFetch(`/jobs/${id}/artifacts`).then(json<{ files: string[] }>)
 export const artifactUrl = (id: string, path: string) => `/jobs/${id}/artifact?path=${encodeURIComponent(path)}`
 export const getArtifact = (id: string, path: string) =>
-  fetch(`/jobs/${id}/artifact?path=${encodeURIComponent(path)}`).then(async (r) => {
+  apiFetch(`/jobs/${id}/artifact?path=${encodeURIComponent(path)}`).then(async (r) => {
     // An ApiError like every other call, so a caller that asks why can tell a
     // refusal from a network failure. A plain Error would be read as "offline".
     if (!r.ok) throw await refusal(r)
@@ -783,46 +808,49 @@ export type RateCard = { models: ModelRates[] }
 // listGrants returns the people table. With negativeOnly it returns only the
 // accounts that owe, which are the debts an operator acts on.
 export const listGrants = (negativeOnly = false) =>
-  fetch('/admin/access' + (negativeOnly ? '?filter=negative' : '')).then(json<GrantView[]>)
+  apiFetch('/admin/access' + (negativeOnly ? '?filter=negative' : '')).then(json<GrantView[]>)
 
 // unfreezeAccount grants a one-shot override so a negative-wallet account may
 // work again; refreezeAccount clears it. getSolvency reads the platform's
 // outstanding sold liability, the sum of all wallets and all pots, which the
 // operator watches.
 export const unfreezeAccount = (email: string) =>
-  fetch(`/admin/access/${encodeURIComponent(email)}/unfreeze`, { method: 'POST' }).then(json<{ email: string; overridden: boolean }>)
+  apiFetch(`/admin/access/${encodeURIComponent(email)}/unfreeze`, { method: 'POST' }).then(json<{ email: string; overridden: boolean }>)
 
 export const refreezeAccount = (email: string) =>
-  fetch(`/admin/access/${encodeURIComponent(email)}/unfreeze`, { method: 'DELETE' }).then(json<{ email: string; overridden: boolean }>)
+  apiFetch(`/admin/access/${encodeURIComponent(email)}/unfreeze`, { method: 'DELETE' }).then(json<{ email: string; overridden: boolean }>)
 
-export const getSolvency = () => fetch('/admin/solvency').then(json<{ outstanding_micro: number }>)
+export const getSolvency = () => apiFetch('/admin/solvency').then(json<{ outstanding_micro: number }>)
 
 // grantAccess seeds or promotes by email. The person need not have signed in:
 // the grant binds to them on first login.
 export const grantAccess = (email: string, tier: 'user' | 'admin') =>
-  fetch('/admin/access', {
+  apiFetch('/admin/access', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, tier }),
   }).then(json<{ email: string; tier: string }>)
 
 export const revokeAccess = (email: string) =>
-  fetch(`/admin/access/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
+  apiFetch(`/admin/access/${encodeURIComponent(email)}`, { method: 'DELETE' }).then(ok)
 
 // topUp adds credits to one person's wallet, in micro-USD. The email need not
 // have signed in yet: the wallet is keyed by address, so an admin can fund
 // somebody before inviting them.
-export const topUp = (email: string, amount: number) =>
-  fetch(`/admin/access/${encodeURIComponent(email)}/credits`, {
+//
+// idempotencyKey names the one grant the admin means to make: a retry of the same
+// request carries the same key and credits once, and a new grant takes a new key.
+export const topUp = (email: string, amount: number, idempotencyKey: string) =>
+  apiFetch(`/admin/access/${encodeURIComponent(email)}/credits`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ amount }),
   }).then(json<{ email: string; wallet: number }>)
 
-export const getPlatformSettings = () => fetch('/admin/settings').then(json<PlatformSettings>)
+export const getPlatformSettings = () => apiFetch('/admin/settings').then(json<PlatformSettings>)
 
 export const setPlatformSettings = (s: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates' | 'draft' | 'latere_environments'>) =>
-  fetch('/admin/settings', {
+  apiFetch('/admin/settings', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(s),

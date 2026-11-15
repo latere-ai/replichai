@@ -5,8 +5,8 @@
 // what it cost, the repository it published, and the two removal actions, stop
 // while it runs and delete once it has settled.
 
-import { useCallback, useEffect, useState } from 'react'
-import { cancelSession, deleteSession, type Job } from '../api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { cancelSession, deleteSession, getJob, type Job } from '../api'
 import { type I18n } from '../i18n'
 import { deleteSessionErrLabel, failureTip, sessionFailureText } from '../errors'
 import { formatUSD } from '../money'
@@ -14,10 +14,10 @@ import { Ico } from '../icons'
 import { GlassModal } from 'latere-ui/react'
 import { openFromRow, Pill, RowLink, Tip } from '../ui'
 import { elapsed } from '../when'
-import { freshest, stopPending, stoppedByHand, terminal } from '../session-stop'
+import { awaitSettled, freshest, stopPending, stoppedByHand, terminal } from '../session-stop'
 import { useJobStream } from '../job-stream'
 import { repoSuffix, runLabel } from '../repo'
-import { phaseIcon, phaseLabel, phaseTone } from '../phase'
+import { phaseIcon, phaseLabel, phaseLive, phaseTone } from '../phase'
 
 export function SessionRow({
   i18n,
@@ -27,6 +27,7 @@ export function SessionRow({
   href,
   onOpen,
   onChanged,
+  onSettled,
   onDelete,
 }: {
   i18n: I18n
@@ -40,6 +41,10 @@ export function SessionRow({
   href: string
   onOpen: () => void
   onChanged: () => void
+  // The session settled, however the row learned of it: the stream, a re-read
+  // or its own stop. What a finished session changes beyond the row, the
+  // project's findings and the credits it spent, is refreshed from here.
+  onSettled?: () => void
   // Where a delete is confirmed. The dialog is the card's, not the row's: it is
   // one dialog for the list rather than one per row, and because the dialog
   // portals to <body> but a React portal still bubbles its clicks through the
@@ -53,6 +58,8 @@ export function SessionRow({
   // the control cannot re-arm mid-stop and take a second click.
   const [stopAsked, setStopAsked] = useState(false)
   const [stopErr, setStopErr] = useState(false)
+  // The stop was sent and the session had not settled when the wait ran out.
+  const [stopSlow, setStopSlow] = useState(false)
   // Every snapshot of this session, from the list, the cancel's answer or the
   // stream, arrives through the same guard, so none of them can walk a settled
   // session back to running.
@@ -61,7 +68,21 @@ export function SessionRow({
   // The stream is keyed on the session and on whether it is still running, not
   // on the snapshot the list handed over, which a refresh replaces every time.
   useJobStream(job.id, !terminal(j.phase), show)
-  useEffect(() => setStopAsked(false), [job.id])
+  useEffect(() => {
+    setStopAsked(false)
+    setStopSlow(false)
+  }, [job.id])
+  // Told once, when the session goes from in flight to settled.
+  const wasLive = useRef(!terminal(job.phase))
+  const settledCb = useRef(onSettled)
+  useEffect(() => {
+    settledCb.current = onSettled
+  })
+  useEffect(() => {
+    const live = !terminal(j.phase)
+    if (wasLive.current && !live) settledCb.current?.()
+    wasLive.current = live
+  }, [j.phase])
   // The clock the elapsed reading is drawn against. A running row re-renders on
   // its own once a second; a settled one holds no interval, so a list of
   // finished sessions costs nothing to leave open.
@@ -79,9 +100,16 @@ export function SessionRow({
     if (stopping) return
     setStopAsked(true)
     setStopErr(false)
+    setStopSlow(false)
     try {
       show(await cancelSession(j.id))
       onChanged()
+      // The request returns once the worker is signaled, not once the session
+      // has settled. Read it until it does, for a bounded wait; past that the
+      // row says the stop is still in progress and the stream settles it.
+      const r = await awaitSettled(() => getJob(j.id))
+      if (r.job) show(r.job)
+      if (!r.settled) setStopSlow(true)
     } catch {
       // The stop did not land and the run is still up. Re-enable the control and
       // say why, rather than leaving a dead button on a running session.
@@ -92,7 +120,7 @@ export function SessionRow({
 
   // A stopped run is neither a success nor a fault of the paper: it reads in the
   // neutral tone rather than borrowing the failure red.
-  const stopped = stoppedByHand(j.phase, j.error)
+  const stopped = stoppedByHand(j.phase, j.stop_reason)
   const phaseTxt = stopped ? t('stopped') : phaseLabel(t, j.phase)
   return (
     <div className={nested ? 'row row-nested' : 'row'} onClick={openFromRow}>
@@ -100,8 +128,8 @@ export function SessionRow({
         <Pill
           tone={stopped ? 'neutral' : phaseTone(j.phase)}
           icon={stopped ? 'stop' : phaseIcon(j.phase)}
-          dot={!terminal(j.phase) && !stopped}
-          pulse={!terminal(j.phase)}
+          dot={phaseLive(j.phase) && !stopped}
+          pulse={phaseLive(j.phase)}
         >
           {phaseTxt}
         </Pill>
@@ -167,6 +195,10 @@ export function SessionRow({
       {stopErr && !terminal(j.phase) ? (
         <span className="err small">
           <Ico name="alert" size={13} /> {t('stopError')}
+        </span>
+      ) : stopSlow && !terminal(j.phase) ? (
+        <span className="muted small" data-test="stop-slow">
+          {t('stopSlow')}
         </span>
       ) : (
         j.error &&

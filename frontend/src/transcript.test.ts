@@ -4,7 +4,8 @@
 import { expect, test } from 'bun:test'
 import type { Event } from './api'
 import { translator } from './i18n'
-import { cacheWrittenOf, clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, seekTarget, splitTitle, totalOf } from './transcript'
+import { PHASES } from './generated/job-phase'
+import { POLL_MS, retryDelay, PHASE_ORDER, cacheWrittenOf, clockOf, compactTokens, firstAtOrAfter, freshOf, histogram, matches, offsetOf, phaseBands, runSpan, seekTarget, splitTitle, totalOf } from './transcript'
 
 const { t } = translator('en')
 
@@ -241,4 +242,17 @@ test('a scrub with no events to land on reports nothing', () => {
   const span = { from: 0, to: 1000 }
   expect(seekTarget([], span, 0.5)).toBeNull()
   expect(seekTarget([{ role: 'agent', kind: 'message' }], span, 0.5)).toBeNull()
+})
+
+// The display order is a permutation of the server's phase table, so a phase
+// added there cannot be missing from the timeline unnoticed.
+test('PHASE_ORDER covers exactly the server phases', () => {
+  expect([...PHASE_ORDER].sort()).toEqual([...PHASES].sort())
+  expect(new Set(PHASE_ORDER).size).toBe(PHASE_ORDER.length)
+})
+
+test('a failing transcript read backs off and caps', () => {
+  expect(retryDelay(0)).toBeGreaterThan(POLL_MS)
+  expect(retryDelay(1)).toBeGreaterThan(retryDelay(0))
+  expect(retryDelay(20)).toBe(60_000)
 })

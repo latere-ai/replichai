@@ -5,7 +5,7 @@
 // headroom, and the deployment's policy, namely the start reserve, the overdraft
 // floor, the rate card and the drafting model.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getPlatformSettings,
   getSolvency,
@@ -23,11 +23,13 @@ import {
   unfreezeAccount,
 } from '../api'
 import { type I18n } from '../i18n'
+import { adminErrLabel } from '../errors'
 import { formatUSD, parseUSD, toDollars } from '../money'
 import { Ico } from '../icons'
 import { followsList, listName, listedKeys } from '../price-list'
 import { absoluteTime, relativeTime } from '../when'
-import { GlassCheckbox, GlassSelect } from 'latere-ui/react'
+import { GlassCheckbox, GlassModal, GlassSelect } from 'latere-ui/react'
+import { grantKeys } from '../grant-key'
 import { NumberField, Pill, PromptDialog, Seams, Tip } from '../ui'
 import { CardHead, Empty, Initials, TierPill } from './shared'
 
@@ -40,26 +42,46 @@ export function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsC
   const [solvency, setSolvency] = useState<number | null>(null)
   const [err, setErr] = useState('')
 
-  const refresh = useCallback(() => {
+  // Which actions are in flight, by key. An action refuses a second click while
+  // its own key is here, so a double click sends one request.
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
+  const inflight = useRef(new Set<string>())
+  const keys = useMemo(() => grantKeys(), [])
+
+  const loadPeople = useCallback(() => {
     listGrants()
       .then((g) => setPeople(g ?? []))
       .catch(() => setPeople([]))
-    getPlatformSettings()
-      .then(setSettings)
-      .catch(() => setSettings(null))
     getSolvency()
       .then((s) => setSolvency(s.outstanding_micro))
       .catch(() => setSolvency(null))
   }, [])
-  useEffect(refresh, [refresh])
+  const loadSettings = useCallback(() => {
+    getPlatformSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null))
+  }, [])
+  // The settings are read once, on arrival. An action on a person reloads the
+  // people and leaves the settings alone, so the policy edits being typed are not
+  // replaced by what the server held before them.
+  useEffect(() => {
+    loadPeople()
+    loadSettings()
+  }, [loadPeople, loadSettings])
 
-  const run = async (fn: () => Promise<unknown>) => {
+  const run = async (key: string, fn: () => Promise<unknown>, after: () => void = loadPeople) => {
+    if (inflight.current.has(key)) return
+    inflight.current.add(key)
+    setBusy(new Set(inflight.current))
     setErr('')
     try {
       await fn()
-      refresh()
+      after()
     } catch (e) {
-      setErr((e as Error).message === '403' ? t('adminNotAdmin') : t('adminError'))
+      setErr(adminErrLabel(t, e))
+    } finally {
+      inflight.current.delete(key)
+      setBusy(new Set(inflight.current))
     }
   }
 
@@ -73,7 +95,7 @@ export function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsC
       </div>
       {err && <p className="err small">{err}</p>}
       <div className="stack">
-        <PlatformPolicy i18n={i18n} settings={settings} onSave={(next) => run(() => setPlatformSettings(next))} />
+        <PlatformPolicy i18n={i18n} settings={settings} busy={busy.has('policy')} onSave={(next) => run('policy', async () => setSettings(await setPlatformSettings(next)), () => {})} />
         {solvency !== null && (
           <div className="card card-pad" data-tip={t('solvencyTitle')}>
             <div className="usage-line">
@@ -85,16 +107,20 @@ export function AdminScreen({ i18n, onCreditsChanged }: { i18n: I18n; onCreditsC
         <PeopleCard
           i18n={i18n}
           people={people}
-          onGrant={(email, tier) => run(() => grantAccess(email, tier))}
-          onRevoke={(email) => run(() => revokeAccess(email))}
+          busy={busy}
+          onGrant={(email, tier) => run('grant', () => grantAccess(email, tier))}
+          onRevoke={(email) => run('revoke:' + email, () => revokeAccess(email))}
           onTopup={(email, amount) =>
-            run(async () => {
-              await topUp(email, amount)
+            run('topup:' + email, async () => {
+              // One key per grant: a retry of this request reuses it, and the
+              // server credits once.
+              await topUp(email, amount, keys.keyFor(email, amount))
+              keys.settled(email, amount)
               onCreditsChanged()
             })
           }
-          onUnfreeze={(email) => run(() => unfreezeAccount(email))}
-          onRefreeze={(email) => run(() => refreezeAccount(email))}
+          onUnfreeze={(email) => run('unfreeze:' + email, () => unfreezeAccount(email))}
+          onRefreeze={(email) => run('refreeze:' + email, () => refreezeAccount(email))}
         />
       </div>
     </div>
@@ -124,10 +150,12 @@ function environmentLabel(t: I18n['t'], name: string): string {
 function PlatformPolicy({
   i18n,
   settings,
+  busy,
   onSave,
 }: {
   i18n: I18n
   settings: PlatformSettings | null
+  busy: boolean
   onSave: (next: Pick<PlatformSettings, 'start_reserve' | 'overdraft_cap' | 'rates' | 'draft' | 'latere_environments'>) => void
 }) {
   const { t } = i18n
@@ -309,8 +337,8 @@ function PlatformPolicy({
           policy, so the button sits where it reads as saving all of it. */}
       <div className="card-foot">
         {settings?.updated_by && <span className="muted small">{t('policyUpdatedBy', { who: settings.updated_by })}</span>}
-        <button className="btn" data-test="save-policy" disabled={!dirty} onClick={save}>
-          <Ico name="check" size={13} w={2.2} /> {t('savePolicy')}
+        <button className="btn" data-test="save-policy" disabled={!dirty || busy} onClick={save}>
+          <Ico name="check" size={13} w={2.2} /> {busy ? t('saving') : t('savePolicy')}
         </button>
       </div>
     </div>
@@ -542,6 +570,7 @@ function RateCardEditor({
 function PeopleCard({
   i18n,
   people,
+  busy,
   onGrant,
   onRevoke,
   onTopup,
@@ -550,6 +579,7 @@ function PeopleCard({
 }: {
   i18n: I18n
   people: GrantView[] | null
+  busy: ReadonlySet<string>
   onGrant: (email: string, tier: 'user' | 'admin') => void
   onRevoke: (email: string) => void
   onTopup: (email: string, amount: number) => void
@@ -563,6 +593,8 @@ function PeopleCard({
   const [owingOnly, setOwingOnly] = useState(false)
   // Which row's top-up is open in the app's own dialog.
   const [topping, setTopping] = useState<GrantView | null>(null)
+  // Which row's revoke is waiting on a confirmation.
+  const [revoking, setRevoking] = useState<GrantView | null>(null)
 
   const invite = (e: React.FormEvent) => {
     e.preventDefault()
@@ -609,18 +641,18 @@ function PeopleCard({
             <span className="row-actions">
               {p.wallet < 0 &&
                 (p.frozen ? (
-                  <button className="btn ghost sm" data-tip={t('unfreezeTitle')} onClick={() => onUnfreeze(p.email)}>
+                  <button className="btn ghost sm" data-tip={t('unfreezeTitle')} disabled={busy.has('unfreeze:' + p.email)} onClick={() => onUnfreeze(p.email)}>
                     <Ico name="check" size={12} /> {t('unfreeze')}
                   </button>
                 ) : (
-                  <button className="btn ghost sm" data-tip={t('refreezeTitle')} onClick={() => onRefreeze(p.email)}>
+                  <button className="btn ghost sm" data-tip={t('refreezeTitle')} disabled={busy.has('refreeze:' + p.email)} onClick={() => onRefreeze(p.email)}>
                     <Ico name="alert" size={12} /> {t('refreeze')}
                   </button>
                 ))}
-              <button className="btn ghost sm" onClick={() => setTopping(p)}>
-                <Ico name="wallet" size={12} /> {t('topup')}
+              <button className="btn ghost sm" disabled={busy.has('topup:' + p.email)} onClick={() => setTopping(p)}>
+                <Ico name="wallet" size={12} /> {busy.has('topup:' + p.email) ? t('saving') : t('topup')}
               </button>
-              <button className="btn ghost sm danger" onClick={() => onRevoke(p.email)}>
+              <button className="btn ghost sm danger" disabled={busy.has('revoke:' + p.email)} onClick={() => setRevoking(p)}>
                 <Ico name="x" size={12} w={2} /> {t('revoke')}
               </button>
             </span>
@@ -648,13 +680,39 @@ function PeopleCard({
             ]}
           />
         </div>
-        <button className="btn">
+        <button className="btn" disabled={busy.has('grant')}>
           <Ico name="userPlus" size={13} /> {t('grant')}
         </button>
       </form>
       <div style={{ padding: '0 14px 12px' }}>
         <span className="muted small">{t('grantHint')}</span>
       </div>
+      {revoking && (
+        <GlassModal
+          open
+          title={t('adminRevokeTitle')}
+          onClose={() => setRevoking(null)}
+          footer={
+            <>
+              <button className="btn ghost" onClick={() => setRevoking(null)}>
+                {t('cancel')}
+              </button>
+              <button
+                className="btn danger"
+                data-test="revoke-confirm"
+                onClick={() => {
+                  onRevoke(revoking.email)
+                  setRevoking(null)
+                }}
+              >
+                {t('revoke')}
+              </button>
+            </>
+          }
+        >
+          <p className="muted">{t('adminRevokeBody', { email: revoking.email })}</p>
+        </GlassModal>
+      )}
       {topping && (
         <PromptDialog
           i18n={i18n}

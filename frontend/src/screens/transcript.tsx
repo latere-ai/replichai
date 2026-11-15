@@ -8,7 +8,7 @@
 // a browser.
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { type Event, getTranscript, type Job, type Transcript, type Usage } from '../api'
+import { ApiError, type Event, getTranscript, type Job, type Transcript, type Usage } from '../api'
 import { countOf, type I18n, type Lang, type TKey } from '../i18n'
 import { clockTime, formatCount } from '../locale'
 import {
@@ -21,6 +21,8 @@ import {
   offsetOf,
   PHASE_ORDER,
   phaseBands,
+  POLL_MS,
+  retryDelay,
   runSpan,
   seekTarget,
   type Span,
@@ -81,31 +83,48 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
 
   // Poll the transcript. While the run is live, or not yet ready but still in
   // flight, keep re-fetching so an in-flight session's trajectory streams in
-  // real time rather than only after it publishes.
+  // real time rather than only after it publishes. A read that fails is retried
+  // on a growing delay and the last transcript stays on screen, marked as
+  // possibly behind, until a read lands again.
+  const [stale, setStale] = useState(false)
   useEffect(() => {
     let alive = true
     let timer: ReturnType<typeof setTimeout> | undefined
-    const again = () => {
-      timer = setTimeout(poll, 4000)
+    let have = false
+    let misses = 0
+    const again = (ms: number) => {
+      timer = setTimeout(poll, ms)
     }
     const poll = () => {
       getTranscript(jobId)
         .then((data) => {
           if (!alive) return
+          misses = 0
+          have = true
           setTr(data)
           setState('ready')
-          if (data.live) again() // an in-flight run; keep streaming
+          setStale(false)
+          if (data.live) again(POLL_MS) // an in-flight run; keep streaming
         })
         .catch((e: Error) => {
           if (!alive) return
           if (e.message === '409') {
+            misses = 0
             setState('not_ready')
             // A session may observe a run id or publish shortly; keep polling
             // until it reaches a terminal phase with still no transcript.
-            if (!jobRef.current || !terminal(jobRef.current.phase)) again()
-          } else {
-            setState('error')
+            if (!jobRef.current || !terminal(jobRef.current.phase)) again(POLL_MS)
+            return
           }
+          // A refusal that retrying cannot change ends the polling.
+          if (e instanceof ApiError && [401, 403, 404].includes(e.status)) {
+            if (have) setStale(true)
+            else setState('error')
+            return
+          }
+          if (have) setStale(true)
+          else setState('error')
+          again(retryDelay(misses++))
         })
     }
     poll()
@@ -178,7 +197,10 @@ export function SessionTranscript({ i18n, jobId, job }: { i18n: I18n; jobId: str
             {t('transcript')}
             {tr.live && <span className="live-dot">{t('liveStreaming')}</span>}
           </span>
-          <span className="tx-head-sub">{countOf(t, 'eventsCounted', tr.events.length)}</span>
+          <span className="tx-head-sub">
+            {countOf(t, 'eventsCounted', tr.events.length)}
+            {stale && ` · ${t('transcriptStale')}`}
+          </span>
         </div>
         <div className="tx-stats">
           {usage && (

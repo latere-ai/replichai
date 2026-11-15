@@ -5,7 +5,7 @@
 // decision, the sessions standing in its way, the card that reports the
 // recorded sign-off, and the dialog that withdraws it.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   deleteSession,
   getProfile,
@@ -57,15 +57,34 @@ export function PublishWizard({
   const [err, setErr] = useState('')
   const [blockers, setBlockers] = useState<PublishBlocker[]>([])
 
-  useEffect(() => {
+  // Whether the profile the form starts from was read. A form that failed to
+  // load is not an empty profile: saving it would send blanks over what the
+  // person has stored, so it is shown as a failure with a way to try again.
+  const [profileState, setProfileState] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const loadProfile = useCallback(() => {
+    setProfileState('loading')
     getProfile()
-      .then((got) => setP(got ?? {}))
-      .catch(() => setP({}))
+      .then((got) => {
+        setP(got ?? {})
+        setProfileState('ready')
+      })
+      .catch(() => setProfileState('failed'))
   }, [])
+  useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
 
+  // The affirmation covers the sign-off as it stood when it was ticked. Changing
+  // the signer or any of the text clears it, so what is attested is what is sent.
   const set = (k: TextField) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setP((cur) => ({ ...cur, [k]: e.target.value }))
+    setAffirmed(false)
     setErr('')
+  }
+  // The dialog cannot be dismissed while the publish is in flight: the request
+  // goes on either way, and a closed dialog would hide how it ended.
+  const close = () => {
+    if (!busy) onClose()
   }
 
   const hasContact = (p.contact_email ?? '').trim() !== ''
@@ -73,7 +92,7 @@ export function PublishWizard({
   // public page. The wizard sets it here rather than sending the signer to
   // settings mid-decision.
   const hasPage = !!p.public && (p.handle ?? '').trim() !== ''
-  const canContinueFromStep2 = hasContact && hasPage
+  const canContinueFromStep2 = profileState === 'ready' && hasContact && hasPage
 
   const publish = async () => {
     if (!affirmed || busy) return
@@ -114,10 +133,10 @@ export function PublishWizard({
     <GlassModal
       open
       title={step === 1 ? t('publishStep1') : step === 2 ? t('publishStep2') : t('publishStep3')}
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
-          <button className="btn ghost" onClick={step === 1 ? onClose : () => setStep(step - 1)}>
+          <button className="btn ghost" disabled={busy} onClick={step === 1 ? close : () => setStep(step - 1)}>
             {step > 1 && <Ico name="chevronLeft" size={12} w={2.2} />}
             {step === 1 ? t('cancel') : t('backStep')}
           </button>
@@ -154,15 +173,35 @@ export function PublishWizard({
           <p className="muted small" style={{ lineHeight: 1.65, margin: 0 }}>
             {t('publishStep2Body')}
           </p>
-          <ProfileFields i18n={i18n} p={p} set={set} />
-          <GlassCheckbox value={!!p.public} onChange={(on) => setP((cur) => ({ ...cur, public: on }))} label={t('publishPublicProfile')} />
-          <GlassCheckbox value={toProfile} onChange={setToProfile} label={t('publishSaveToProfile')} />
-          {!hasContact && (
+          {profileState === 'failed' && (
+            <p className="err small" style={{ margin: 0 }} data-test="publish-profile-failed">
+              <Ico name="alert" size={13} /> {t('publishProfileLoadFailed')}{' '}
+              <button type="button" className="btn ghost sm" onClick={loadProfile}>
+                {t('retry')}
+              </button>
+            </p>
+          )}
+          {profileState === 'loading' && <p className="muted small" style={{ margin: 0 }}>…</p>}
+          {profileState === 'ready' && (
+            <>
+              <ProfileFields i18n={i18n} p={p} set={set} />
+              <GlassCheckbox
+                value={!!p.public}
+                onChange={(on) => {
+                  setP((cur) => ({ ...cur, public: on }))
+                  setAffirmed(false)
+                }}
+                label={t('publishPublicProfile')}
+              />
+              <GlassCheckbox value={toProfile} onChange={setToProfile} label={t('publishSaveToProfile')} />
+            </>
+          )}
+          {profileState === 'ready' && !hasContact && (
             <p className="muted small" style={{ margin: 0 }}>
               <Ico name="info" size={12} /> {t('publishContactRequired')}
             </p>
           )}
-          {hasContact && !hasPage && (
+          {profileState === 'ready' && hasContact && !hasPage && (
             <p className="muted small" style={{ margin: 0 }}>
               <Ico name="info" size={12} /> {t('publishProfileRequired')}
             </p>
@@ -409,7 +448,7 @@ function WithdrawDialog({
     <GlassModal
       open
       title={t('withdrawTitle')}
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>

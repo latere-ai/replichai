@@ -5,7 +5,7 @@
 // wallet screen with its statement, and the card that moves credits between a
 // person's wallet and a project's pot.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   allocateCredits,
   type Credits,
@@ -84,11 +84,28 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  useEffect(() => {
+  // The quote is the wallet's fee schedule. Pay waits for it, because the fee
+  // and the minimum are what the person agrees to when they pay.
+  const loadWallet = useCallback(() => {
+    setErr('')
     getWallet()
       .then(setWallet)
-      .catch(() => setErr(t('errOffline')))
+      .catch(() => setErr(t('topUpQuoteFailed')))
   }, [t])
+  useEffect(() => {
+    loadWallet()
+  }, [loadWallet])
+
+  // Coming back from the payment page with the browser's Back button restores
+  // this page as it was left, with the button still saying it is redirecting.
+  // A restored page is made ready to pay again.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(false)
+    }
+    window.addEventListener('pageshow', onShow)
+    return () => window.removeEventListener('pageshow', onShow)
+  }, [])
 
   const min = wallet?.min_topup_micro ?? 0
   const raw = choice === 'other' ? parseUSD(custom) : choice
@@ -96,7 +113,7 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
   // computed from it, so the three add up on screen.
   const gross = raw !== null ? Math.floor(raw / 10_000) * 10_000 : 0
   const belowMin = choice === 'other' && raw !== null && raw > 0 && gross < min
-  const valid = gross > 0 && gross >= min
+  const valid = wallet !== null && gross > 0 && gross >= min
   const credited = valid && wallet ? creditedMicro(gross, wallet.spread_bps, wallet.spread_fixed_micro) : null
 
   const go = async () => {
@@ -174,6 +191,14 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
       {err && (
         <span className="err small">
           <Ico name="alert" size={13} /> {err}
+          {wallet === null && (
+            <>
+              {' '}
+              <button type="button" className="btn ghost sm" onClick={loadWallet}>
+                {t('retry')}
+              </button>
+            </>
+          )}
         </span>
       )}
       <p className="muted small" style={{ margin: '14px 0 0', lineHeight: 1.6 }}>
@@ -183,25 +208,43 @@ export function TopUpModal({ i18n, onClose }: { i18n: I18n; onClose: () => void 
   )
 }
 
+// How often and how many times the balance is re-read after a return: 30 reads, 2 seconds apart.
+const CHECKOUT_POLL_MS = 2000
+const CHECKOUT_POLLS = 30
+
 // WalletScreen is the person's own money: the statement, a way to buy more, and
 // the landing the processor returns to. On a return marked ?checkout=success the
-// balance may lag the webhook, so it re-reads /me a few times over a few seconds
-// and the bought credits appear on their own.
+// balance may lag the webhook, so it re-reads /me for up to a minute and the
+// bought credits appear on their own.
 export function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me: Me; refreshMe: () => void; onTopUp: () => void }) {
   const { t } = i18n
   const returned = new URLSearchParams(window.location.search).get('checkout') === 'success'
-  const [polling, setPolling] = useState(returned)
+  // After a return the balance is re-read until it rises, for up to a minute: the
+  // payment processor confirms in its own time. If the minute passes with no
+  // change, the page says so rather than going quiet.
+  const [wait, setWait] = useState<'waiting' | 'gaveUp' | 'done'>(returned ? 'waiting' : 'done')
+  const balanceNow = me.credits?.wallet ?? 0
+  const latest = useRef(balanceNow)
+  const started = useRef(balanceNow)
+  useEffect(() => {
+    latest.current = balanceNow
+    if (wait === 'waiting' && balanceNow > started.current) setWait('done')
+  }, [balanceNow, wait])
 
   useEffect(() => {
     if (!returned) return
     let n = 0
     const id = setInterval(() => {
-      refreshMe()
-      if (++n >= 5) {
+      if (latest.current > started.current) {
         clearInterval(id)
-        setPolling(false)
+        return
       }
-    }, 1500)
+      refreshMe()
+      if (++n >= CHECKOUT_POLLS) {
+        clearInterval(id)
+        setWait((w) => (w === 'waiting' ? 'gaveUp' : w))
+      }
+    }, CHECKOUT_POLL_MS)
     return () => clearInterval(id)
   }, [returned, refreshMe])
 
@@ -228,9 +271,14 @@ export function WalletScreen({ i18n, me, refreshMe, onTopUp }: { i18n: I18n; me:
               <Ico name="wallet" size={15} w={2} /> {t('topUp')}
             </button>
           </div>
-          {polling && (
+          {wait === 'waiting' && (
             <p className="muted small" style={{ margin: '12px 0 0' }}>
               {t('topUpProcessing')}
+            </p>
+          )}
+          {wait === 'gaveUp' && (
+            <p className="muted small" style={{ margin: '12px 0 0' }} data-test="topup-late">
+              {t('topUpStillProcessing')}
             </p>
           )}
         </div>

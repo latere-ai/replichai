@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { useCallback, useEffect, useState } from 'react'
-import { getMe, type Me } from './api'
+import { getMe, type Me, setUnauthorizedHandler } from './api'
 import { useI18n } from './i18n'
 import { Landing } from './landing'
 import { isPublicView, useRouter } from './routes'
@@ -35,6 +35,18 @@ export default function App() {
     loadMe()
   }, [loadMe])
 
+  // A sign-in that lapsed while the app was open answers 401 to whatever is read
+  // next. One banner asks the person to sign in again, and the screens do not
+  // show the refusal as empty lists. Only a signed-in reader gets one; a reader
+  // with no account is refused some routes by design.
+  const [signedOut, setSignedOut] = useState(false)
+  const signedIn = me?.authenticated === true
+  useEffect(() => {
+    if (!signedIn) return
+    setUnauthorizedHandler(() => setSignedOut(true))
+    return () => setUnauthorizedHandler(null)
+  }, [signedIn])
+
   // A researcher's page renders before every auth gate: it is public, and a
   // reader who followed a link from a paper has no account to sign in to.
   if (view.name === 'profile') return <PublicProfileScreen i18n={i18n} handle={view.handle} />
@@ -49,5 +61,17 @@ export default function App() {
   if (!me.authenticated && !isPublicView(view)) return <Landing i18n={i18n} next={window.location.pathname} theme={theme} />
   if (!me.authenticated) return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
   if ((me.tier ?? 'none') === 'none') return <NoAccess i18n={i18n} email={me.email ?? ''} />
-  return <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
+  return (
+    <>
+      {signedOut && (
+        <div className="signed-out-banner" role="alert" data-test="signed-out-banner">
+          <span>{i18n.t('signedOutBanner')}</span>
+          <a className="btn sm" href={`/login?next=${encodeURIComponent(window.location.pathname)}`}>
+            {i18n.t('signInTitle')}
+          </a>
+        </div>
+      )}
+      <Shell i18n={i18n} me={me} theme={theme} refreshMe={refreshMe} view={view} navigate={navigate} />
+    </>
+  )
 }

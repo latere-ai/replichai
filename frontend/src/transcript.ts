@@ -6,6 +6,7 @@
 // nothing else. Where the record is silent, as with an event with no timestamp,
 // the answer is an explicit absence, never a filled-in zero.
 import type { Event, Usage } from './api'
+import type { Phase } from './generated/job-phase'
 import type { Lang, T } from './i18n'
 import { clockTime } from './locale'
 import { duration } from './when'
@@ -68,8 +69,14 @@ type Band = { phase: string; left: number; width: number }
 // imports. phase_at only ever carries phases the session actually entered, so a
 // missing phase is simply skipped: nothing drawn from this list fabricates a
 // step.
-export const PHASE_ORDER = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed'] as const
-export type Phase = (typeof PHASE_ORDER)[number]
+export const PHASE_ORDER: readonly Phase[] = ['submitted', 'resolving', 'running', 'publishing', 'done', 'failed']
+
+// POLL_MS is how often a live transcript is re-read.
+export const POLL_MS = 4000
+
+// retryDelay is how long to wait before the next try after `misses` reads in a
+// row have failed: the poll interval, doubling up to a minute.
+export const retryDelay = (misses: number): number => Math.min(POLL_MS * 2 ** (misses + 1), 60_000)
 
 // phaseBands lays the session's phases across a span. A phase that started after
 // the span ends, or one with no recorded start, is simply absent; the bar never

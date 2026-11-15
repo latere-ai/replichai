@@ -291,3 +291,16 @@ export function profileSaveErrText(t: T, e: unknown): string {
   const { code, offline } = refusal(e)
   return offline ? t('errOffline') : profileErrorText(t, code)
 }
+
+/* ─── the admin console ─── */
+
+// adminErrLabel says why an admin action was refused. The two 409 refusals each
+// have their own remedy, so the code decides, not the status.
+export function adminErrLabel(t: T, e: unknown): string {
+  const { status, code } = refusal(e)
+  if (code === 'last_admin') return t('adminLastAdmin')
+  if (code === 'self_revoke') return t('adminSelfRevoke')
+  if (code === 'bad_idempotency_key') return t('adminBadKey')
+  if (status === 403) return t('adminNotAdmin')
+  return generic(t, e, 'adminError')
+}

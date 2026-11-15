@@ -12,8 +12,8 @@ test('the dev server proxies every path the client calls', () => {
   const config = Bun.file(`${import.meta.dir}/../vite.config.ts`).text()
 
   return Promise.all([client, config]).then(([api, vite]) => {
-    // Both quoted and template-literal forms: fetch('/me'), fetch(`/jobs/${id}`).
-    const called = [...api.matchAll(/fetch\([`'](\/[A-Za-z0-9/_-]*)/g)].map((m) => m[1])
+    // Both quoted and template-literal forms: apiFetch('/me'), apiFetch(`/jobs/${id}`).
+    const called = [...api.matchAll(/[fF]etch\([`'](\/[A-Za-z0-9/_-]*)/g)].map((m) => m[1])
     expect(called.length).toBeGreaterThan(10)
 
     // The list, whether written on one line or many.

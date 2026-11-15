@@ -197,6 +197,7 @@ const en = {
     // make (source.tsx). Shown only once the repository is public.
     sourceCode: 'Source code (AGPL-3.0)',
     signInTitle: 'Sign in',
+    signedOutBanner: 'You were signed out. Sign in again to continue.',
     signInBody: 'Sign in to submit a paper, watch the audit run, and sign the verdict.',
     signInNote: 'Built for research with human participants.',
     signInWith: 'Sign in with Latere',
@@ -273,11 +274,16 @@ const en = {
     noGrants: 'Nobody has signed in yet.',
     grant: 'Grant',
     revoke: 'Revoke',
+    adminRevokeTitle: 'Revoke access?',
+    adminRevokeBody: '{email} will no longer be able to sign in or run sessions. You can grant access again later.',
     grantHint: 'Anyone can sign in and browse. Running a session needs credits. Grant sets someone’s tier; revoke bans them. Admins can also set platform policy.',
     topup: 'Add credits',
     topupPrompt: 'Credits to add to {email}’s wallet, in US dollars. They can then allocate credits from the wallet to a project.',
     walletOf: 'What {email} has left in their wallet to allocate to a project.',
     adminError: 'That change was not saved. Try again in a moment.',
+    adminLastAdmin: 'That would leave the platform with no admin. Make someone else an admin first, then try again.',
+    adminSelfRevoke: 'You can’t revoke your own access. Ask another admin to do it.',
+    adminBadKey: 'That credit grant could not be sent. Reload the page and try again.',
     adminNotAdmin: 'Only a platform admin can change this.',
     // credits
     walletTitle: 'Your credits. A project needs {reserve} available before a session can start. Allocate credits from here to fund one.',
@@ -313,7 +319,11 @@ const en = {
     topUpFeeWhy: 'Covers card processing and platform costs. The rest becomes credits at the compute price.',
     topUpGet: 'Credits added',
     topUpMin: 'The minimum top-up is {min}.',
+    projectsLoadFailed: 'Couldn’t load your projects. Try again.',
     topUpProcessing: 'Payment received. Your credits will appear here shortly.',
+    topUpStillProcessing: 'Your payment has not been confirmed yet. Your credits will appear here as soon as it is. You can leave this page; nothing more is needed.',
+    publishProfileLoadFailed: 'Couldn’t load your profile, so it can’t be filled in. Try again.',
+    topUpQuoteFailed: 'Couldn’t load the fee for this top-up. Try again.',
     errPaymentsOff: 'Card payments are not set up on this deployment yet.',
     errBelowMin: 'That is below the minimum top-up.',
     checkoutFailed: 'Couldn\u2019t start the payment. Try again in a moment.',
@@ -648,6 +658,7 @@ const en = {
     stop: 'Stop',
     stopping: 'Stopping…',
     stopped: 'stopped',
+    stopSlow: 'Stop sent. The session is still wrapping up and will show as stopped when it ends.',
     stopError: 'Couldn’t stop this session. It is still running. Try again.',
     // Why a session failed, as the class of thing that went wrong and who can
     // move it. The worker's own error text is in the session itself, its first
@@ -846,6 +857,7 @@ const en = {
     // transcript
     transcript: 'Transcript',
     transcriptNotReady: 'The transcript will appear once this session has published.',
+    transcriptStale: 'Showing the last update. Trying again.',
     transcriptError: 'Couldn’t load the transcript. Try again in a moment.',
     events: 'Events',
     eventsCounted: '{n} events',

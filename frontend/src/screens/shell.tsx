@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { LatereMark, Mark, Wordmark } from '../brand'
 import { getProject, type Me } from '../api'
-import { useProjects } from '../projects-store'
+import { invalidateProjects, useProjects } from '../projects-store'
 import { type I18n } from '../i18n'
 import { Ico, type IconName } from '../icons'
 import { type Navigate, type ProjectTab, type SessionTab, type View } from '../routes'
@@ -411,6 +411,10 @@ export function Shell({
             onLoaded={(ref) => setView((now) => (now.name === 'session' && now.ref !== ref ? { ...now, ref } : now), { replace: true })}
             onBack={() => openProject(view.projectId, view.projectTitle)}
             signedIn={signedIn}
+            onSettled={() => {
+              invalidateProjects()
+              refreshMe()
+            }}
           />
         )}
       </div>

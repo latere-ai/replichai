@@ -4326,3 +4326,20 @@ textarea::placeholder {
   gap: 8px;
   align-items: flex-start;
 }
+
+/* Shown over the app when the sign-in has lapsed. */
+.signed-out-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--warn, #b45309);
+  color: #fff;
+  font-size: 13px;
+}

@@ -292,8 +292,8 @@ export function ProjectScreen({
   // Papers and sessions are read together by one component, because the screen
   // renders them joined. Read separately, a paper just started could show
   // "1 session" over an empty list.
-  const refresh = useCallback(() => {
-    getProject(id)
+  const refresh = useCallback((): Promise<void> => {
+    const read = getProject(id)
       .then((d) => {
         setProject(d.project)
         setSessions(d.sessions ?? [])
@@ -306,9 +306,10 @@ export function ProjectScreen({
         setSessions([])
         setNotReadable(true)
       })
-    listPapers(id)
+    const papersRead = listPapers(id)
       .then(setPapers)
       .catch(() => setPapers([]))
+    return Promise.all([read, papersRead]).then(() => {})
   }, [id])
   useEffect(() => {
     refresh()
@@ -316,9 +317,9 @@ export function ProjectScreen({
   // changed is refresh after a write: this screen is re-read, and so is the
   // shared list of projects, whose rows carry the title, the description, the
   // session counts and the visibility that a write here can move.
-  const changed = useCallback(() => {
-    refresh()
+  const changed = useCallback((): Promise<void> => {
     invalidateProjects()
+    return refresh()
   }, [refresh])
 
   // A submit spends allowance, so the header pill is re-read after one.

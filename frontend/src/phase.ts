@@ -3,24 +3,29 @@
 
 // A session's lifecycle phase as the screens show it: its tone, glyph, badge
 // class and label, so a phase reads the same wherever it appears. The list of
-// phases itself is transcript.ts's PHASE_ORDER.
+// phases itself is generated/job-phase.ts, from the server's table.
 
 import { type I18n } from './i18n'
-import { type Phase, PHASE_ORDER } from './transcript'
+import { isPhase } from './generated/job-phase'
 import { type IconName } from './icons'
 import { type Tone } from './ui'
 import { terminal } from './session-stop'
 
-// phaseClass tones a phase badge: any non-terminal phase reads as "running".
-export const phaseClass = (p: string) => (terminal(p) ? p : 'running')
+// phaseClass tones a phase badge: a known in-flight phase reads as "running" and a
+// phase this build does not know takes no tone class, so it stays neutral.
+export const phaseClass = (p: string) => (terminal(p) ? p : isPhase(p) ? 'running' : 'unknown')
 
 // phaseTone maps a session phase onto the semantic ramp, so a phase is the same
 // color wherever it appears: a row badge, a timeline dot, a pill.
 export function phaseTone(phase: string): Tone {
   if (phase === 'done') return 'ok'
   if (phase === 'failed') return 'err'
-  return 'run'
+  return isPhase(phase) ? 'run' : 'neutral'
 }
+
+// phaseLive reports a session known to be in flight. A phase this build does not
+// know is neither running nor settled, so it gets no running pulse.
+export const phaseLive = (phase: string) => isPhase(phase) && !terminal(phase)
 
 // phaseIcon gives each phase a glyph, so the lifecycle is legible before the
 // label is read.
@@ -35,7 +40,6 @@ export function phaseIcon(phase: string): IconName {
 // A phase the client knows is named; one it does not is shown as itself. The
 // backend can add a phase before the client learns it, and `phase.reconciling`
 // on screen is an identifier leaking out, not a label.
-const isPhase = (p: string): p is Phase => (PHASE_ORDER as readonly string[]).includes(p)
 export function phaseLabel(t: I18n['t'], phase: string) {
   return isPhase(phase) ? t(`phase.${phase}`) : phase.replace(/_/g, ' ')
 }

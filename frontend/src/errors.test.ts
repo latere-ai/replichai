@@ -5,6 +5,7 @@ import { expect, test } from 'bun:test'
 import { ApiError, type CreatedProject } from './api'
 import {
   addPaperErrLabel,
+  adminErrLabel,
   checkoutErrLabel,
   createOutcome,
   failureParts,
@@ -17,6 +18,7 @@ import {
   startErrLabel,
   TIP_CAUSE_MAX,
 } from './errors'
+import { translator } from './i18n'
 import { MICRO } from './money'
 
 // The helpers take a translate function, so these tests assert the key, not the
@@ -184,4 +186,13 @@ test('a published project refuses a new paper or session with its own sentence',
   expect(addPaperErrLabel(t, refused)).toBe('errProjectPublic')
   expect(startErrLabel(t, new ApiError(409, 'active_session'))).toBe('activeSession')
   expect(addPaperErrLabel(t, new ApiError(409, 'paper_exists'))).toBe('errPaperExists')
+})
+
+test('admin refusals each say their own reason', () => {
+  const t = translator('en').t
+  expect(adminErrLabel(t, new ApiError(409, 'last_admin'))).toBe(t('adminLastAdmin'))
+  expect(adminErrLabel(t, new ApiError(409, 'self_revoke'))).toBe(t('adminSelfRevoke'))
+  expect(adminErrLabel(t, new ApiError(400, 'bad_idempotency_key'))).toBe(t('adminBadKey'))
+  expect(adminErrLabel(t, new ApiError(403))).toBe(t('adminNotAdmin'))
+  expect(adminErrLabel(t, new ApiError(500))).toBe(t('adminError'))
 })

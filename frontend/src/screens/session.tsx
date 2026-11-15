@@ -674,6 +674,7 @@ export function SessionScreen({
   onLoaded,
   onBack,
   signedIn,
+  onSettled,
 }: {
   i18n: I18n
   jobId: string
@@ -686,6 +687,9 @@ export function SessionScreen({
   // Whether there is an account behind this reader, which decides whether the
   // live stream is worth opening at all.
   signedIn: boolean
+  // The session settled while it was open: what depends on it, the project's
+  // list and the credits it spent, is read again from here.
+  onSettled?: () => void
 }) {
   const { t } = i18n
   const [job, setJob] = useState<Job | null>(null)
@@ -715,9 +719,25 @@ export function SessionScreen({
   // page is up, and a finished session has nothing left to send. Whether to
   // watch is a boolean, so the snapshot the stream delivers cannot reopen it.
   useJobStream(jobId, signedIn && job != null && !terminal(job.phase), setJob)
+  // Told once, when a session this screen saw in flight is seen settled.
+  const sawLive = useRef(false)
+  const settledCb = useRef(onSettled)
+  useEffect(() => {
+    settledCb.current = onSettled
+  })
+  useEffect(() => {
+    if (!job) return
+    if (!terminal(job.phase)) sawLive.current = true
+    else if (sawLive.current) {
+      sawLive.current = false
+      settledCb.current?.()
+    }
+  }, [job])
   useEffect(() => {
     if (job?.ref) onLoaded(job.ref)
   }, [job?.ref, onLoaded])
+
+  const settled = job != null && terminal(job.phase)
 
   if (notReadable) return <NotReadable i18n={i18n} me={{ authenticated: signedIn }} />
 
@@ -738,12 +758,18 @@ export function SessionScreen({
           <Tab on={tab === 'artifacts'} onClick={() => onTab('artifacts')} icon="package" label={t('artifacts')} />
         </div>
       </div>
-      {job?.phase === 'failed' && job.error && !stoppedByHand(job.phase, job.error) && <SessionFailure i18n={i18n} cause={job.error} />}
+      {job?.phase === 'failed' && job.error && !stoppedByHand(job.phase, job.stop_reason) && <SessionFailure i18n={i18n} cause={job.error} />}
       {tab === 'transcript' ? (
         <SessionTranscript i18n={i18n} jobId={jobId} job={job} />
       ) : (
         <div className="screen" style={{ animation: 'none', overflowY: 'auto' }}>
-          {tab === 'verdict' ? <SessionVerdict i18n={i18n} jobId={jobId} /> : <SessionArtifacts i18n={i18n} jobId={jobId} />}
+          {/* A session that settles while one of these is open has a verdict and files
+              it did not have a moment ago, so the pane is read again then. */}
+          {tab === 'verdict' ? (
+            <SessionVerdict key={settled ? 'settled' : 'live'} i18n={i18n} jobId={jobId} />
+          ) : (
+            <SessionArtifacts key={settled ? 'settled' : 'live'} i18n={i18n} jobId={jobId} />
+          )}
         </div>
       )}
     </div>
