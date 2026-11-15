@@ -238,7 +238,7 @@ func paperViews(papers []project.Paper, sessions []job.Job) []PaperView {
 // 012, adding a paper and running it are two separate actions, and this is the
 // first.
 func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
-	proj, ok := rt.projectForWork(w, r)
+	proj, ok := rt.projectForNewWork(w, r)
 	if !ok {
 		return
 	}
@@ -782,8 +782,7 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 	// on a withdrawn project, so a sign-off proves nothing about current
 	// visibility. Moving a paper out of a published project would change what a
 	// signed attestation covers; the owner must withdraw first.
-	if from.Visibility == project.VisibilityPublic || to.Visibility == project.VisibilityPublic {
-		writeError(w, http.StatusConflict, "project_public")
+	if refusePublished(w, from) || refusePublished(w, to) {
 		return
 	}
 	sessions, err := rt.jobs.ListByProject(r.Context(), from.ID)
@@ -835,7 +834,7 @@ func (rt *Router) leads(r *http.Request, p project.Project) bool {
 // such as "doi:10.1145/3544548.3581433" and "url:https://...", so a key spans
 // several path segments and would not route.
 func (rt *Router) startSession(w http.ResponseWriter, r *http.Request) {
-	proj, ok := rt.projectForWork(w, r)
+	proj, ok := rt.projectForNewWork(w, r)
 	if !ok {
 		return
 	}
@@ -999,6 +998,32 @@ func (rt *Router) resolveProject(w http.ResponseWriter, r *http.Request, id stri
 // one check rather than by a separate check in each handler.
 func (rt *Router) projectForWork(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
 	return rt.resolveProject(w, r, r.PathValue("id"), needWork, false, "project_not_found")
+}
+
+// projectForNewWork is projectForWork for a route that adds a session or a
+// paper. It also refuses a published project with 409 project_public: a signed
+// attestation covers the papers and sessions the project held when it was
+// signed, so adding either has to wait until the owner withdraws the
+// publication. The caller's right to work in the project is decided first, so
+// a refusal never tells a stranger whether a project is published.
+func (rt *Router) projectForNewWork(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
+	proj, ok := rt.projectForWork(w, r)
+	if !ok || refusePublished(w, proj) {
+		return project.Project{}, false
+	}
+	return proj, true
+}
+
+// refusePublished answers 409 project_public for a project that is public and
+// reports whether it did. It reads Visibility and never the presence of a
+// sign-off: a withdrawn project keeps its sign-off as history, so a sign-off
+// proves nothing about current visibility.
+func refusePublished(w http.ResponseWriter, p project.Project) bool {
+	if p.Visibility != project.VisibilityPublic {
+		return false
+	}
+	writeError(w, http.StatusConflict, "project_public")
+	return true
 }
 
 // projectForRead is projectForWork's read counterpart: a public project is open
@@ -2157,6 +2182,11 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		Scholar:            signer.Scholar,
 		Email:              profile.RedactEmail(id.Email),
 	}); err != nil {
+		if errors.Is(err, project.ErrAlreadyPublic) {
+			// Publishing again would replace who signed the first publication.
+			writeError(w, http.StatusConflict, "already_public")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "publish_failed")
 		return
 	}

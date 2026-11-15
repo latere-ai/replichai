@@ -298,3 +298,54 @@ func TestMovingAPaperIsTheLeads(t *testing.T) {
 		t.Error("the paper did not arrive")
 	}
 }
+
+// TestAPublishedProjectTakesNoNewSessionsOrPapers checks that a published
+// project refuses new work with the same 409 project_public that a paper move
+// gets. A signed attestation covers the papers and sessions the project held
+// when it was signed, so adding either waits for a withdrawal, after which both
+// work again. The caller's right to work in the project is checked first.
+func TestAPublishedProjectTakesNoNewSessionsOrPapers(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	ctx := context.Background()
+	const key, ref = "arxiv:2302.03714", "https://arxiv.org/abs/2302.03714"
+	proj, err := d.Projects.Create(ctx, "sub-1", "Published")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := d.Projects.AddPaper(ctx, proj.ID, project.Paper{Key: key, Ref: ref, AddedBy: "sub-1"}); err != nil {
+		t.Fatalf("add paper: %v", err)
+	}
+	if err := d.Projects.SetPublic(ctx, proj.ID, project.SignOff{By: "sub-1", AttestationVersion: "v2"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	startBody := `{"paper_key":"` + key + `"}`
+	addBody := `{"url":"https://arxiv.org/abs/2401.00001"}`
+
+	if w := do(t, h, "POST", "/projects/"+proj.ID+"/sessions", startBody, "sub-1"); w.Code != http.StatusConflict || errorCode(w.Body.Bytes()) != "project_public" {
+		t.Errorf("start on a published project: status %d, body %s; want 409 project_public", w.Code, w.Body)
+	}
+	if w := do(t, h, "POST", "/projects/"+proj.ID+"/papers", addBody, "sub-1"); w.Code != http.StatusConflict || errorCode(w.Body.Bytes()) != "project_public" {
+		t.Errorf("add paper to a published project: status %d, body %s; want 409 project_public", w.Code, w.Body)
+	}
+	if sessions, _ := d.Jobs.ListByProject(ctx, proj.ID); len(sessions) != 0 {
+		t.Errorf("a refused start left a session behind: %+v", sessions)
+	}
+	if papers, _ := d.Projects.ListPapers(ctx, proj.ID); len(papers) != 1 {
+		t.Errorf("a refused add left %d papers, want the one it had", len(papers))
+	}
+	// Somebody who may not work in the project learns nothing about it.
+	if w := do(t, h, "POST", "/projects/"+proj.ID+"/sessions", startBody, "stranger"); w.Code == http.StatusConflict {
+		t.Errorf("a stranger was told the project is published: %s", w.Body)
+	}
+
+	if err := d.Projects.SetPrivate(ctx, proj.ID, project.Withdrawal{By: "sub-1", Reason: "adding more"}); err != nil {
+		t.Fatalf("withdraw: %v", err)
+	}
+	if w := do(t, h, "POST", "/projects/"+proj.ID+"/papers", addBody, "sub-1"); w.Code != http.StatusCreated {
+		t.Errorf("add paper after withdrawal: status %d, body %s", w.Code, w.Body)
+	}
+	if w := do(t, h, "POST", "/projects/"+proj.ID+"/sessions", startBody, "sub-1"); w.Code != http.StatusCreated {
+		t.Errorf("start after withdrawal: status %d, body %s", w.Code, w.Body)
+	}
+}

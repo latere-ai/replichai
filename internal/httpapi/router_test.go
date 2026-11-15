@@ -812,7 +812,8 @@ func TestWithdrawProject(t *testing.T) {
 }
 
 // TestRepublishAfterWithdrawal covers 006o AC5: a withdrawn project can be
-// published again with a fresh sign-off that clears the retraction. The
+// published again with a fresh sign-off. The retraction stays on the row as
+// history, and the owner's reason for it is not shown to a stranger. The
 // manifest gate is re-run rather than carried over, so a tree that is no
 // longer clear stays private.
 func TestRepublishAfterWithdrawal(t *testing.T) {
@@ -831,8 +832,14 @@ func TestRepublishAfterWithdrawal(t *testing.T) {
 	if got.Visibility != project.VisibilityPublic {
 		t.Fatalf("republish did not take: %+v", got)
 	}
-	if got.WithdrawnAt != nil || got.WithdrawnBy != "" || got.WithdrawnReason != "" {
-		t.Errorf("republish left the retraction in place: %+v", got)
+	if got.WithdrawnAt == nil || got.WithdrawnBy != "me" || got.WithdrawnReason != "second thoughts" {
+		t.Errorf("republish erased the record that the project was withdrawn: %+v", got)
+	}
+	// A stranger sees the project is public and was withdrawn once, but not the
+	// owner's note about why.
+	seen := do(t, h, "GET", "/projects/"+p.ID, "", "stranger")
+	if seen.Code != http.StatusOK || strings.Contains(seen.Body.String(), "second thoughts") {
+		t.Errorf("a stranger's read = %d %s; want the project without the withdrawal reason", seen.Code, seen.Body)
 	}
 
 	// A project whose tree never cleared is still refused after a withdrawal:
@@ -1067,6 +1074,16 @@ func TestPublicFlipRecordsTheSigner(t *testing.T) {
 	}
 	if got.SignedOffBy != owner.Sub {
 		t.Errorf("signed_off_by = %q; want the session's principal, not the body's", got.SignedOffBy)
+	}
+
+	// Publishing a project that is already public would replace who signed the
+	// first publication, so it is refused and the sign-off stays as it was.
+	again := strings.Replace(good, "Ada Lovelace", "Somebody Else", 1)
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", again, owner); w.Code != http.StatusConflict || errorCode(w.Body.Bytes()) != "already_public" {
+		t.Fatalf("second publish: status %d (%s); want 409 already_public", w.Code, w.Body.String())
+	}
+	if kept, _ := d.Projects.Get(context.Background(), p.ID); kept.SignedOffName != "Ada Lovelace" {
+		t.Errorf("a refused second publish changed the sign-off: %+v", kept)
 	}
 }
 

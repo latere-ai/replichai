@@ -132,6 +132,8 @@ type ProjectStore interface {
 	// ModifiedAt is this store's half of a project's modified time (018).
 	ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error)
 	Delete(ctx context.Context, id string) error
+	// SetPublic publishes a private project. It refuses a public one with
+	// project.ErrAlreadyPublic and keeps the record of an earlier withdrawal.
 	SetPublic(ctx context.Context, id string, s project.SignOff) error
 	// SetPrivate withdraws a publication (006o), recording the retraction without
 	// erasing the sign-off it ends.
