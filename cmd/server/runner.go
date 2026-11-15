@@ -337,6 +337,7 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 		// its agent is still committing the reproduction.
 		audit.WithoutSessionTimeout(),
 		audit.WithSessionModel(modelOf(j)),
+		audit.WithSessionKey(sessionKey(*j)),
 	}
 	// With the repository created in resolving, mount it so the agent commits
 	// its reproduction into it live (006i); the mount is also the
@@ -353,6 +354,13 @@ func (e *engineRunner) Execute(ctx context.Context, j *job.Job, observe func(pro
 	_, err = audit.NewSessionAuditor(controller, e.method, options...).Run(ctx, j.Ref, filepath.Join(e.workDir, j.ID))
 	return err
 }
+
+// sessionKey names the start of a job's backend session, so a start retried
+// after a crash finds the session it already created. A job runs once: a
+// restart that finds no live run fails it rather than starting it again, and a
+// new attempt is a new job with a new id. The job id therefore identifies the
+// attempt.
+func sessionKey(j job.Job) string { return j.ID }
 
 // Resume rejoins the managed-agents session a restart left in flight, using
 // the reference observed onto the job, and drives it to completion, so the
