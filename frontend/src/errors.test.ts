@@ -175,3 +175,13 @@ test('offline is told apart from a refusal', () => {
   expect(generic(t, new TypeError('Failed to fetch'), 'createFailed')).toBe('errOffline')
   expect(generic(t, new ApiError(500, ''), 'createFailed')).toBe('createFailed')
 })
+
+test('a published project refuses a new paper or session with its own sentence', () => {
+  // The refusal is a 409, like "already running" and "paper exists", and has to
+  // be told apart from both: neither of their fixes is the right one.
+  const refused = new ApiError(409, 'project_public')
+  expect(startErrLabel(t, refused)).toBe('errProjectPublic')
+  expect(addPaperErrLabel(t, refused)).toBe('errProjectPublic')
+  expect(startErrLabel(t, new ApiError(409, 'active_session'))).toBe('activeSession')
+  expect(addPaperErrLabel(t, new ApiError(409, 'paper_exists'))).toBe('errPaperExists')
+})

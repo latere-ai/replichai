@@ -94,12 +94,18 @@ export function PapersCard({
   // trashed clause matches the server, which refuses every write on a project
   // in the trash.
   const mayDelete = isMine(me, project.owner) && !project.deleted_at
+  // A published project takes no new papers or sessions, because the signed
+  // attestation covers what it held when it was signed. The controls that add
+  // either are replaced by the sentence the server refuses with, so the reason
+  // is on the screen before anybody tries.
+  const published = project.visibility === 'public'
+  const mayAdd = mayWork && !published
 
   // The tiers and their prices come from the server. Read once per mount, and
   // only where somebody can start a run; a reader of a public project is offered
   // nothing to choose.
   useEffect(() => {
-    if (!mayWork) return
+    if (!mayAdd) return
     let live = true
     listModels()
       .then((r) => live && setRuntimes(runtimesFrom(r)))
@@ -109,7 +115,7 @@ export function PapersCard({
     return () => {
       live = false
     }
-  }, [mayWork])
+  }, [mayAdd])
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -196,7 +202,14 @@ export function PapersCard({
           </span>
         )}
       </CardHead>
-      {mayWork && (
+      {mayWork && published && (
+        <div className="card-pad">
+          <span className="attestation" data-test="published-note">
+            {t('errProjectPublic')}
+          </span>
+        </div>
+      )}
+      {mayAdd && (
       <div className="card-pad stack">
         <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
@@ -295,7 +308,7 @@ export function PapersCard({
                     </button>
                   </Tip>
                 )}
-                {mayWork &&
+                {mayAdd &&
                   (short ? (
                     <Tip text={shortWhy}>
                       <button className="btn sm" disabled>

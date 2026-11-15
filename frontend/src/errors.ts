@@ -75,6 +75,9 @@ export function createOutcome(t: T, status: number, data: CreatedProject): Creat
 export function startErrLabel(t: T, e: unknown, credits?: Credits): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
+  // Before the 409 below: a published project answers 409 too, and "already
+  // running" would send the reader to the wrong fix.
+  if (code === 'project_public') return t('errProjectPublic')
   if (status === 409 || code === 'active_session') return t('activeSession')
   if (code === 'account_frozen') return t('errFrozen')
   if (status === 402 || code === 'no_credits') return emptyWallet(credits) ? t('errNoCreditsAtAll') : t('errNoCredits')
@@ -90,6 +93,7 @@ export function startErrLabel(t: T, e: unknown, credits?: Credits): string {
 export function addPaperErrLabel(t: T, e: unknown): string {
   const { status, code, offline } = refusal(e)
   if (offline) return t('errOffline')
+  if (code === 'project_public') return t('errProjectPublic')
   if (status === 409 || code === 'paper_exists') return t('errPaperExists')
   if (status === 400 || code === 'unresolvable_paper') return t('unresolvablePaper')
   return t('addPaperFailed')

@@ -558,6 +558,7 @@ const en = {
     movePaperFailed: 'Couldn’t move that paper. Try again in a moment.',
     errPaperRunning: 'A session for this paper is running. Wait for it to finish, or stop it, then move the paper.',
     errPaperAlreadyThere: 'That project already has this paper.',
+    errProjectPublic: 'A published project can’t take new papers or sessions. Withdraw the publication first.',
     errMovePublic: 'A published project’s papers can’t be moved. Withdraw the publication first.',
     errMoveTrashed: 'A project in the trash can’t be changed. Restore it first.',
     errMovePaperNotLead: 'You need to lead both projects to move a paper between them.',
