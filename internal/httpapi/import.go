@@ -61,10 +61,13 @@ type importedUsage struct {
 // the store through ImportLocal, which does not touch the credit ledger, because
 // the compute was bought from the vendor by whoever ran it.
 //
+// An imported session is a new session, so a published project refuses it as
+// it refuses starting one.
+//
 // Importing is not publishing. An owner's explicit sign-off is still what
 // publishes a session, imported or not.
 func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
-	proj, ok := rt.projectForWork(w, r)
+	proj, ok := rt.projectForNewWork(w, r)
 	if !ok {
 		return
 	}

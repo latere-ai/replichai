@@ -160,3 +160,30 @@ func contains(haystack, needle string) bool {
 	}
 	return false
 }
+
+// TestAnImportIsRefusedOnAPublishedProject checks that importing a session into
+// a published project is refused like starting one: it is a new session, and
+// the signed attestation covers the sessions the project held when it was
+// signed. A withdrawal makes the import work again.
+func TestAnImportIsRefusedOnAPublishedProject(t *testing.T) {
+	d := testDeps(allowAll)
+	h := NewRouter(d).Handler()
+	id := filed(t, d, "me", "doi:10.1145/3654777.3676417")
+	ctx := context.Background()
+	if err := d.Projects.SetPublic(ctx, id, project.SignOff{By: "me", AttestationVersion: "v2"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	w := do(t, h, http.MethodPost, "/projects/"+id+"/sessions/import", importedBody, "me")
+	if w.Code != http.StatusConflict || errorCode(w.Body.Bytes()) != "project_public" {
+		t.Fatalf("import into a published project = %d %s, want 409 project_public", w.Code, w.Body)
+	}
+	if sessions, _ := d.Jobs.ListByProject(ctx, id); len(sessions) != 0 {
+		t.Errorf("a refused import left %d sessions", len(sessions))
+	}
+	if err := d.Projects.SetPrivate(ctx, id, project.Withdrawal{By: "me"}); err != nil {
+		t.Fatalf("withdraw: %v", err)
+	}
+	if w := do(t, h, http.MethodPost, "/projects/"+id+"/sessions/import", importedBody, "me"); w.Code != http.StatusOK {
+		t.Errorf("import after withdrawal = %d %s", w.Code, w.Body)
+	}
+}
