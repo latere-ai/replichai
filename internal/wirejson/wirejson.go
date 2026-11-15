@@ -62,6 +62,3 @@ var Embedding = json.JoinOptions(
 	jsontext.AllowDuplicateNames(true),
 	jsontext.AllowInvalidUTF8(true),
 )
-
-// Join combines option sets.
-func Join(opts ...json.Options) json.Options { return json.JoinOptions(opts...) }
