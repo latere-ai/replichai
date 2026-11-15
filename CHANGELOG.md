@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.39.0 - 2026-11-15
+
 ### Fixed
 
 - **A refund takes back only its share of the credit.** Refunding a quarter of
