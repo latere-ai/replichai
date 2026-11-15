@@ -407,21 +407,34 @@ func (w *Worker) Reconcile(ctx context.Context) (resumed, failed int, err error)
 	return w.reconcile(ctx, true)
 }
 
-// reconcile implements Reconcile with one parameter made explicit: whether a
-// job with no run to rejoin may be failed.
+// reconcile implements Reconcile with one parameter made explicit: whether this
+// is the start-up pass, when by construction nothing in this process is in
+// progress.
 //
-// It may at startup, when by construction nothing in this process is in
-// progress. It may not on a sweep, which runs beside a live pool: a session
-// this process is not driving may still be resolving on the other replica, and
-// resolving is quiet, because the paper fetch and the repository creation
-// report no status, so a slow one lets its lease expire while working
-// correctly. Failing it there would stop a healthy session, which is the
-// failure the lease exists to prevent. A sweep therefore only picks up what it
-// can positively identify as rejoinable: a run with a backend session id.
-func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed int, err error) {
+// A session with no run to rejoin is failed on a sweep too, once its lease is
+// stale. A driver heartbeats its lease every third of the ttl whether or not
+// it reports anything, so a stale lease is a dead driver even in the quiet
+// resolve phase, and a session left standing keeps its paper blocked and its
+// credits held. A lease that has not expired belongs to a live driver, which
+// Adopt refuses to take.
+//
+// A sweep runs beside a live pool, so it also leaves alone a session this
+// process claimed within the last ttl: a worker re-adopts its own lease, so the
+// lease cannot tell a session just claimed and not yet registered as driven
+// from one a dead driver left. At start-up nothing here is driven yet.
+//
+// One session's error does not end the pass. It is logged and the pass goes on,
+// so a session that fails to adopt or to fail cannot leave every one after it
+// running; the errors are returned together once the pass is done.
+func (w *Worker) reconcile(ctx context.Context, startup bool) (resumed, failed int, err error) {
 	active, err := w.store.Active(ctx)
 	if err != nil {
 		return 0, 0, fmt.Errorf("list active: %w", err)
+	}
+	var errs []error
+	fail := func(j Job, what string, err error) {
+		slog.WarnContext(ctx, "worker: reconcile", "session", j.ID, "step", what, "error", err)
+		errs = append(errs, fmt.Errorf("%s session %s: %w", what, j.ID, err))
 	}
 	for _, j := range active {
 		if j.Phase == PhaseSubmitted {
@@ -431,8 +444,8 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 			continue // this process is already on it; a sweep must not re-drive it
 		}
 		rejoinable := j.Status.RunID != "" && (j.Phase == PhaseRunning || j.Phase == PhasePublishing)
-		if !rejoinable && !strand {
-			continue // a sweep may neither fail this row nor take its lease
+		if !rejoinable && !startup && time.Since(j.UpdatedAt) < w.leaseTTL {
+			continue // claimed a moment ago, perhaps by this process; not yet stale
 		}
 		// Lease the row before touching it. Every replica reconciles at startup,
 		// and a rolling deploy overlaps a starting pod with one still driving, so
@@ -441,7 +454,8 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 		// race records a failure over the other's success.
 		mine, err := w.store.Adopt(ctx, j.ID, w.id, w.leaseTTL)
 		if err != nil {
-			return resumed, failed, fmt.Errorf("adopt session %s: %w", j.ID, err)
+			fail(j, "adopt", err)
+			continue
 		}
 		if !mine {
 			continue // another worker has it
@@ -469,11 +483,12 @@ func (w *Worker) reconcile(ctx context.Context, strand bool) (resumed, failed in
 		}
 		cause := fmt.Sprintf("interrupted by a restart in %s; no live run to rejoin", j.Phase)
 		if aErr := w.advance(ctx, j.ID, PhaseFailed, func(jb *Job) { jb.Err = cause }); aErr != nil {
-			return resumed, failed, aErr
+			fail(j, "fail", aErr)
+			continue
 		}
 		failed++
 	}
-	return resumed, failed, nil
+	return resumed, failed, errors.Join(errs...)
 }
 
 // advance moves a session on as this replica, which the store checks against

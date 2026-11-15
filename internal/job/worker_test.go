@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/managed"
 	"github.com/latere-ai/replichai/internal/provider"
 )
@@ -319,30 +320,143 @@ func TestTwoPassesInARowRejoinARunOnce(t *testing.T) {
 	waitForCall(t, r, "resume")
 }
 
-// TestASweepDoesNotFailASessionItCannotRejoin checks that a sweep leaves alone
-// what it cannot positively rejoin. Resolving is quiet: the paper fetch and the
-// repository creation report no status, so a slow one lets its lease expire
-// while it is working. A sweep runs beside a live pool and cannot distinguish
-// that from a dead driver. The startup pass, when nothing is in progress, is
-// the only place a session is judged unrecoverable.
-func TestASweepDoesNotFailASessionItCannotRejoin(t *testing.T) {
+// TestASweepFailsASessionWhoseDriverIsGone checks that the periodic sweep ends
+// a session stuck in resolving or in running with no run to rejoin once its
+// lease has gone stale. Only the start-up pass did, so a pod that died before
+// its run started left the paper blocked and its credits held until some pod
+// restarted. A driver heartbeats its lease whether or not it reports anything,
+// so a stale lease is a dead driver, quiet or not.
+func TestASweepFailsASessionWhoseDriverIsGone(t *testing.T) {
+	ctx := context.Background()
+	ledger := credit.NewMemStore(nil, nil)
+	fund(t, ledger, "p", 20*credit.Dollar)
+	holder := credit.Pot("p")
+	s := NewMemStore(WithCredits(ledger, fixedReserve(testReserve)), WithRates(fixedCard(testCard)))
+
+	resolving, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "r1", Kind: KindAudit, Project: "p"})
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if _, ok, _ := s.Claim(ctx, "pod-gone"); !ok { // resolving, no run id
+		t.Fatal("claim should have taken the job")
+	}
+	running, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "r2", Kind: KindAudit, Project: "p"})
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if _, ok, _ := s.Claim(ctx, "pod-gone"); !ok {
+		t.Fatal("claim should have taken the second job")
+	}
+	if err := s.Advance(WithWorker(ctx, "pod-gone"), running.ID, PhaseRunning, nil); err != nil { // running, still no run id
+		t.Fatalf("Advance: %v", err)
+	}
+	if got, _ := ledger.Available(ctx, holder); got == 20*credit.Dollar {
+		t.Fatal("the sessions hold no reserve, so the release below proves nothing")
+	}
+
+	// Lease expired: the pod that held both went quiet for longer than the ttl.
+	w := NewWorker(s, &fakeRunner{}, WithWorkerID("pod-b"), withLeaseTTL(0))
+	resumed, failed, err := w.reconcile(ctx, false)
+	if err != nil || resumed != 0 || failed != 2 {
+		t.Fatalf("sweep = %d/%d/%v, want 0/2/nil", resumed, failed, err)
+	}
+	for _, id := range []string{resolving.ID, running.ID} {
+		if got, _ := s.Get(ctx, id); got.Phase != PhaseFailed || got.Err == "" {
+			t.Errorf("session %s = %s/%q, want failed with a cause", id, got.Phase, got.Err)
+		}
+	}
+	if got, _ := ledger.Available(ctx, holder); got != 20*credit.Dollar {
+		t.Errorf("the pot has %d available, want the reserves released (%d)", got, 20*credit.Dollar)
+	}
+}
+
+// TestASweepLeavesASessionWhoseDriverIsAlive checks the other side of the
+// rule: a lease that has not expired belongs to a driver that is working, and a
+// slow resolve is not a stranded one. The sweep neither fails the session nor
+// takes its lease.
+func TestASweepLeavesASessionWhoseDriverIsAlive(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
 	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
-	_, _, _ = s.Claim(ctx, "pod-a") // -> resolving on the other replica, no run id yet
+	_, _, _ = s.Claim(ctx, "pod-a") // resolving on the other replica, no run id yet
 
-	// Lease expired: the other pod has been resolving for longer than the ttl.
-	w := NewWorker(s, &fakeRunner{}, WithWorkerID("pod-b"), withLeaseTTL(0))
+	w := NewWorker(s, &fakeRunner{}, WithWorkerID("pod-b"), withLeaseTTL(time.Hour))
 	resumed, failed, err := w.reconcile(ctx, false)
 	if err != nil || resumed != 0 || failed != 0 {
 		t.Fatalf("sweep = %d/%d/%v, want 0/0/nil", resumed, failed, err)
 	}
 	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseResolving {
-		t.Errorf("phase = %s, want resolving — a sweep failed a session that was working", got.Phase)
+		t.Errorf("phase = %s, want resolving — a sweep failed a session whose driver is alive", got.Phase)
 	}
 	// It did not take the lease either: it must not hold a row it will not drive.
-	if won, _ := s.Adopt(ctx, j.ID, "pod-a", time.Minute); !won {
+	if held, _ := s.Touch(ctx, j.ID, "pod-a"); !held {
 		t.Error("the sweep took the lease on a row it left alone")
+	}
+}
+
+// TestASweepLeavesASessionThisPodJustClaimed checks that a sweep does not fail
+// a session this process claimed a moment ago and has not yet started
+// driving. A worker re-adopts its own lease, so the lease alone cannot tell
+// that session from a stranded one.
+func TestASweepLeavesASessionThisPodJustClaimed(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
+	_, _, _ = s.Claim(ctx, "pod-a")
+
+	w := NewWorker(s, &fakeRunner{}, WithWorkerID("pod-a"), withLeaseTTL(time.Hour))
+	if _, failed, err := w.reconcile(ctx, false); err != nil || failed != 0 {
+		t.Fatalf("sweep = failed %d, %v; want nothing failed", failed, err)
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseResolving {
+		t.Errorf("phase = %s, want resolving", got.Phase)
+	}
+}
+
+// adoptFailsFor makes Adopt fail for one session, as a database error on one
+// row would.
+type adoptFailsFor struct {
+	Store
+	id string
+}
+
+func (s adoptFailsFor) Adopt(ctx context.Context, id, worker string, ttl time.Duration) (bool, error) {
+	if id == s.id {
+		return false, errors.New("db hiccup")
+	}
+	return s.Store.Adopt(ctx, id, worker, ttl)
+}
+
+// TestReconcileGoesOnPastOneFailedSession checks that the start-up pass logs the
+// session it could not handle and carries on, so one session's error does not
+// leave every stranded session after it running. The error is still returned
+// once the pass is done, so the caller reports it.
+func TestReconcileGoesOnPastOneFailedSession(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+	first, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "a", Kind: KindAudit})
+	second, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "b", Kind: KindAudit})
+	_, _, _ = s.Claim(ctx, "pod-gone")
+	_, _, _ = s.Claim(ctx, "pod-gone")
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	w := NewWorker(adoptFailsFor{Store: s, id: first.ID}, &fakeRunner{}, WithWorkerID("pod-b"), withLeaseTTL(0))
+	resumed, failed, err := w.Reconcile(ctx)
+	if err == nil || !strings.Contains(err.Error(), first.ID) {
+		t.Fatalf("Reconcile error = %v, want it to name the session that failed", err)
+	}
+	if resumed != 0 || failed != 1 {
+		t.Fatalf("Reconcile = %d/%d, want the second session failed", resumed, failed)
+	}
+	if got, _ := s.Get(ctx, second.ID); got.Phase != PhaseFailed {
+		t.Errorf("the session after the failing one is %s, want failed", got.Phase)
+	}
+	if !strings.Contains(logs.String(), first.ID) {
+		t.Errorf("the failing session was not logged: %s", logs.String())
 	}
 }
 
