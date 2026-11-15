@@ -311,7 +311,7 @@ Shipped and in use, but each is knowingly short of what its own spec asked for. 
 | 049 | [The work is kept as it runs](049-the-work-is-kept-as-it-runs.md) | built for the command line: snapshots to the output directory and, for a hosted session that publishes, to its repository; the server's snapshots and the platform's saving during a turn designed | 041, 041b, 041g, 044, 045g, 009 |
 | 051 | [A session names its environment](051-a-session-names-its-environment.md) | built for `audit` and `run` on `latere` and `anthropic-managed`; choosing it in the app, or from the paper, not built | 041a, 041g, 046 |
 
-### Not built (14)
+### Not built (15)
 
 Designed, deferred, or still an argument. Nothing here is in the product; [What is left](#what-is-left) says why each one is waiting.
 
@@ -331,6 +331,7 @@ Designed, deferred, or still an argument. Nothing here is in the product; [What 
 | 026 | [The people table at scale](026-the-people-table-at-scale.md) | designed | 006k, 022f, 011 |
 | 041f | [OpenAI Responses runs a session](041f-openai-responses-runs-a-session.md) | designed | 041e |
 | 045m | [The role reaches the agent](045m-the-role-reaches-the-agent.md) | draft | 045d, 045a, 005 |
+| 052 | [Every state machine is declared](052-every-state-machine-is-declared.md) | designed | 006b, 006o, 022c, 022d |
 
 **Built:** [044](044-a-run-that-produced-nothing.md) is the record of the run that cost $2.21, took twenty minutes, and left a repository holding nothing but the five commits the system wrote itself. Four defects, each independently fatal, and each ordinary. The agent committed five times into the mount and never pushed, and a tool result in its own transcript says so explicitly; the mount protocol asked for a push in a subordinate clause and the rubric graded eight criteria, none of which was *did this leave the sandbox*. The agent had also copied its deliverable, `verdict.json` included, into the output directory, where the CLI would have harvested it and the server, which binds `evidence.Artifacts` and reads only `evidence.Events`, discarded it seconds before releasing the sandbox holding the only other copy. Meanwhile a second replica adopted the still-healthy run, because the lease is refreshed only by an observation and the controller emits one only when something *changed*, so five quiet minutes read as a dead process, and the two drivers' finalizes raced, the loser's `422` recording `failed` over the winner's success. The session then reported *the run did not write verdict.json*, which is true, and describes a findings problem where the truth was an empty repository. Its four children fix them one each: [044a](044a-the-mount-is-pushed.md) makes the push its own step and a graded criterion, [044b](044b-the-server-harvests-the-session.md) commits the outputs through the same `VerifyTree` gate the mount has, [044c](044c-a-lease-says-it-is-alive.md) heartbeats the jobs a worker drives and yields the one it has lost, and [044d](044d-an-empty-repository-says-so.md) makes finalize say which of the two things went wrong. 044a and 044b are both needed and fail differently: prevention that depends on the agent's discipline, and recovery that does not.
 
