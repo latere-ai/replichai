@@ -399,7 +399,10 @@ func (a *Admin) Topup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := r.PathValue("email")
-	if err := a.credits.Topup(r.Context(), principalFrom(r), email, body.Amount); err != nil {
+	// The console sends a key per grant it means to make, so a request retried
+	// after a lost response credits once.
+	key := r.Header.Get("Idempotency-Key")
+	if err := a.credits.Topup(r.Context(), principalFrom(r), email, body.Amount, key); err != nil {
 		writeAdminError(w, err)
 		return
 	}
@@ -523,6 +526,8 @@ func writeAdminError(w http.ResponseWriter, err error) {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_amount")
 	case errors.Is(err, credit.ErrBadCard):
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_card")
+	case errors.Is(err, credit.ErrBadKey):
+		httpapi.WriteError(w, http.StatusBadRequest, "bad_idempotency_key")
 	case errors.Is(err, platform.ErrEnvironments):
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_environments")
 	default:

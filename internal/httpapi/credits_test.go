@@ -47,7 +47,7 @@ func creditDeps(t *testing.T) (Deps, *Router, credit.Store) {
 // which the ledger's own contract covers.
 func topUp(t *testing.T, ledger credit.Store, who Identity, amount int64) {
 	t.Helper()
-	if err := ledger.Topup(context.Background(), access.Principal{Sub: who.Sub, Email: who.Email}, who.Email, amount); err != nil {
+	if err := ledger.Topup(context.Background(), access.Principal{Sub: who.Sub, Email: who.Email}, who.Email, amount, ""); err != nil {
 		t.Fatalf("Topup: %v", err)
 	}
 }

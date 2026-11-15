@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -68,24 +69,42 @@ func runStoreContract(t *testing.T, s Store) {
 	}
 
 	// Only an admin creates credits.
-	if err := s.Topup(ctx, lead, lead.Email, 10*Dollar); !errors.Is(err, ErrNotAdmin) {
+	if err := s.Topup(ctx, lead, lead.Email, 10*Dollar, ""); !errors.Is(err, ErrNotAdmin) {
 		t.Fatalf("non-admin top-up: want ErrNotAdmin, got %v", err)
 	}
-	if err := s.Topup(ctx, admin, "  ", 10*Dollar); !errors.Is(err, ErrNoEmail) {
+	if err := s.Topup(ctx, admin, "  ", 10*Dollar, ""); !errors.Is(err, ErrNoEmail) {
 		t.Fatalf("blank email: want ErrNoEmail, got %v", err)
 	}
 	for _, bad := range []int64{0, -1} {
-		if err := s.Topup(ctx, admin, lead.Email, bad); !errors.Is(err, ErrNotPositive) {
+		if err := s.Topup(ctx, admin, lead.Email, bad, ""); !errors.Is(err, ErrNotPositive) {
 			t.Fatalf("top-up of %d: want ErrNotPositive, got %v", bad, err)
 		}
 	}
-	if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
+	if err := s.Topup(ctx, admin, lead.Email, 10*Dollar, ""); err != nil {
 		t.Fatalf("Topup: %v", err)
 	}
 	// The wallet is keyed by normalized email, so a grant seeded one way is
 	// found by a login typed another.
 	if n, _ := s.Balance(ctx, Wallet("LEAD@latere.ai ")); n != 10*Dollar {
 		t.Fatalf("wallet after top-up = %d, want %d", n, 10*Dollar)
+	}
+
+	// A grant sent twice under one key credits once, so a request the console
+	// retries after a lost response does not pay twice. A key that is not
+	// printable ASCII is refused before anything is credited.
+	for range 2 {
+		if err := s.Topup(ctx, admin, "keyed@example.org", 3*Dollar, "grant-7f3a"); err != nil {
+			t.Fatalf("keyed Topup: %v", err)
+		}
+	}
+	if n, _ := s.Balance(ctx, Wallet("keyed@example.org")); n != 3*Dollar {
+		t.Fatalf("wallet after a keyed grant sent twice = %d, want %d", n, 3*Dollar)
+	}
+	if err := s.Topup(ctx, admin, "keyed@example.org", 3*Dollar, "bad key"); !errors.Is(err, ErrBadKey) {
+		t.Fatalf("key with a space: want ErrBadKey, got %v", err)
+	}
+	if err := s.Topup(ctx, admin, "keyed@example.org", 3*Dollar, strings.Repeat("k", MaxGrantKey+1)); !errors.Is(err, ErrBadKey) {
+		t.Fatalf("overlong key: want ErrBadKey, got %v", err)
 	}
 
 	// Any member may fund a project; a stranger may not.
@@ -111,7 +130,7 @@ func runStoreContract(t *testing.T, s Store) {
 	// fungible and does not record who funded it, so reclaiming is a lead's
 	// authority over the project's money rather than a refund of the caller's
 	// own.
-	if err := s.Topup(ctx, admin, mate.Email, 2*Dollar); err != nil {
+	if err := s.Topup(ctx, admin, mate.Email, 2*Dollar, ""); err != nil {
 		t.Fatalf("Topup mate: %v", err)
 	}
 	if err := s.Allocate(ctx, mate, "p1", "Project One", 2*Dollar); err != nil {
@@ -200,7 +219,7 @@ func runStoreContract(t *testing.T, s Store) {
 	// A model call that is not a session still costs the project money (039).
 	// It is a charge with no job, made exactly-once by its own reference.
 	spendPot := Pot("proj-spend")
-	if err := s.Topup(ctx, admin, lead.Email, 5*Dollar); err != nil {
+	if err := s.Topup(ctx, admin, lead.Email, 5*Dollar, ""); err != nil {
 		t.Fatalf("Topup: %v", err)
 	}
 	if err := s.Allocate(ctx, lead, "proj-spend", "Spending", 5*Dollar); err != nil {
@@ -284,7 +303,7 @@ func TestPGStoreAndMemStoreAgreeOnHolds(t *testing.T) {
 			defer done()
 			ctx := context.Background()
 
-			if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
+			if err := s.Topup(ctx, admin, lead.Email, 10*Dollar, ""); err != nil {
 				t.Fatalf("Topup: %v", err)
 			}
 			if err := s.Allocate(ctx, lead, "p1", "Project One", 10*Dollar); err != nil {
@@ -575,7 +594,7 @@ func TestPGStoreAndMemStoreSettleExactlyOnce(t *testing.T) {
 			defer done()
 			ctx := context.Background()
 
-			if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
+			if err := s.Topup(ctx, admin, lead.Email, 10*Dollar, ""); err != nil {
 				t.Fatalf("Topup: %v", err)
 			}
 			if err := s.Allocate(ctx, lead, "p1", "Project One", 10*Dollar); err != nil {

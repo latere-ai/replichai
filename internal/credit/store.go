@@ -251,8 +251,9 @@ func (s *store) TotalOutstanding(ctx context.Context) (int64, error) {
 
 // Topup creates credits in one email's wallet. Only a platform admin may call
 // it; until a payment provider posts the same entry, this is the only way
-// money enters.
-func (s *store) Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64) error {
+// money enters. A non-empty key is the grant's idempotency key, so a retried
+// request credits once.
+func (s *store) Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64, key string) error {
 	if normalizeEmail(email) == "" {
 		return ErrNoEmail
 	}
@@ -262,20 +263,20 @@ func (s *store) Topup(ctx context.Context, byAdmin access.Principal, email strin
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
 		return err
 	}
-	ref, err := ledger.NewID()
+	ref, err := grantRef(key)
 	if err != nil {
 		return err
 	}
 	// An admin grant is money entering from inside, so it has no processor
-	// reference of its own. The ledger requires one for a credit, so a generated
-	// id carries the idempotency. grantRefPrefix marks it as internal, and the
-	// statement mapping keeps it out of ExternalRef so the wire shape is
-	// unchanged.
+	// reference of its own. The ledger requires one for a credit: the caller's
+	// key when it sent one, so a retry is the same grant, and a generated id
+	// otherwise. grantRefPrefix marks it as internal, and the statement mapping
+	// keeps it out of ExternalRef so the wire shape is unchanged.
 	if err := s.led.Credit(ctx, ledger.Posting{
 		Holder: ledger.Holder(Wallet(email)),
 		Amount: money.Micro(amount),
 		Reason: reasonTopup,
-		Ref:    grantRefPrefix + ref,
+		Ref:    ref,
 		Actor:  byAdmin.Email,
 	}); err != nil {
 		return err
@@ -571,6 +572,25 @@ func holdErr(err error) error {
 // grantRefPrefix marks a reference this package generated for an admin grant
 // rather than one a processor issued.
 const grantRefPrefix = "grant:"
+
+// MaxGrantKey bounds an admin grant's idempotency key.
+const MaxGrantKey = 128
+
+// grantRef is the ledger reference for an admin grant: the caller's key when
+// there is one, a fresh id otherwise.
+func grantRef(key string) (string, error) {
+	if key == "" {
+		id, err := ledger.NewID()
+		if err != nil {
+			return "", err
+		}
+		return grantRefPrefix + id, nil
+	}
+	if len(key) > MaxGrantKey || strings.IndexFunc(key, func(r rune) bool { return r <= ' ' || r > '~' }) >= 0 {
+		return "", ErrBadKey
+	}
+	return grantRefPrefix + "key:" + key, nil
+}
 
 // fromLedger converts a shared ledger entry back into this product's shape.
 //

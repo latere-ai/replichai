@@ -81,7 +81,7 @@ func draftDeps(t *testing.T, d *fakeDrafter, set platform.Settings) (Deps, strin
 	}); err != nil {
 		t.Fatalf("add paper: %v", err)
 	}
-	if err := ledger.Topup(ctx, access.Principal{Sub: "me", Email: "me@example.org"}, "me@example.org", 10*credit.Dollar); err != nil {
+	if err := ledger.Topup(ctx, access.Principal{Sub: "me", Email: "me@example.org"}, "me@example.org", 10*credit.Dollar, ""); err != nil {
 		t.Fatalf("topup: %v", err)
 	}
 	if err := ledger.Allocate(ctx, access.Principal{Sub: "me", Email: "me@example.org"}, p.ID, "Trust in automation", 5*credit.Dollar); err != nil {

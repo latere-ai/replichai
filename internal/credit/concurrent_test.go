@@ -46,7 +46,7 @@ func TestPGStoreAndMemStoreAdmitExactlyWhatAWalletHolds(t *testing.T) {
 			s, done := tc.make(t)
 			defer done()
 			ctx := context.Background()
-			if err := s.Topup(ctx, admin, lead.Email, funded); err != nil {
+			if err := s.Topup(ctx, admin, lead.Email, funded, ""); err != nil {
 				t.Fatalf("Topup: %v", err)
 			}
 
@@ -107,7 +107,7 @@ func TestPGStoreSettlesOnceUnderConcurrency(t *testing.T) {
 	auth, members := testAuthority()
 	s := NewPGStore(pool, auth, members)
 
-	if err := s.Topup(ctx, admin, lead.Email, 10*Dollar); err != nil {
+	if err := s.Topup(ctx, admin, lead.Email, 10*Dollar, ""); err != nil {
 		t.Fatalf("Topup: %v", err)
 	}
 	if err := s.Allocate(ctx, lead, "p1", "P1", 10*Dollar); err != nil {

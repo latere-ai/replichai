@@ -367,8 +367,10 @@ type failingLedger struct {
 	err error
 }
 
-func (f failingLedger) Topup(context.Context, access.Principal, string, int64) error { return f.err }
-func (f failingLedger) Balance(context.Context, credit.Holder) (int64, error)        { return 0, f.err }
+func (f failingLedger) Topup(context.Context, access.Principal, string, int64, string) error {
+	return f.err
+}
+func (f failingLedger) Balance(context.Context, credit.Holder) (int64, error) { return 0, f.err }
 
 // Signing out ends the server's own use of the person's platform sign-in, not
 // only the browser's cookie. Without it a person who signed out still has the

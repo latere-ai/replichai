@@ -65,6 +65,9 @@ var (
 	// ErrNoRates reports pricing attempted with no rate card. It is fail-closed:
 	// tokens that cannot be priced are not free, so nothing may run.
 	ErrNoRates = errors.New("no rate card: this deployment cannot price a session")
+	// ErrBadKey reports an admin grant's idempotency key that is too long or
+	// holds anything but printable ASCII.
+	ErrBadKey = errors.New("an idempotency key must be printable ASCII and at most 128 bytes")
 )
 
 // Reserve reports how much a project must have available before a session may
@@ -233,8 +236,9 @@ type Store interface {
 	Entries(ctx context.Context, h Holder, limit int) ([]Entry, error)
 	// Topup creates credits in one email's wallet. Only a platform admin may
 	// call it; until a payment provider posts the same entry, this is the only
-	// way money enters.
-	Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64) error
+	// way money enters. A non-empty key makes the grant idempotent: a request
+	// retried with the same key is one grant. An empty key is a new grant.
+	Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64, key string) error
 	// TopupPaid posts a purchased credit into a wallet, idempotent on ref. It has
 	// no principal to check: authority came from a verified webhook signature
 	// upstream (022a/022b). actor records the payment, e.g. "stripe:pi_123", so

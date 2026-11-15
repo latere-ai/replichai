@@ -29,7 +29,7 @@ func fixedReserve(n int64) credit.Reserve {
 // pot without going through the membership checks, which are the ledger's
 // concern and not the gate's.
 type funder interface {
-	Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64) error
+	Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64, key string) error
 	Allocate(ctx context.Context, by access.Principal, project, projectName string, amount int64) error
 }
 
@@ -38,7 +38,7 @@ var banker = access.Principal{Sub: "s-banker", Email: "banker@latere.ai"}
 func fund(t *testing.T, f funder, project string, amount int64) {
 	t.Helper()
 	ctx := context.Background()
-	if err := f.Topup(ctx, banker, banker.Email, amount); err != nil {
+	if err := f.Topup(ctx, banker, banker.Email, amount, ""); err != nil {
 		t.Fatalf("Topup: %v", err)
 	}
 	if err := f.Allocate(ctx, banker, project, project, amount); err != nil {
