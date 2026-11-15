@@ -43,7 +43,7 @@ export const FALLBACK_MS = [2000, 4000, 8000, 15000, 30000]
 // settles or the stream is back, so the screen never freezes on its last phase.
 // A read refused as unauthorized, forbidden or missing ends the watch, since
 // nothing more can be learned. It returns the close.
-export function watchJob(id: string, onJob: (j: Job) => void, deps: WatchDeps = browserDeps): () => void {
+export function watchJob(id: string, onJob: (j: Job) => void, deps: WatchDeps = browserDeps, onGone?: () => void): () => void {
   let closed = false
   let timer: unknown
   let polling = false
@@ -97,6 +97,28 @@ export function watchJob(id: string, onJob: (j: Job) => void, deps: WatchDeps = 
       /* ignore a malformed frame */
     }
   })
+  // The server's last word before it closes: the session is gone or no longer
+  // this person's (not_found), or it could not be read just now (unavailable).
+  // The first ends the watch and tells the screen. The second closes the stream,
+  // which would otherwise reconnect into the same failure, and reads the
+  // session on the schedule instead.
+  es.addEventListener('end', (e) => {
+    let reason = ''
+    try {
+      reason = (JSON.parse((e as MessageEvent).data) as { reason?: string }).reason ?? ''
+    } catch {
+      /* an unreadable end is treated as unavailable */
+    }
+    if (reason === 'not_found') {
+      close()
+      onGone?.()
+      return
+    }
+    es.close()
+    if (closed || polling) return
+    polling = true
+    timer = deps.setTimer(poll, FALLBACK_MS[0])
+  })
   es.onopen = () => stopPolling()
   es.onerror = () => {
     if (closed || polling) return
@@ -109,13 +131,15 @@ export function watchJob(id: string, onJob: (j: Job) => void, deps: WatchDeps = 
 // useJobStream watches one session for as long as `enabled` holds and hands
 // every frame to onJob. The callback is read through a ref, so a caller may
 // pass a fresh function each render without the stream noticing.
-export function useJobStream(jobId: string, enabled: boolean, onJob: (j: Job) => void): void {
+export function useJobStream(jobId: string, enabled: boolean, onJob: (j: Job) => void, onGone?: () => void): void {
   const latest = useRef(onJob)
+  const gone = useRef(onGone)
   useEffect(() => {
     latest.current = onJob
+    gone.current = onGone
   })
   useEffect(() => {
     if (!enabled) return
-    return watchJob(jobId, (j) => latest.current(j))
+    return watchJob(jobId, (j) => latest.current(j), undefined, () => gone.current?.())
   }, [jobId, enabled])
 }

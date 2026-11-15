@@ -40,14 +40,16 @@ function harness(reads: Array<Job | Error>) {
     },
   }
   const seen: Job[] = []
-  const stop = watchJob('a', (j) => seen.push(j), deps)
+  const gone = { n: 0 }
+  const stop = watchJob('a', (j) => seen.push(j), deps, () => gone.n++)
   const tick = async () => {
     const fn = timers.shift()
     fn?.()
     await new Promise((r) => setTimeout(r, 0))
   }
   const frame = (j: Job) => listeners['status']({ data: JSON.stringify(j) } as unknown as Event)
-  return { es, seen, tick, frame, stop, timers }
+  const end = (reason: string) => listeners['end']({ data: JSON.stringify({ reason }) } as unknown as Event)
+  return { es, seen, tick, frame, end, gone, stop, timers }
 }
 
 test('an error on the stream falls back to reading the session until it settles', async () => {
@@ -91,4 +93,23 @@ test('a settled frame closes the stream', () => {
   const h = harness([])
   h.frame(job('done'))
   expect(h.es.closed).toBe(true)
+})
+
+test('an end for a session that is gone closes the stream and tells the screen', () => {
+  const h = harness([])
+  h.end('not_found')
+  expect(h.es.closed).toBe(true)
+  expect(h.gone.n).toBe(1)
+  expect(h.timers.length).toBe(0)
+})
+
+test('an end for a session that could not be read falls back to reading it', async () => {
+  const h = harness([job('running'), job('done')])
+  h.end('unavailable')
+  expect(h.es.closed).toBe(true)
+  expect(h.gone.n).toBe(0)
+  await h.tick()
+  expect(h.seen.map((j) => j.phase)).toEqual(['running'])
+  await h.tick()
+  expect(h.seen.map((j) => j.phase)).toEqual(['running', 'done'])
 })

@@ -718,7 +718,7 @@ export function SessionScreen({
   // so a signed-out reader would be refused and reconnect for as long as the
   // page is up, and a finished session has nothing left to send. Whether to
   // watch is a boolean, so the snapshot the stream delivers cannot reopen it.
-  useJobStream(jobId, signedIn && job != null && !terminal(job.phase), setJob)
+  useJobStream(jobId, signedIn && job != null && !terminal(job.phase), setJob, () => setNotReadable(true))
   // Told once, when a session this screen saw in flight is seen settled.
   const sawLive = useRef(false)
   // Bumped when a session this screen watched settles, so the panes that show
