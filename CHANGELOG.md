@@ -19,6 +19,8 @@ committed. The commit log already holds that.
   left, and one top-up is never reversed by more than it gave.
 - **Revoking an address that has never signed in now holds.** That person is
   refused at their first sign-in instead of being admitted.
+- **A revoked address no longer leaves a stored sign-in behind** when that
+  person tries to sign in.
 - **Signing out, and being revoked, end the stored sign-in.** The server stops
   acting for the person on the Latere platform at that moment, where before it
   kept doing so until Auth refused the token.
@@ -37,9 +39,9 @@ committed. The commit log already holds that.
 
 ### Changed
 
-- **A published project takes no new papers or sessions.** Withdraw the
-  publication first; the project page now says so where those actions were.
-  Moving a paper already worked this way.
+- **A published project takes no new papers or sessions,** and no imported
+  sessions. Withdraw the publication first; the project page now says so where
+  those actions were. Moving a paper already worked this way.
 - **The writes an account on hold can still make are listed in one place.** It
   keeps reading everything, exporting a project, and paying to top up.
 - **Built with Go 1.27.4,** which fixes GO-2026-6859.

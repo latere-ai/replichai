@@ -465,3 +465,41 @@ func TestCallbackKeepsTheLatereSignIn(t *testing.T) {
 		})
 	}
 }
+
+// A banned address gets no stored platform sign-in. The server would otherwise
+// hold a refresh token it can act on for somebody the grant refuses.
+func TestACallbackStoresNoSignInForABannedAddress(t *testing.T) {
+	acc := access.NewMemStore()
+	ctx := context.Background()
+	_ = acc.SeedAdmin(ctx, "admin@example.com")
+	admin := access.Principal{Sub: "admin-sub", Email: "admin@example.com"}
+	if _, _, err := acc.Resolve(ctx, admin); err != nil {
+		t.Fatal(err)
+	}
+	// The ban lands before the person has ever signed in.
+	if err := acc.Revoke(ctx, admin, "banned@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for _, who := range []struct {
+		sub, email string
+		want       int
+	}{{"u-banned", "banned@example.com", 0}, {"u-ok", "ok@example.com", 1}} {
+		l := newTestLogin(t, fakeOIDC{refresh: "rt-1", identity: oidc.User{
+			Sub: who.sub, Email: who.email, Raw: map[string]any{"email_verified": true},
+		}}, acc)
+		kept = nil
+		l.KeepSignIns(func(_ context.Context, subject, _ string) error {
+			kept = append(kept, subject)
+			return nil
+		})
+		flow, _ := l.codec.Seal(flowState{State: "st8", Nonce: "n", Verifier: "v", Next: "/"}, time.Hour)
+		r := httptest.NewRequest("GET", "/callback?state=st8&code=abc", nil)
+		r.AddCookie(&http.Cookie{Name: cookieName(flowCookie, false), Value: flow})
+		w := httptest.NewRecorder()
+		l.HandleCallback(w, r)
+		if len(kept) != who.want {
+			t.Errorf("%s: stored sign-ins = %v, want %d", who.email, kept, who.want)
+		}
+	}
+}

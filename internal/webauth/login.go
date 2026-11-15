@@ -195,24 +195,29 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// A deployment that runs sessions on the Latere platform as the person
-	// keeps their refresh token, so it can act for them while a session they
-	// start runs after this request has ended (048). A failure costs the
-	// person the Latere runtime until they sign in again, never the sign-in.
-	if l.keep != nil && tok.RefreshToken != "" {
-		if err := l.keep(r.Context(), sess.Sub, tok.RefreshToken); err != nil {
-			slog.WarnContext(r.Context(), "login: keeping the Latere sign-in", "principal", sess.Sub, "error", err)
-		}
-	}
-
 	// Signing in admits the principal (006q). Anyone who proves their identity
 	// gets TierUser; the limit on them is budget, metered inside Enqueue, not
 	// an admin's invitation list. The gate is unchanged and still fail-closed:
 	// this only creates the row the gate then finds. SelfGrant never promotes,
 	// never demotes and never re-admits a revoked address, so a seeded admin
 	// stays an admin through their first login and a revocation survives one.
-	if _, _, err := l.access.SelfGrant(r.Context(), access.Principal{Sub: sess.Sub, Email: sess.Email}); err != nil {
+	_, granted, err := l.access.SelfGrant(r.Context(), access.Principal{Sub: sess.Sub, Email: sess.Email})
+	if err != nil {
 		slog.WarnContext(r.Context(), "login: admitting", "principal", sess.Sub, "error", err)
+	}
+
+	// A deployment that runs sessions on the Latere platform as the person
+	// keeps their refresh token, so it can act for them while a session they
+	// start runs after this request has ended (048). A failure costs the
+	// person the Latere runtime until they sign in again, never the sign-in.
+	//
+	// It is kept only for an address the grant admits, so it comes after the
+	// admission: a banned address must not leave the server holding a token it
+	// could act on.
+	if granted && l.keep != nil && tok.RefreshToken != "" {
+		if err := l.keep(r.Context(), sess.Sub, tok.RefreshToken); err != nil {
+			slog.WarnContext(r.Context(), "login: keeping the Latere sign-in", "principal", sess.Sub, "error", err)
+		}
 	}
 
 	// Sign-in is the one step every principal passes through, so it is where a
