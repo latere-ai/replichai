@@ -323,6 +323,19 @@ var transitions = map[Phase][]Phase{
 	PhaseFailed:     {},
 }
 
+// ActivePhases lists the phases a session can still leave, sorted by name, for
+// a query that has to match every session still in flight.
+func ActivePhases() []Phase {
+	var out []Phase
+	for p, next := range transitions {
+		if len(next) > 0 {
+			out = append(out, p)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // CanTransition reports whether a job may move from one phase to another.
 // Every store's Advance consults it, so no store can permit a transition the
 // machine forbids.
