@@ -134,6 +134,116 @@ func TestStripeWebhookCreditsOnceAndRefusesABadSignature(t *testing.T) {
 	}
 }
 
+// refundDelivery builds a charge.refunded delivery the way the processor sends it, from
+// the fields the pay library models plus the envelope's data.object, which
+// carries the amounts the library leaves out. refunded is everything refunded
+// on the charge so far, in cents, and total is the charge.
+func refundDelivery(t *testing.T, ev pay.Event, refunded, total int64) []byte {
+	t.Helper()
+	raw, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	m["data"] = map[string]any{"object": map[string]any{"amount": total, "amount_refunded": refunded, "currency": "usd"}}
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// deliverWebhook posts a signed webhook body and returns the status.
+func (rt *Router) deliverWebhook(body []byte) int {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/stripe/webhook", bytes.NewReader(body))
+	r.Header.Set(pay.MemHeader, "whsec")
+	rt.Handler().ServeHTTP(w, r)
+	return w.Code
+}
+
+// TestStripeWebhookTwoPartialRefundsReverseThreeQuarters checks the rule end to
+// end through the webhook: refunds of 25% and then 50% of a charge take back 75%
+// of the credit, where each used to take back all of it and drove the wallet
+// negative.
+func TestStripeWebhookTwoPartialRefundsReverseThreeQuarters(t *testing.T) {
+	_, rt, ledger, _ := paymentsDeps(t)
+	bal := func() int64 {
+		n, _ := ledger.Balance(context.Background(), credit.Wallet(payer.Email))
+		return n
+	}
+	purchase, _ := json.Marshal(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: "pi_1", Meta: map[string]string{"credited_micro": "20000000"}})
+	if code := rt.deliverWebhook(purchase); code != http.StatusOK {
+		t.Fatalf("purchase = %d", code)
+	}
+	// A $20.00 charge: $5.00 refunded, then $10.00 more, $15.00 in all.
+	if code := rt.deliverWebhook(refundDelivery(t, pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"}, 500, 2000)); code != http.StatusOK {
+		t.Fatalf("first refund = %d", code)
+	}
+	if got := bal(); got != 15_000_000 {
+		t.Fatalf("after a 25%% refund the balance is %d, want 15000000", got)
+	}
+	second := refundDelivery(t, pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_2"}, 1500, 2000)
+	for range 2 { // the second delivery is retried
+		if code := rt.deliverWebhook(second); code != http.StatusOK {
+			t.Fatalf("second refund = %d", code)
+		}
+	}
+	if got := bal(); got != 5_000_000 {
+		t.Fatalf("after 25%% and 50%% refunds the balance is %d, want 5000000 (75%% reversed)", got)
+	}
+}
+
+// TestStripeWebhookARefundThenADisputeNeverPassesTheCredit checks that a dispute
+// on a partly refunded purchase takes back only what is left, so the wallet
+// never goes below what the other purchases left in it.
+func TestStripeWebhookARefundThenADisputeNeverPassesTheCredit(t *testing.T) {
+	_, rt, ledger, _ := paymentsDeps(t)
+	bal := func() int64 {
+		n, _ := ledger.Balance(context.Background(), credit.Wallet(payer.Email))
+		return n
+	}
+	for _, p := range []string{"pi_a", "pi_b"} {
+		body, _ := json.Marshal(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: p, Meta: map[string]string{"credited_micro": "10000000"}})
+		if code := rt.deliverWebhook(body); code != http.StatusOK {
+			t.Fatalf("purchase %s = %d", p, code)
+		}
+	}
+	if code := rt.deliverWebhook(refundDelivery(t, pay.Event{Kind: pay.KindRefunded, Ref: "pi_a", ReversalRef: "re_a"}, 600, 1000)); code != http.StatusOK {
+		t.Fatalf("refund = %d", code)
+	}
+	dispute, _ := json.Marshal(pay.Event{Kind: pay.KindDisputed, Ref: "pi_a", ReversalRef: "dp_a"})
+	for range 2 {
+		if code := rt.deliverWebhook(dispute); code != http.StatusOK {
+			t.Fatalf("dispute = %d", code)
+		}
+	}
+	if got := bal(); got != 10_000_000 {
+		t.Fatalf("balance = %d, want 10000000: pi_a reversed once in full, pi_b untouched", got)
+	}
+}
+
+// TestStripeWebhookARefundWithNoAmountsReversesNothing checks that a refund the
+// library delivered without the charge's amounts takes nothing back, rather
+// than the whole credit.
+func TestStripeWebhookARefundWithNoAmountsReversesNothing(t *testing.T) {
+	_, rt, ledger, _ := paymentsDeps(t)
+	purchase, _ := json.Marshal(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: "pi_1", Meta: map[string]string{"credited_micro": "20000000"}})
+	if code := rt.deliverWebhook(purchase); code != http.StatusOK {
+		t.Fatalf("purchase = %d", code)
+	}
+	bare, _ := json.Marshal(pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"})
+	if code := rt.deliverWebhook(bare); code != http.StatusOK {
+		t.Fatalf("refund = %d, want it acknowledged", code)
+	}
+	if n, _ := ledger.Balance(context.Background(), credit.Wallet(payer.Email)); n != 20_000_000 {
+		t.Fatalf("balance = %d, want the credit untouched", n)
+	}
+}
+
 // TestStripeWebhookRefundReversesTheCreditedAmount checks that a refund
 // reverses the exact micro-USD the purchase credited rather than a fresh
 // conversion, and is keyed on its own id so it deduplicates independently. The
@@ -159,11 +269,11 @@ func TestStripeWebhookRefundReversesTheCreditedAmount(t *testing.T) {
 		t.Fatalf("purchase = %d, want 200", code)
 	}
 	// The refund names the purchase by its payment_intent and carries its own id.
-	refund := pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"}
-	if code := deliver(refund); code != http.StatusOK {
+	refund := refundDelivery(t, pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"}, 2000, 2000)
+	if code := rt.deliverWebhook(refund); code != http.StatusOK {
 		t.Fatalf("refund = %d, want 200", code)
 	}
-	if code := deliver(refund); code != http.StatusOK { // A retried delivery.
+	if code := rt.deliverWebhook(refund); code != http.StatusOK { // A retried delivery.
 		t.Fatalf("retried refund = %d, want 200", code)
 	}
 	if bal() != 0 {
@@ -187,15 +297,14 @@ func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
 	nf := &fakeNotifier{}
 	d.Notifier = nf
 	rt := NewRouter(d)
+	deliverBody := func(body []byte) {
+		if code := rt.deliverWebhook(body); code != http.StatusOK {
+			t.Fatalf("webhook = %d", code)
+		}
+	}
 	deliver := func(v pay.Event) {
 		body, _ := json.Marshal(v)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/stripe/webhook", bytes.NewReader(body))
-		r.Header.Set(pay.MemHeader, "whsec")
-		rt.Handler().ServeHTTP(w, r)
-		if w.Code != http.StatusOK {
-			t.Fatalf("webhook %s = %d (%s)", v.Kind, w.Code, w.Body)
-		}
+		deliverBody(body)
 	}
 	purchase := func(pi string, credited int64) {
 		deliver(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: pi, Meta: map[string]string{"credited_micro": itoa(credited)}})
@@ -213,7 +322,7 @@ func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
 	if err := ledger.Allocate(ctx, lead, "proj-1", "P", 5*credit.Dollar); err != nil {
 		t.Fatalf("Allocate: %v", err)
 	}
-	deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"})
+	deliverBody(refundDelivery(t, pay.Event{Kind: pay.KindRefunded, Ref: "pi_1", ReversalRef: "re_1"}, 500, 500))
 	if got := nf.frozenSends(); len(got) != 1 || got[0] != payer.Email {
 		t.Fatalf("after the crossing, freeze emails = %v; want one to the payer", got)
 	}
@@ -222,7 +331,7 @@ func TestStripeWebhookRefundEmailsOnTheCrossingOnlyOnce(t *testing.T) {
 	// negative but do not send another email, because the account was already
 	// frozen.
 	purchase("pi_2", 2*credit.Dollar)
-	deliver(pay.Event{Kind: pay.KindRefunded, Ref: "pi_2", ReversalRef: "re_2"})
+	deliverBody(refundDelivery(t, pay.Event{Kind: pay.KindRefunded, Ref: "pi_2", ReversalRef: "re_2"}, 200, 200))
 	if got := nf.frozenSends(); len(got) != 1 {
 		t.Fatalf("a further refund of an already-frozen account emailed again: %v", got)
 	}

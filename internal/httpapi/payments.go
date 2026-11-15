@@ -142,14 +142,43 @@ func (rt *Router) creditPurchase(r *http.Request, ev pay.Event) int {
 	return http.StatusOK
 }
 
-// reversePurchase reverses a refunded or disputed purchase with a negative
-// adjustment of the exact micro-USD the purchase credited. This is the FX-drift
-// rule: the USD credited is reversed, not the euros paid. The adjustment is
-// keyed on the reversal's own id so it is deduplicated independently. A refund
-// of a purchase this ledger never recorded is acknowledged and dropped rather
-// than retried.
+// chargeTotals reads, from a verified charge.refunded delivery, how much of the
+// charge has been refunded in all and what the charge was. Both are in the
+// charge's own currency, so their ratio is the share of the purchase refunded
+// without converting anything. The payload is the processor's own envelope;
+// the pay library keeps it on the event as Raw because it models the refund's
+// amount as advisory and leaves it out for any currency but USD.
+func chargeTotals(raw []byte) (refunded, charged int64, ok bool) {
+	var env struct {
+		Data struct {
+			Object struct {
+				Amount         int64 `json:"amount"`
+				AmountRefunded int64 `json:"amount_refunded"`
+			} `json:"object"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return 0, 0, false
+	}
+	o := env.Data.Object
+	return o.AmountRefunded, o.Amount, o.Amount > 0 && o.AmountRefunded >= 0
+}
+
+// reversePurchase takes back credit for a refunded or disputed purchase. A
+// refund takes back its share of the credit, the purchase's credit times what
+// has been refunded over what was charged, and a dispute takes back what is
+// still unreversed, so the total for one purchase never passes what it
+// credited. The credit is reversed in the units the ledger holds, not the
+// currency paid, which is the FX-drift rule: a purchase converted at one rate
+// and refunded at another leaves nothing unaccounted. The reversal is keyed on
+// its own id so it is deduplicated independently. A refund of a purchase this
+// ledger never recorded is acknowledged and dropped rather than retried.
 func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 	if rt.credits == nil {
+		return http.StatusOK
+	}
+	if ev.Ref == "" || ev.ReversalRef == "" {
+		slog.WarnContext(r.Context(), "stripe webhook: reversal without a purchase or a reversal id", "ref", ev.Ref, "reversal", ev.ReversalRef)
 		return http.StatusOK
 	}
 	orig, ok, err := rt.credits.EntryByExternalRef(r.Context(), ev.Ref)
@@ -158,20 +187,38 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 		return http.StatusInternalServerError
 	}
 	email, isWallet := credit.WalletEmail(orig.Holder)
-	if !ok || !isWallet || orig.Amount <= 0 || ev.ReversalRef == "" {
+	if !ok || !isWallet || orig.Amount <= 0 {
 		slog.WarnContext(r.Context(), "stripe webhook: refund for an unknown or unreversable purchase", "ref", ev.Ref, "reversal", ev.ReversalRef)
 		return http.StatusOK
 	}
-	// The balance is read before the refund to detect whether this reversal
-	// makes it negative, so the freeze e-mail is sent once, when the balance
+	// The balance is read before the reversal to detect whether it makes the
+	// balance negative, so the freeze e-mail is sent once, when the balance
 	// crosses zero, and not again on a further refund of an already negative
 	// wallet.
 	before, _ := rt.credits.Balance(r.Context(), orig.Holder)
-	if err := rt.credits.RefundPaid(r.Context(), email, orig.Amount, ev.ReversalRef, "stripe:refund:"+ev.ReversalRef); err != nil {
+	var took int64
+	switch ev.Kind {
+	case pay.KindDisputed:
+		took, err = rt.credits.RefundRemainder(r.Context(), ev.Ref, ev.ReversalRef)
+	default:
+		refunded, charged, usable := chargeTotals(ev.Raw)
+		if !usable {
+			// Taking back the whole credit for a partial refund is the harm this
+			// path exists to prevent, so with no amounts nothing is taken back.
+			slog.ErrorContext(r.Context(), "stripe webhook: refund carries no usable amounts, nothing reversed", "ref", ev.Ref, "reversal", ev.ReversalRef)
+			return http.StatusOK
+		}
+		took, err = rt.credits.RefundShare(r.Context(), ev.Ref, ev.ReversalRef, refunded, charged)
+	}
+	if errors.Is(err, credit.ErrUnknownPurchase) {
+		slog.WarnContext(r.Context(), "stripe webhook: refund for an unknown or unreversable purchase", "ref", ev.Ref, "reversal", ev.ReversalRef)
+		return http.StatusOK
+	}
+	if err != nil {
 		slog.ErrorContext(r.Context(), "stripe webhook: refund not recorded", "email", email, "error", err)
 		return http.StatusInternalServerError
 	}
-	if before >= 0 && rt.notifier != nil {
+	if took > 0 && before >= 0 && rt.notifier != nil {
 		if after, err := rt.credits.Balance(r.Context(), orig.Holder); err == nil && after < 0 {
 			if err := rt.notifier.AccountFrozen(r.Context(), email); err != nil {
 				notify.LogFailure("account_frozen", email, err)

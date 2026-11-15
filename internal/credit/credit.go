@@ -254,6 +254,19 @@ type Store interface {
 	// independently. The wallet may go negative; that is the debt a reversed
 	// purchase leaves (022a/022c).
 	RefundPaid(ctx context.Context, email string, amount int64, ref, actor string) error
+	// RefundShare takes back the share of a purchase's credit that a refund
+	// covers: the credit times refunded over charged, rounded down, counting
+	// what earlier reversals of the purchase already took back. refunded is the
+	// total refunded on the charge so far and charged is the charge, in one
+	// unit. It is idempotent on reversalRef and returns the credit it took back,
+	// which is zero for a replay. ErrUnknownPurchase when the ledger never
+	// recorded the purchase.
+	RefundShare(ctx context.Context, purchaseRef, reversalRef string, refunded, charged int64) (int64, error)
+	// RefundRemainder takes back what is left of a purchase's credit, which is
+	// what a lost dispute does. The total taken back for a purchase never
+	// exceeds what it credited. ErrUnknownPurchase when the ledger never
+	// recorded the purchase.
+	RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (int64, error)
 	// EntryByExternalRef finds the entry carrying ref, if any. A refund uses it to
 	// reverse a purchase by the exact micro-USD it credited (022c).
 	EntryByExternalRef(ctx context.Context, ref string) (Entry, bool, error)

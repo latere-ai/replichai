@@ -7,7 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math/bits"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -61,7 +65,17 @@ type store struct {
 	// zero. It lifts the account freeze at the moment the debt is paid, rather
 	// than by a write on every later read.
 	onSolvent func(ctx context.Context, email string)
+	// lockPurchase serializes the reversals of one purchase across processes.
+	// Nil means this process's own mutex is the only guard, which is all a
+	// single in-memory ledger needs.
+	lockPurchase func(ctx context.Context, ref string) (unlock func(), err error)
 }
+
+// reverseMu serializes the reversals of purchases inside this process. A
+// reversal reads what earlier ones took back and then writes its own, so two of
+// them running at once could each read the same total and together take back
+// more than the purchase credited.
+var reverseMu sync.Mutex
 
 // Option configures a store.
 type Option func(*store)
@@ -115,11 +129,41 @@ type PGStore struct {
 func NewPGStore(pool *pgxpool.Pool, auth Authority, members Members, opts ...Option) *PGStore {
 	pg := pgledger.New(pool)
 	s := &PGStore{pg: pg, dbpool: pool}
-	s.store = store{led: pg, auth: auth, members: members}
+	s.store = store{led: pg, auth: auth, members: members, lockPurchase: advisoryLock(pool)}
 	for _, opt := range opts {
 		opt(&s.store)
 	}
 	return s
+}
+
+// advisoryLock takes a Postgres advisory lock keyed on ref, on a connection of
+// its own, so replicas serialize the reversals of one purchase. The lock is
+// held until the returned function runs.
+func advisoryLock(pool *pgxpool.Pool) func(ctx context.Context, ref string) (func(), error) {
+	return func(ctx context.Context, ref string) (func(), error) {
+		conn, err := pool.Acquire(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("lock purchase %s: %w", ref, err)
+		}
+		if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, "purchase:"+ref); err != nil {
+			conn.Release()
+			return nil, fmt.Errorf("lock purchase %s: %w", ref, err)
+		}
+		return func() {
+			// A fresh context: the caller's may be cancelled by now, and a lock
+			// left on a pooled connection would outlive this call. A connection
+			// that cannot unlock is closed instead, which ends its session and
+			// so the lock with it.
+			bg := context.WithoutCancel(ctx)
+			if _, err := conn.Exec(bg, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, "purchase:"+ref); err != nil {
+				slog.WarnContext(ctx, "credit: purchase lock not released, closing its connection", "ref", ref, "error", err)
+				if cerr := conn.Conn().Close(bg); cerr != nil {
+					slog.WarnContext(ctx, "credit: closing a connection that holds a purchase lock", "ref", ref, "error", cerr)
+				}
+			}
+			conn.Release()
+		}, nil
+	}
 }
 
 // pool exposes the connection pool to this package's tests, which need to open
@@ -273,6 +317,117 @@ func (s *store) RefundPaid(ctx context.Context, email string, amount int64, ref,
 		Ref:    ref,
 		Actor:  actor,
 	}, false)
+}
+
+// ErrUnknownPurchase reports a reversal of a purchase this ledger never
+// recorded, or one that is not a wallet top-up.
+var ErrUnknownPurchase = errors.New("no wallet purchase with that reference")
+
+// labelReverses names, on a reversal's entry, the purchase it takes credit back
+// from. It is how a later reversal knows what earlier ones already took.
+const labelReverses = "reverses"
+
+// reversalPage is how many statement rows are read at a time when summing what
+// a purchase has had reversed.
+const reversalPage = 500
+
+// RefundShare takes back the share of a purchase's credit that a refund covers.
+// refunded is everything refunded on the charge so far and charged is what the
+// charge was, in the same unit. The total taken back for the purchase becomes
+// the credit times refunded over charged, rounded down, so rounding can only
+// leave a little credit with the person and never take more than was refunded.
+// Reversals already recorded for the purchase count toward that total, so a
+// replay or an out-of-order delivery takes back nothing extra. It returns the
+// credit taken back by this call.
+func (s *store) RefundShare(ctx context.Context, purchaseRef, reversalRef string, refunded, charged int64) (int64, error) {
+	if refunded < 0 || charged <= 0 {
+		return 0, ErrNotPositive
+	}
+	return s.reverse(ctx, purchaseRef, reversalRef, func(credited int64) int64 {
+		return share(credited, min(refunded, charged), charged)
+	})
+}
+
+// RefundRemainder takes back whatever credit of a purchase has not been taken
+// back yet, which is what a lost dispute does. It returns the credit taken back
+// by this call.
+func (s *store) RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (int64, error) {
+	return s.reverse(ctx, purchaseRef, reversalRef, func(credited int64) int64 { return credited })
+}
+
+// share is floor(whole * part / total) without overflow. part must not exceed
+// total, so the result never exceeds whole.
+func share(whole, part, total int64) int64 {
+	hi, lo := bits.Mul64(uint64(whole), uint64(part))
+	q, _ := bits.Div64(hi, lo, uint64(total))
+	return int64(q)
+}
+
+// reverse brings the credit taken back for one purchase up to target(credited),
+// by posting the difference under reversalRef. A target at or below what is
+// already taken back posts nothing.
+func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, target func(credited int64) int64) (int64, error) {
+	if strings.TrimSpace(purchaseRef) == "" || strings.TrimSpace(reversalRef) == "" {
+		return 0, ErrNoRef
+	}
+	reverseMu.Lock()
+	defer reverseMu.Unlock()
+	if s.lockPurchase != nil {
+		unlock, err := s.lockPurchase(ctx, purchaseRef)
+		if err != nil {
+			return 0, err
+		}
+		defer unlock()
+	}
+	orig, ok, err := s.EntryByExternalRef(ctx, purchaseRef)
+	if err != nil {
+		return 0, err
+	}
+	email, wallet := WalletEmail(orig.Holder)
+	if !ok || !wallet || orig.Amount <= 0 || orig.Kind != KindTopup {
+		return 0, ErrUnknownPurchase
+	}
+	taken, err := s.reversed(ctx, orig.Holder, purchaseRef)
+	if err != nil {
+		return 0, err
+	}
+	delta := min(target(orig.Amount), orig.Amount) - taken
+	if delta <= 0 {
+		return 0, nil
+	}
+	if err := s.led.Adjust(ctx, ledger.Posting{
+		Holder: ledger.Holder(Wallet(email)),
+		Amount: money.Micro(delta),
+		Reason: reasonAdjust,
+		Ref:    reversalRef,
+		Actor:  "stripe:refund:" + reversalRef,
+		Labels: map[string]string{labelReverses: purchaseRef},
+	}, false); err != nil {
+		return 0, err
+	}
+	return delta, nil
+}
+
+// reversed sums the credit already taken back from one purchase, as a positive
+// number, from the reversals labeled with its reference.
+func (s *store) reversed(ctx context.Context, h Holder, purchaseRef string) (int64, error) {
+	var total int64
+	var before time.Time
+	for {
+		page, err := s.led.Entries(ctx, ledger.Holder(h), ledger.Page{Limit: reversalPage, Before: before})
+		if err != nil {
+			return 0, err
+		}
+		for _, e := range page {
+			if e.Labels[labelReverses] == purchaseRef {
+				total -= int64(e.Amount)
+			}
+		}
+		if len(page) < reversalPage {
+			return total, nil
+		}
+		before = page[len(page)-1].CreatedAt
+	}
 }
 
 // Spend charges a pot for work that is not a session. It is idempotent on ref,
