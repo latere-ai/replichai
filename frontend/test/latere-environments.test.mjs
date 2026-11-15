@@ -17,25 +17,25 @@ const EMAIL = 'admin@example.com'
 const M = 1_000_000
 const card = { models: [{ model: 'claude-opus-5-5', input: 4 * M, output: 20 * M, cache_read: 200_000, cache_write_5m: 5 * M, cache_write_1h: 8 * M }] }
 const saves = []
+// The settings in force. A save answers with all of them, as the server does.
+let current = {
+  start_reserve: 5 * M,
+  overdraft_cap: 20 * M,
+  rates: card,
+  latere_environments: ['base', 'science'],
+  known_latere_environments: ['base', 'gui', 'science'],
+}
 
 const routes = [
   ['/me', { authenticated: true, principal: 'admin', email: EMAIL, tier: 'admin', credits: { wallet: 0, start_reserve: 5 * M } }],
   ['GET /admin/access', [{ email: EMAIL, tier: 'admin', bound: true, wallet: 0 }]],
-  [
-    'GET /admin/settings',
-    {
-      start_reserve: 5 * M,
-      overdraft_cap: 20 * M,
-      rates: card,
-      latere_environments: ['base', 'science'],
-      known_latere_environments: ['base', 'gui', 'science'],
-    },
-  ],
+  ['GET /admin/settings', () => current],
   [
     '/admin/settings',
     ({ body }) => {
       saves.push(body)
-      return { ...body, known_latere_environments: ['base', 'gui', 'science'], updated_by: EMAIL }
+      current = { ...current, ...body, updated_by: EMAIL }
+      return current
     },
   ],
 ]
@@ -68,7 +68,7 @@ try {
   await page.keyboard.press('Backspace')
   await reserve.type('6')
   await page.click('[data-test="save-policy"]')
-  await page.waitForFunction(() => document.querySelector('[data-test="save-policy"]')?.disabled === true, { timeout: 5000 }).catch(() => {})
+  await page.waitForFunction(() => (() => { const b = document.querySelector('[data-test="save-policy"]'); return b?.disabled === true && !b.textContent.includes('Saving') })(), { timeout: 5000 }).catch(() => {})
   if (saves.length !== 1) fail(`changing the reserve sent ${saves.length} saves, want 1`)
   else if ('latere_environments' in saves[0]) fail(`a save of the reserve sent the environments: ${JSON.stringify(saves[0].latere_environments)}`)
 
@@ -77,7 +77,7 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('[data-test="latere-environments"] input[type="checkbox"]')].find((b) => b.labels[0]?.textContent.trim().startsWith('GUI'))?.click())
   if (!(await page.$eval('[data-test="save-policy"]', (b) => !b.disabled))) fail('turning on gui does not enable Save')
   await page.click('[data-test="save-policy"]')
-  await page.waitForFunction(() => document.querySelector('[data-test="save-policy"]')?.disabled === true, { timeout: 5000 }).catch(() => {})
+  await page.waitForFunction(() => (() => { const b = document.querySelector('[data-test="save-policy"]'); return b?.disabled === true && !b.textContent.includes('Saving') })(), { timeout: 5000 }).catch(() => {})
   const sent = saves[1]?.latere_environments ?? []
   if ([...sent].sort().join() !== 'base,gui,science') fail(`turning on gui sent ${JSON.stringify(sent)}, want base, gui and science`)
   await page.close()

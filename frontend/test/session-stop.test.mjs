@@ -26,7 +26,7 @@ const running = {
   created_at: at(0),
   phase_at: { submitted: at(0), running: at(1000) },
 }
-const stopped = { ...running, phase: 'failed', error: 'cancelled by owner' }
+const stopped = { ...running, phase: 'failed', error: 'cancelled by owner', stop_reason: 'canceled' }
 
 const project = {
   project: { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) },

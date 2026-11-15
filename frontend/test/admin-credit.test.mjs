@@ -6,13 +6,14 @@
 // The admin people table and the header are fed by different endpoints, so
 // this test requires both surfaces to show the completed top-up without a
 // reload.
-import { fail, start, waitUntil } from './harness.mjs'
+import { fail, noContent, start, waitUntil } from './harness.mjs'
 
 const EMAIL = 'admin@example.com'
 let wallet = 20_000_000
 // What the policy card actually wrote, so the test can check the request
 // rather than the button's label.
 let savedPolicy = null
+let revoked = 0
 
 const routes = [
   ['/me', () => ({ authenticated: true, principal: 'admin', email: EMAIL, tier: 'admin', credits: { wallet, start_reserve: 5_000_000 } })],
@@ -26,6 +27,13 @@ const routes = [
   ],
   ['GET /admin/settings', { start_reserve: 5_000_000, overdraft_cap: 20_000_000, rates: { models: [] } }],
   // A PUT or a POST: whichever the card sends, its body is what it wrote.
+  [
+    `DELETE /admin/access/${encodeURIComponent(EMAIL)}`,
+    () => {
+      revoked++
+      return noContent()
+    },
+  ],
   [
     '/admin/settings',
     ({ body }) => {
@@ -97,6 +105,13 @@ try {
     if (savedPolicy.start_reserve !== 7_000_000) fail(`Save sent start_reserve ${savedPolicy.start_reserve}, want the edited 7_000_000`)
     if (savedPolicy.overdraft_cap !== 20_000_000) fail(`Save dropped the overdraft floor (sent ${savedPolicy.overdraft_cap})`)
   }
+
+  // Revoke asks first: opening it sends nothing, and canceling leaves access alone.
+  await page.evaluate(() => [...document.querySelectorAll('.member-row .btn')].find((button) => /^revoke$/i.test(button.textContent.trim()))?.click())
+  await page.waitForSelector('[data-test="revoke-confirm"]')
+  if (revoked) fail('opening revoke already sent it')
+  await page.evaluate(() => [...document.querySelectorAll('[role="dialog"] .btn')].find((button) => /^cancel$/i.test(button.textContent.trim()))?.click())
+  if (revoked) fail('canceling the revoke confirmation still revoked')
 
   h.ok('an admin self-top-up refreshes the header balance, and the policy card saves the card')
 } catch (e) {

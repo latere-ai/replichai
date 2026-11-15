@@ -721,6 +721,9 @@ export function SessionScreen({
   useJobStream(jobId, signedIn && job != null && !terminal(job.phase), setJob)
   // Told once, when a session this screen saw in flight is seen settled.
   const sawLive = useRef(false)
+  // Bumped when a session this screen watched settles, so the panes that show
+  // its results are read again then and not on first load.
+  const [settledRound, setSettledRound] = useState(0)
   const settledCb = useRef(onSettled)
   useEffect(() => {
     settledCb.current = onSettled
@@ -730,14 +733,13 @@ export function SessionScreen({
     if (!terminal(job.phase)) sawLive.current = true
     else if (sawLive.current) {
       sawLive.current = false
+      setSettledRound((n) => n + 1)
       settledCb.current?.()
     }
   }, [job])
   useEffect(() => {
     if (job?.ref) onLoaded(job.ref)
   }, [job?.ref, onLoaded])
-
-  const settled = job != null && terminal(job.phase)
 
   if (notReadable) return <NotReadable i18n={i18n} me={{ authenticated: signedIn }} />
 
@@ -766,9 +768,9 @@ export function SessionScreen({
           {/* A session that settles while one of these is open has a verdict and files
               it did not have a moment ago, so the pane is read again then. */}
           {tab === 'verdict' ? (
-            <SessionVerdict key={settled ? 'settled' : 'live'} i18n={i18n} jobId={jobId} />
+            <SessionVerdict key={settledRound} i18n={i18n} jobId={jobId} />
           ) : (
-            <SessionArtifacts key={settled ? 'settled' : 'live'} i18n={i18n} jobId={jobId} />
+            <SessionArtifacts key={settledRound} i18n={i18n} jobId={jobId} />
           )}
         </div>
       )}

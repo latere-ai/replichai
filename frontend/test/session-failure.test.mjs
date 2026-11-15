@@ -32,7 +32,7 @@ const failed = {
   created_at: at(0),
   phase_at: { submitted: at(0), resolving: at(1000), failed: at(2000) },
 }
-const stopped = { ...failed, id: 'job-2', error: 'cancelled by owner' }
+const stopped = { ...failed, id: 'job-2', error: 'cancelled by owner', stop_reason: 'canceled' }
 const project = { id: 'proj-1', owner: 'p', title: 'Walk This Beam', visibility: 'private', created_at: at(0) }
 
 const routes = [

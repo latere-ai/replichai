@@ -21,7 +21,7 @@ import {
   removePaper,
   startSession,
 } from '../api'
-import { useProjects } from '../projects-store'
+import { retryProjects, useProjects, useProjectsFailed } from '../projects-store'
 import { countOf, type I18n } from '../i18n'
 import { addPaperErrLabel, movePaperErrLabel, removePaperErrLabel, startErrLabel } from '../errors'
 import { formatUSD } from '../money'
@@ -645,6 +645,7 @@ function MovePaperDialog({
   // Where the paper may go: every other private, live project of the reader's,
   // read from the shared list rather than fetched again for the dialog.
   const all = useProjects()
+  const loadFailed = useProjectsFailed()
   const targets = all === null ? null : all.filter((p) => p.id !== project.id && p.visibility === 'private' && !p.deleted_at)
   useEffect(() => {
     if (!to && targets && targets.length > 0) setTo(targets[0].id)
@@ -682,7 +683,14 @@ function MovePaperDialog({
     >
       <span className="attestation">{paper.title || paper.ref}</span>
       <p className="muted">{t('movePaperBody')}</p>
-      {targets === null ? (
+      {targets === null && loadFailed ? (
+        <p className="err small" data-test="move-projects-failed">
+          {t('projectsLoadFailed')}{' '}
+          <button type="button" className="btn ghost sm" onClick={retryProjects}>
+            {t('retry')}
+          </button>
+        </p>
+      ) : targets === null ? (
         <p className="muted small">{t('loading')}</p>
       ) : nowhere ? (
         <p className="muted small">{t('movePaperNowhere')}</p>

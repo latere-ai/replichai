@@ -82,7 +82,7 @@ try {
   // The stream still reaches the row: a snapshot that says the session has
   // settled settles the row, with no refresh of the list to help it.
   await (async () => {
-    const stopped = { ...running, phase: 'failed', error: 'cancelled by owner', phase_at: { ...running.phase_at, failed: at(5000) } }
+    const stopped = { ...running, phase: 'failed', error: 'cancelled by owner', stop_reason: 'canceled', phase_at: { ...running.phase_at, failed: at(5000) } }
     const page = await h.page({ routes, sse: { jobOf: () => stopped } })
     await page.open('/p/proj-1')
     await page.waitForSelector('.rows .row')
