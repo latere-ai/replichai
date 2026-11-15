@@ -412,7 +412,12 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 
 	// Every admin route is mounted from one place and enumerated, so a route
 	// added without the tier guard fails 006k AC1 rather than shipping open.
-	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc), webauth.WithPaperSweep(sweep), webauth.WithLatereEnvironments(builtin.LatereEnvironmentNames()), webauth.WithPriceList(prices)))
+	adminOpts := []func(*webauth.Admin){webauth.WithProjectCaps(projectCaps), webauth.WithOverrides(acc), webauth.WithPaperSweep(sweep), webauth.WithLatereEnvironments(builtin.LatereEnvironmentNames()), webauth.WithPriceList(prices)}
+	if signIns != nil {
+		// A ban also ends the server's use of the person's stored sign-in.
+		adminOpts = append(adminOpts, webauth.WithSignInForget(signIns.Forget))
+	}
+	webauth.MountAdmin(mux, webauth.RequireTier(acc, access.TierAdmin), webauth.NewAdmin(acc, plat, credits, adminOpts...))
 
 	// The freeze gate sits inside the auth middleware, where identity is already
 	// on the request, and outside the mux, so every mutating request from a
@@ -454,7 +459,7 @@ func buildHandler(ctx context.Context, operator http.Handler, acc accessStore, m
 	}
 	login.BindMemberships(members)
 	if signIns != nil {
-		login.KeepSignIns(signIns.Put)
+		login.KeepSignIns(signIns.Put).ForgetSignIns(signIns.Forget)
 	}
 	mux.HandleFunc("GET /login", login.HandleLogin)
 	mux.HandleFunc("GET /callback", login.HandleCallback)

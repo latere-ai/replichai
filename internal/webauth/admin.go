@@ -36,6 +36,9 @@ type Admin struct {
 	// environments are the Latere environments the runtime knows, which an
 	// admin chooses among (051). Nil checks no name against them.
 	environments []string
+	// forget removes a person's stored platform sign-in, by their subject. Nil
+	// where the deployment keeps none.
+	forget func(ctx context.Context, subject string) error
 	// prices is the price list the card follows. Nil for a deployment that
 	// prices every model by hand.
 	prices *platform.PriceList
@@ -45,6 +48,13 @@ type Admin struct {
 // which rows are the list's and a save keeps them at the list's prices.
 func WithPriceList(p *platform.PriceList) func(*Admin) {
 	return func(a *Admin) { a.prices = p }
+}
+
+// WithSignInForget sets how a revoke ends the server's use of the person's
+// stored platform sign-in. Without it revoking changes the grant only, which is
+// right for a deployment that keeps no sign-ins.
+func WithSignInForget(forget func(ctx context.Context, subject string) error) func(*Admin) {
+	return func(a *Admin) { a.forget = forget }
 }
 
 // WithLatereEnvironments names the environments the Latere runtime knows, so
@@ -447,11 +457,35 @@ func (a *Admin) Grant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"email": strings.ToLower(strings.TrimSpace(body.Email)), "tier": tier.String()})
 }
 
-// Revoke removes a grant by email.
+// Revoke bans an email, and ends the server's use of that person's stored
+// platform sign-in, so their running sessions stop acting as them. An address
+// that never signed in has no sign-in to end. The revoke is idempotent, so an
+// admin whose request failed after the ban retries it and the sign-in is
+// forgotten then.
 func (a *Admin) Revoke(w http.ResponseWriter, r *http.Request) {
-	if err := a.access.Revoke(r.Context(), principalFrom(r), r.PathValue("email")); err != nil {
+	caller := principalFrom(r)
+	email := r.PathValue("email")
+	if err := a.access.Revoke(r.Context(), caller, email); err != nil {
 		writeAdminError(w, err)
 		return
+	}
+	if a.forget != nil {
+		grants, err := a.access.GrantsFor(r.Context(), caller, []string{email})
+		if err != nil {
+			slog.ErrorContext(r.Context(), "revoke: finding the person's sign-in", "error", err)
+			httpapi.WriteError(w, http.StatusInternalServerError, "signin_not_forgotten")
+			return
+		}
+		for _, g := range grants {
+			if g.Principal == "" {
+				continue
+			}
+			if err := a.forget(r.Context(), g.Principal); err != nil {
+				slog.ErrorContext(r.Context(), "revoke: stored sign-in not forgotten", "error", err)
+				httpapi.WriteError(w, http.StatusInternalServerError, "signin_not_forgotten")
+				return
+			}
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

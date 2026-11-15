@@ -392,3 +392,48 @@ func TestFailuresAreReportedNotActedOn(t *testing.T) {
 		t.Error("an Auth address that is not one gave a token")
 	}
 }
+
+// Forgetting a person through the minter ends the server's ability to act as
+// them in this process too. The minter keeps an access token and an actor
+// token for several minutes, so a store that only deletes the stored sign-in
+// would leave the server acting for somebody who signed out or was banned until
+// those expired.
+func TestForgettingASignInDropsWhatTheMinterCached(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemStore(sealer(t))
+	if err := store.Put(ctx, "alice", "initial"); err != nil {
+		t.Fatal(err)
+	}
+	minter, auth := newMinter(t, store)
+	if _, err := minter.Token(ctx, "alice"); err != nil {
+		t.Fatalf("Token: %v", err)
+	}
+	// A second person is untouched by the first one's forgetting.
+	if err := store.Put(ctx, "bob", "initial-bob"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := minter.Token(ctx, "bob"); err != nil {
+		t.Fatalf("Token for bob: %v", err)
+	}
+	mints := auth.mints
+
+	if err := minter.Keeper().Forget(ctx, "alice"); err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+	if _, err := minter.Token(ctx, "alice"); !errors.Is(err, ErrNoSignIn) {
+		t.Errorf("after Forget the minter still acts as alice: %v", err)
+	}
+	if auth.mints != mints {
+		t.Errorf("the minter asked Auth for a token after the sign-in was forgotten")
+	}
+	if err := store.Rotate(ctx, "alice", func(string) (string, error) { return "x", nil }); !errors.Is(err, ErrNoSignIn) {
+		t.Errorf("the stored sign-in survived Forget: %v", err)
+	}
+	if _, err := minter.Token(ctx, "bob"); err != nil {
+		t.Errorf("forgetting alice stopped bob: %v", err)
+	}
+	// Forgetting somebody with no sign-in is not an error.
+	if err := minter.Keeper().Forget(ctx, "nobody"); err != nil {
+		t.Errorf("Forget of an unknown person: %v", err)
+	}
+}

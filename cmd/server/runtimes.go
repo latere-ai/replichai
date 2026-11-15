@@ -80,7 +80,9 @@ func personSignIns(st stores, offered []managed.RuntimeName, actsAsOperator bool
 		ClientSecret: os.Getenv("AUTH_CLIENT_SECRET"),
 		HTTP:         &http.Client{Timeout: 30 * time.Second, Transport: xotel.Transport(nil)},
 	})
-	return store, minter, nil
+	// The store handed out is the minter's keeper, so forgetting a sign-in also
+	// drops the tokens this process cached from it.
+	return minter.Keeper(), minter, nil
 }
 
 // devLatereCommand is the operator's own Latere token command, for a local

@@ -68,6 +68,9 @@ type Login struct {
 	// keep stores the person's refresh token when the deployment runs
 	// sessions on the Latere platform as the person (048). Nil keeps none.
 	keep func(ctx context.Context, subject, refresh string) error
+	// forget removes a person's stored sign-in when they sign out. Nil keeps
+	// none to remove.
+	forget func(ctx context.Context, subject string) error
 	// endSession is the issuer's RP-initiated logout. Empty leaves sign-out
 	// local-only, which is what an issuer advertising none can offer.
 	endSession string
@@ -94,6 +97,14 @@ func (l *Login) EndSessionAt(url string) *Login {
 // It is optional and returns the receiver; without it no token is kept.
 func (l *Login) KeepSignIns(keep func(ctx context.Context, subject, refresh string) error) *Login {
 	l.keep = keep
+	return l
+}
+
+// ForgetSignIns sets how the login removes a person's stored sign-in when they
+// sign out, so the server stops acting as them on the platform. It pairs with
+// KeepSignIns, is optional, and returns the receiver.
+func (l *Login) ForgetSignIns(forget func(ctx context.Context, subject string) error) *Login {
+	l.forget = forget
 	return l
 }
 
@@ -241,7 +252,22 @@ func (l *Login) HandleCallback(w http.ResponseWriter, r *http.Request) {
 // next. The browser is then redirected to the issuer's RP-initiated logout,
 // which returns it here. An issuer that advertises no such endpoint leaves
 // sign-out local-only, which is all it can offer.
+//
+// The person's stored platform sign-in is forgotten too. The cookie says who is
+// signing out, so it is read before it is cleared. A store that fails is
+// logged and does not hold the sign-out back: the cookie is gone either way,
+// and the next sign-in replaces whatever was left.
 func (l *Login) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	if l.forget != nil {
+		if raw, ok := readCookie(r, sessionCookie, l.secure); ok {
+			var s Session
+			if err := l.codec.Open(raw, &s); err == nil && s.Sub != "" {
+				if err := l.forget(r.Context(), s.Sub); err != nil {
+					slog.ErrorContext(r.Context(), "logout: stored sign-in not forgotten", "error", err)
+				}
+			}
+		}
+	}
 	clearCookie(w, sessionCookie, l.secure)
 	http.Redirect(w, r, l.logoutURL(), http.StatusFound)
 }

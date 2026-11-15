@@ -104,6 +104,35 @@ func (m *Minter) Token(ctx context.Context, subject string) (string, error) {
 	return actor, nil
 }
 
+// Forget removes the person's kept sign-in and drops the tokens this process
+// cached from it, so the server stops acting as them at once rather than when
+// the cached tokens expire. Another replica keeps its own cache until its tokens
+// expire, which is at most actorKeep.
+func (m *Minter) Forget(ctx context.Context, subject string) error {
+	err := m.store.Forget(ctx, subject)
+	// Dropped even when the store failed: the person asked to be forgotten, and
+	// a cache that outlives a failed delete is the very thing this prevents.
+	m.mu.Lock()
+	delete(m.people, subject)
+	m.mu.Unlock()
+	return err
+}
+
+// Keeper is the minter's store as the rest of the server writes to it: sign-ins
+// are kept as before, and forgetting one also drops this process's cached
+// tokens.
+func (m *Minter) Keeper() Store { return keeper{Store: m.store, minter: m} }
+
+// keeper is a Store whose Forget goes through the minter.
+type keeper struct {
+	Store
+	minter *Minter
+}
+
+func (k keeper) Forget(ctx context.Context, subject string) error {
+	return k.minter.Forget(ctx, subject)
+}
+
 // TokenFunc is Token for one person, in the shape the runtime's composition
 // root takes.
 func (m *Minter) TokenFunc(subject string) func(context.Context) (string, error) {

@@ -369,3 +369,54 @@ type failingLedger struct {
 
 func (f failingLedger) Topup(context.Context, access.Principal, string, int64) error { return f.err }
 func (f failingLedger) Balance(context.Context, credit.Holder) (int64, error)        { return 0, f.err }
+
+// Signing out ends the server's own use of the person's platform sign-in, not
+// only the browser's cookie. Without it a person who signed out still has the
+// server acting as them on the platform for their running sessions.
+func TestHandleLogoutForgetsTheStoredSignIn(t *testing.T) {
+	var forgot []string
+	l := newTestLogin(t, fakeOIDC{}, access.NewMemStore()).
+		ForgetSignIns(func(_ context.Context, subject string) error {
+			forgot = append(forgot, subject)
+			return nil
+		})
+	sealed, err := l.codec.Seal(Session{Sub: "user-1", Email: "u@example.com"}, sessionTTL)
+	if err != nil {
+		t.Fatalf("seal: %v", err)
+	}
+	r := httptest.NewRequest("GET", "/logout", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName(sessionCookie, false), Value: sealed})
+	w := httptest.NewRecorder()
+	l.HandleLogout(w, r)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want a redirect", w.Code)
+	}
+	if len(forgot) != 1 || forgot[0] != "user-1" {
+		t.Errorf("forgotten sign-ins = %v, want [user-1]", forgot)
+	}
+
+	// No session, nobody to forget.
+	forgot = nil
+	l.HandleLogout(httptest.NewRecorder(), httptest.NewRequest("GET", "/logout", nil))
+	if len(forgot) != 0 {
+		t.Errorf("a logout with no session forgot %v", forgot)
+	}
+
+	// A store that fails does not leave the person signed in here.
+	l.ForgetSignIns(func(context.Context, string) error { return errors.New("db down") })
+	w = httptest.NewRecorder()
+	l.HandleLogout(w, r)
+	if w.Code != http.StatusFound {
+		t.Fatalf("a failing store: status = %d, want the redirect anyway", w.Code)
+	}
+	var cleared bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == cookieName(sessionCookie, false) && c.Value == "" && c.MaxAge <= 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("a failing store left the session cookie in place")
+	}
+}

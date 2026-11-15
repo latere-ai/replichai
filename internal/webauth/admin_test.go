@@ -5,6 +5,7 @@ package webauth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,5 +100,55 @@ func TestParseTier(t *testing.T) {
 		if _, ok := ParseTier(bad); ok {
 			t.Errorf("ParseTier(%q) should be rejected", bad)
 		}
+	}
+}
+
+// Banning somebody ends the server's use of their stored platform sign-in. The
+// grant says who may use ReplicHAI, and the stored sign-in is what lets the
+// server act as them on the platform, so revoking one without the other leaves a
+// banned person's sessions running as them.
+func TestAdminRevokeForgetsTheStoredSignIn(t *testing.T) {
+	var forgot []string
+	var forgetErr error
+	admin, adminID, _ := adminSetup(t)
+	admin.forget = func(_ context.Context, subject string) error {
+		forgot = append(forgot, subject)
+		return forgetErr
+	}
+	revoke := func(email string) *httptest.ResponseRecorder {
+		r := as(adminID, "DELETE", "/admin/access/"+email, "")
+		r.SetPathValue("email", email)
+		w := httptest.NewRecorder()
+		admin.Revoke(w, r)
+		return w
+	}
+
+	// seed@example.com signed in, so its grant is bound to seed-sub.
+	if w := revoke("Seed@Example.com"); w.Code != http.StatusNoContent {
+		t.Fatalf("revoke = %d, want 204", w.Code)
+	}
+	if len(forgot) != 1 || forgot[0] != "seed-sub" {
+		t.Fatalf("forgotten sign-ins = %v, want [seed-sub]", forgot)
+	}
+
+	// An address that never signed in has no stored sign-in to forget.
+	forgot = nil
+	if w := revoke("never@example.com"); w.Code != http.StatusNoContent {
+		t.Fatalf("revoke of an unbound address = %d, want 204", w.Code)
+	}
+	if len(forgot) != 0 {
+		t.Errorf("forgot %v for an address that never signed in", forgot)
+	}
+
+	// A store that cannot forget is reported, and a retry forgets again: the
+	// revoke is idempotent, so the retry reaches the same subject.
+	forgetErr = errors.New("db down")
+	if w := revoke("seed@example.com"); w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "signin_not_forgotten") {
+		t.Fatalf("revoke with a failing store = %d %s, want 500 signin_not_forgotten", w.Code, w.Body)
+	}
+	forgetErr = nil
+	forgot = nil
+	if w := revoke("seed@example.com"); w.Code != http.StatusNoContent || len(forgot) != 1 {
+		t.Fatalf("the retry = %d, forgot %v; want 204 and one forget", w.Code, forgot)
 	}
 }
