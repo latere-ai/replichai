@@ -520,3 +520,32 @@ func TestALocatorWithoutTheSharedMarkReleasesItsWorkspace(t *testing.T) {
 		t.Fatalf("released %+v, want the session's own workspace", backend.released)
 	}
 }
+
+// closingProvider reports a run whose locator is too large to return, and
+// records the runs it is asked to close.
+type closingProvider struct {
+	*providermemory.Provider
+	closed []provider.RunHandle
+}
+
+func (p *closingProvider) StartRun(ctx context.Context, worker provider.WorkerRef, workspace provider.WorkspaceRef, spec provider.RunSpec) (provider.RunHandle, error) {
+	handle, err := p.Provider.StartRun(ctx, worker, workspace, spec)
+	handle.Files = []string{strings.Repeat("f", managed.DefaultMaxLocatorBytes)}
+	return handle, err
+}
+
+func (p *closingProvider) CloseRun(_ context.Context, handle provider.RunHandle) error {
+	p.closed = append(p.closed, handle)
+	return nil
+}
+
+// A start whose reference cannot be returned closes the run it started.
+func TestAStartWhoseReferenceCannotBeReturnedClosesTheRun(t *testing.T) {
+	backend := &closingProvider{Provider: providermemory.New()}
+	if _, err := newRuntime(t, backend).Start(context.Background(), baseSpec()); err == nil {
+		t.Fatal("Start succeeded although its reference could not be returned")
+	}
+	if len(backend.closed) != 1 || backend.closed[0].ID == "" {
+		t.Fatalf("closed runs = %+v, want the one that was started", backend.closed)
+	}
+}

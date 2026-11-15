@@ -149,6 +149,10 @@ type RunHandle struct {
 	Worker    WorkerRef
 	Workspace WorkspaceRef
 	Files     []string
+	// Ungraded marks a run started with no rubric, whose backend session has
+	// no grader record to wait for. The zero value is a graded run, so a
+	// handle that does not say is never read as finished early.
+	Ungraded bool
 }
 
 // ResourceReleaser is implemented by transitional adapters that can release

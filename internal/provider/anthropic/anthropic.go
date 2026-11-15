@@ -76,7 +76,12 @@ func translateGrade(name string) provider.Grade {
 // a run is picked up and after it finishes, and it reaches "terminated" both
 // by completing and by dying. A decision from the status alone gets one of
 // those cases wrong.
-func translateState(status string, verdict *provider.Verdict) provider.RunState {
+//
+// A run started without a rubric has no grader record, so for it resting in
+// "idle" after the worker has produced usage is its finish. ungraded and
+// worked carry those two facts; a run that has done nothing yet is still not
+// started.
+func translateState(status string, verdict *provider.Verdict, ungraded, worked bool) provider.RunState {
 	graded := verdict != nil && verdict.Grade.Decided()
 
 	switch status {
@@ -85,6 +90,10 @@ func translateState(status string, verdict *provider.Verdict) provider.RunState 
 
 	case "idle":
 		switch {
+		case verdict == nil && ungraded && worked:
+			// An ungraded run has no verdict to wait for: it rests when
+			// its turn is over.
+			return provider.StateDone
 		case verdict == nil:
 			// Resting with no grader record at all: not started yet.
 			// Reporting this as finished would abort a healthy run whose
@@ -358,7 +367,8 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 	// starts with an ordinary user message: sending an empty outcome silently
 	// created a grader for work that explicitly asked only to run and report.
 	var kickoff anthropic.BetaManagedAgentsEventParamsUnion
-	if strings.TrimSpace(spec.Rubric) == "" && spec.MaxRevisions == 0 {
+	ungraded := strings.TrimSpace(spec.Rubric) == "" && spec.MaxRevisions == 0
+	if ungraded {
 		kickoff = anthropic.BetaManagedAgentsEventParamsUnion{OfUserMessage: &anthropic.BetaManagedAgentsUserMessageEventParams{
 			Content: []anthropic.BetaManagedAgentsUserMessageEventParamsContentUnion{{
 				OfText: &anthropic.BetaManagedAgentsTextBlockParam{Text: spec.Task},
@@ -387,7 +397,7 @@ func (p *Provider) StartRun(ctx context.Context, worker provider.WorkerRef, ws p
 		return provider.RunHandle{}, rollback(fmt.Errorf("send kickoff: %w", err), session.ID)
 	}
 
-	return provider.RunHandle{ID: session.ID, Worker: worker, Workspace: ws, Files: uploaded}, nil
+	return provider.RunHandle{ID: session.ID, Worker: worker, Workspace: ws, Files: uploaded, Ungraded: ungraded}, nil
 }
 
 // Poll reports one observation of a run.
@@ -405,7 +415,8 @@ func (p *Provider) Poll(ctx context.Context, h provider.RunHandle) (provider.Run
 			Explanation: last.Explanation,
 		}
 	}
-	state := translateState(string(session.Status), verdict)
+	worked := session.Usage.InputTokens > 0 || session.Usage.OutputTokens > 0
+	state := translateState(string(session.Status), verdict, h.Ungraded, worked)
 
 	return provider.RunStatus{
 		State:   state,

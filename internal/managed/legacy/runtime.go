@@ -216,18 +216,29 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 	if err != nil {
 		return managed.SessionRef{}, errors.Join(fmt.Errorf("start session: %w", err), r.releaseResources(ctx, worker, workspace))
 	}
+	// The session is already running on the backend, so a reference that
+	// cannot be returned leaves unreachable state. The run, with the files
+	// it was given, is closed and its worker and workspace are released
+	// rather than leaked.
+	unwind := func(cause error) (managed.SessionRef, error) {
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		closed := r.config.Provider.CloseRun(closeCtx, handle)
+		return managed.SessionRef{}, errors.Join(cause, closed, r.releaseResources(ctx, worker, workspace))
+	}
 	encoded, err := json.Marshal(locator{
 		WorkspaceID: workspace.ID, SharedWorkspace: workspace.Shared, WorkerID: worker.ID, WorkerVersion: worker.Revision,
 		Model: managed.ModelRef{Provider: r.config.ModelProvider, ID: modelID}, Graded: spec.Evaluation != nil,
 		FileIDs: append([]string(nil), handle.Files...),
 	}, wirejson.Stored)
 	if err != nil {
-		// The session is already running on the backend, so a locator that
-		// cannot be returned leaves unreachable state. It is released rather
-		// than leaked.
-		return managed.SessionRef{}, errors.Join(fmt.Errorf("encode locator: %w", err), r.releaseResources(ctx, worker, workspace))
+		return unwind(fmt.Errorf("encode locator: %w", err))
 	}
-	return managed.SessionRef{Runtime: r.Name(), ID: handle.ID, Revision: 1, LocatorVersion: 1, Locator: encoded}, nil
+	ref := managed.SessionRef{Runtime: r.Name(), ID: handle.ID, Revision: 1, LocatorVersion: 1, Locator: encoded}
+	if err := ref.Validate(managed.DefaultMaxLocatorBytes); err != nil {
+		return unwind(fmt.Errorf("session reference: %w", err))
+	}
+	return ref, nil
 }
 
 // Poll translates the provider's run status and folds the evaluation verdict
@@ -385,8 +396,9 @@ func (r *Runtime) handle(ref managed.SessionRef) (provider.RunHandle, locator, e
 	}
 	return provider.RunHandle{
 		ID: ref.ID, Workspace: provider.WorkspaceRef{ID: metadata.WorkspaceID, Shared: metadata.SharedWorkspace},
-		Worker: provider.WorkerRef{ID: metadata.WorkerID, Revision: metadata.WorkerVersion},
-		Files:  append([]string(nil), metadata.FileIDs...),
+		Worker:   provider.WorkerRef{ID: metadata.WorkerID, Revision: metadata.WorkerVersion},
+		Files:    append([]string(nil), metadata.FileIDs...),
+		Ungraded: !metadata.Graded,
 	}, metadata, nil
 }
 

@@ -812,6 +812,39 @@ func TestATerminatedRunIsTerminal(t *testing.T) {
 	}
 }
 
+// An ungraded run has no grader record, so resting in idle after the worker
+// used tokens is its finish. One that has used none has not started, and a
+// graded handle is never read as finished early.
+func TestAnUngradedRunThatRestedAfterWorkingIsDone(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{"id": "sesn_1", "type": "session", "status": "idle",
+			"usage": map[string]any{"input_tokens": 10, "output_tokens": 5}})
+	})
+	for _, test := range []struct {
+		name   string
+		handle provider.RunHandle
+		want   provider.RunState
+	}{
+		{"ungraded", provider.RunHandle{ID: "sesn_1", Ungraded: true}, provider.StateDone},
+		{"graded", provider.RunHandle{ID: "sesn_1"}, provider.StatePending},
+	} {
+		status, err := p.Poll(context.Background(), test.handle)
+		if err != nil {
+			t.Fatalf("%s: Poll: %v", test.name, err)
+		}
+		if status.State != test.want {
+			t.Errorf("%s: state = %s, want %s", test.name, status.State, test.want)
+		}
+	}
+	idle := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{"id": "sesn_1", "type": "session", "status": "idle"})
+	})
+	status, err := idle.Poll(context.Background(), provider.RunHandle{ID: "sesn_1", Ungraded: true})
+	if err != nil || status.State != provider.StatePending {
+		t.Fatalf("an ungraded run that has done nothing = %v, %v; want pending", status.State, err)
+	}
+}
+
 func TestTranslateStateReadsStatusAndVerdictTogether(t *testing.T) {
 	// Neither field answers alone: the backend rests in "idle" both before a
 	// run starts and after it ends, and reaches "terminated" both by
@@ -835,7 +868,7 @@ func TestTranslateStateReadsStatusAndVerdictTogether(t *testing.T) {
 		{"something-new", nil, provider.StateRunning},
 	}
 	for _, tc := range cases {
-		if got := translateState(tc.status, tc.verdict); got != tc.want {
+		if got := translateState(tc.status, tc.verdict, false, false); got != tc.want {
 			t.Errorf("translateState(%q, %v) = %s, want %s",
 				tc.status, tc.verdict, got, tc.want)
 		}
