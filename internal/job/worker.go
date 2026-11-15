@@ -97,6 +97,9 @@ type Worker struct {
 	// this process drives; the lease keeps other replicas off them.
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
+	// background counts every goroutine this worker started, so Start can return
+	// only once none of them is still writing to the store.
+	background sync.WaitGroup
 }
 
 // WorkerOption configures a Worker.
@@ -260,13 +263,15 @@ func (w *Worker) Process(ctx context.Context) (bool, error) {
 
 // Start runs a pool of workers until ctx is cancelled. Each worker loops,
 // processing a job or waiting and looking again when the queue is empty.
-// Alongside them it sweeps for stranded runs and heartbeats the leases.
+// Alongside them it sweeps for stranded runs and heartbeats the leases. It
+// returns once the pool, the sweep, the heartbeat and every rejoined run have
+// stopped, so the caller may close the store after it.
 func (w *Worker) Start(ctx context.Context, workers int) {
 	if workers < 1 {
 		workers = 1
 	}
-	go w.sweep(ctx)
-	go w.heartbeat(ctx)
+	w.background.Go(func() { w.sweep(ctx) })
+	w.background.Go(func() { w.heartbeat(ctx) })
 	done := make(chan struct{})
 	for range workers {
 		go func() {
@@ -287,6 +292,7 @@ func (w *Worker) Start(ctx context.Context, workers int) {
 	for range workers {
 		<-done
 	}
+	w.background.Wait()
 }
 
 // sweep re-runs reconciliation for as long as the pool lives, so a run whose
@@ -558,12 +564,12 @@ func (w *Worker) call(step string, fn func() error) (err error) {
 // reconciler's rejoins run here: a panic in one is logged, the job it was
 // driving is failed, and the pool keeps running.
 func (w *Worker) spawn(id string, fn func() error) {
-	go func() {
+	w.background.Go(func() {
 		err := w.call("background drive", fn)
 		if err != nil {
 			slog.Warn("worker: background drive", "session", id, "error", err)
 		}
-	}()
+	})
 }
 
 // drive moves one claimed job, already in resolving, through the phases under

@@ -29,7 +29,7 @@ func TestServerRecordsAServerSpanAndJoinsTheCallersTrace(t *testing.T) {
 	srv := newServer(":0", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		served = true
 		w.WriteHeader(http.StatusNoContent)
-	}))
+	}), context.Background())
 	ts := httptest.NewServer(srv.Handler)
 	defer ts.Close()
 

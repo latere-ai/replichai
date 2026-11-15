@@ -140,6 +140,6 @@ spec:
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: 8080
             periodSeconds: 5

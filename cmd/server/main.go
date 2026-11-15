@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -292,7 +293,11 @@ func run() error {
 	} else if resumed > 0 || failed > 0 {
 		logger.Info("reconcile", "rejoined", resumed, "failed_unrecoverable", failed)
 	}
-	go worker.Start(ctx, *workers)
+	workerStopped := make(chan struct{})
+	go func() {
+		defer close(workerStopped)
+		worker.Start(ctx, *workers)
+	}()
 
 	spaHandler, err := spa.Handler()
 	if err != nil {
@@ -359,6 +364,7 @@ func run() error {
 		BaseURL:       baseURL,
 		Notifier:      notifier,
 		SPA:           spaHandler,
+		Ready:         st.ready,
 	})
 
 	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), router.SweepPapers, prices, *dev, baseURL, signIns)
@@ -366,9 +372,42 @@ func run() error {
 		return err
 	}
 
-	srv := newServer(*addr, handler)
+	// Open event streams end when draining starts: their request contexts come
+	// from here, and without that they would hold the shutdown for its full
+	// timeout.
+	streams, endStreams := context.WithCancel(context.WithoutCancel(ctx))
+	defer endStreams()
+	srv := newServer(*addr, handler, streams)
 	logger.Info("listening", "addr", *addr, "base_url", baseURL)
-	return xotel.RunServer(ctx, srv, 10*time.Second, nil)
+	serveErr := xotel.RunServer(ctx, srv, serverDrain, func(context.Context) error {
+		endStreams()
+		return nil
+	})
+	// The pool is closed by the deferred st.close, so the worker has to have
+	// stopped writing by then, whether the server ended on a signal or on its
+	// own.
+	endStreams()
+	stop()
+	return errors.Join(serveErr, awaitWorker(workerStopped, workerStopTimeout))
+}
+
+// serverDrain is how long the server waits for in-flight requests once it is
+// told to stop, and workerStopTimeout how long it then waits for the worker. The
+// preStop pause and both must fit in the pod's grace period (see deploy).
+const (
+	serverDrain       = 10 * time.Second
+	workerStopTimeout = 10 * time.Second
+)
+
+// awaitWorker waits for the worker to stop, up to timeout, and says so when it
+// did not.
+func awaitWorker(stopped <-chan struct{}, timeout time.Duration) error {
+	select {
+	case <-stopped:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("the worker did not stop within %s; its database writes may be cut off", timeout)
+	}
 }
 
 // newServer assembles the listening server around the fully wired surface. The
@@ -377,9 +416,14 @@ func run() error {
 // either continues the caller's trace or starts one the outbound calls join.
 // The header deadline is separate from any handler timeout: it bounds a client
 // that opens a connection and then says nothing.
-func newServer(addr string, handler http.Handler) *http.Server {
+//
+// base is the context every request context derives from. Cancelling it ends
+// the requests still open, which is how a live event stream stops when the
+// server drains.
+func newServer(addr string, handler http.Handler, base context.Context) *http.Server {
 	return &http.Server{
 		Addr:              addr,
+		BaseContext:       func(net.Listener) context.Context { return base },
 		Handler:           xotel.Handler(handler, serviceName),
 		ReadHeaderTimeout: 10 * time.Second,
 		// An idle kept-alive connection is closed. There is no ReadTimeout and
@@ -746,6 +790,15 @@ type stores struct {
 	close func()
 }
 
+// ready reports whether the stores can serve: the serving pool answers a ping.
+// The in-memory stores are always ready.
+func (s stores) ready(ctx context.Context) error {
+	if s.pool == nil {
+		return nil
+	}
+	return s.pool.Ping(ctx)
+}
+
 // servingURL is the DSN the serving pool opens: the pooler's endpoint when one
 // is configured, the direct endpoint otherwise. The fallback is what keeps a
 // deployment whose Secret does not carry the pooled key serving exactly as it
@@ -774,11 +827,24 @@ func openStores(ctx context.Context, serving, migration string) (stores, error) 
 		members := access.NewMemMembership()
 		ledger := credit.NewMemStore(acc, members, credit.WithOnSolvent(thawOnSolvent(acc)))
 		jobs := job.NewMemStore(job.WithCredits(ledger, platform.StartReserve(plat)), job.WithRates(platform.RateSnapshot(plat)))
+		projects := project.NewMemStore(project.WithSessions(jobs))
+		// The job store reads the project it is given a session for, as the
+		// Postgres one does from the project row.
+		jobs.UseProjects(func(ctx context.Context, id string) (string, bool, bool, error) {
+			p, err := projects.Get(ctx, id)
+			if errors.Is(err, project.ErrNotFound) {
+				return "", false, false, nil
+			}
+			if err != nil {
+				return "", false, false, err
+			}
+			return string(p.Visibility), p.Trashed(), true, nil
+		})
 		return stores{
 			jobs: jobs,
 			// The job store goes into the project store so a moved paper takes its
 			// sessions with it (035); without it MovePaper refuses.
-			projects: project.NewMemStore(project.WithSessions(jobs)),
+			projects: projects,
 			access:   acc,
 			members:  members,
 			platform: plat,

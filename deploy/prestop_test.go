@@ -42,6 +42,10 @@ type podStop struct {
 // once it is told to stop.
 const serverDrain = 10
 
+// workerStop is the longest the server then waits for its worker to stop, which
+// must finish before the database pool closes.
+const workerStop = 10
+
 // A stopping pod must keep serving until the ingress and the Service endpoints
 // have dropped its address. The server closes its listener as soon as the stop
 // signal arrives; without a pause before that signal, requests still routed to
@@ -78,8 +82,8 @@ func TestStoppingPodsServeUntilTrafficMovesAway(t *testing.T) {
 				if pause < 3 {
 					t.Errorf("%s/%s: preStop sleep %ds, want at least 3s so traffic moves away first", d.Metadata.Name, c.Name, pause)
 				}
-				if pause+serverDrain > grace {
-					t.Errorf("%s/%s: preStop %ds + %ds drain exceeds the %ds grace period", d.Metadata.Name, c.Name, pause, serverDrain, grace)
+				if pause+serverDrain+workerStop > grace {
+					t.Errorf("%s/%s: preStop %ds + %ds drain + %ds worker stop exceeds the %ds grace period", d.Metadata.Name, c.Name, pause, serverDrain, workerStop, grace)
 				}
 			}
 		}

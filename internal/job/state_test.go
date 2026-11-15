@@ -364,3 +364,49 @@ func TestAStrandedSessionIsInterrupted(t *testing.T) {
 		t.Fatalf("stop reason %q, want interrupted", got.StopReason)
 	}
 }
+
+// TestStartReturnsOnlyAfterARejoinedRunStops checks that Start does not return
+// while a run it rejoined is still driving, so a caller that closes the store
+// after Start returns cannot cut a write off.
+func TestStartReturnsOnlyAfterARejoinedRunStops(t *testing.T) {
+	s := NewMemStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
+	if _, ok, _ := s.Claim(ctx, "pod-a"); !ok {
+		t.Fatal("claim")
+	}
+	if err := s.Advance(WithWorker(ctx, "pod-a"), j.ID, PhaseRunning, nil); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	if err := s.Observe(WithWorker(ctx, "pod-a"), j.ID, provider.RunStatus{RunID: "run-1", Runtime: "anthropic-managed"}); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	resuming, release := make(chan struct{}), make(chan struct{})
+	r := &fakeRunner{onResume: func() {
+		close(resuming)
+		<-release
+	}}
+	w := NewWorker(s, r, WithWorkerID("pod-a"), WithPoll(time.Millisecond))
+	if resumed, _, err := w.Reconcile(ctx); err != nil || resumed != 1 {
+		t.Fatalf("Reconcile = %d, %v", resumed, err)
+	}
+	<-resuming
+	returned := make(chan struct{})
+	go func() {
+		w.Start(ctx, 1)
+		close(returned)
+	}()
+	cancel()
+	select {
+	case <-returned:
+		t.Fatal("Start returned while a rejoined run was still driving")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after the rejoined run stopped")
+	}
+}
