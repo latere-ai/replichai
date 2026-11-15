@@ -6,6 +6,7 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -188,22 +189,31 @@ func (s *PGStore) SetCreditCap(ctx context.Context, id string, cap int64) error 
 	return err
 }
 
-// SetPublic marks a project public and records the sign-off, superseding any
-// earlier withdrawal.
+// SetPublic marks a private project public and records the sign-off. It leaves
+// the withdrawal record of an earlier publication in place as history. A project
+// that is already public is refused with ErrAlreadyPublic, so a second publish
+// cannot replace who signed the first without the owner withdrawing it.
 func (s *PGStore) SetPublic(ctx context.Context, id string, so SignOff) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE projects SET visibility='public', signed_off_by=$2, signed_off_at=$3, attestation_version=$4,
 			signed_off_name=$5, signed_off_institution=$6, signed_off_contact=$7,
-			signed_off_orcid=$8, signed_off_scholar=$9, signed_off_email=$10,
-			withdrawn_at=NULL, withdrawn_by='', withdrawn_reason=''
-		WHERE id=$1`,
+			signed_off_orcid=$8, signed_off_scholar=$9, signed_off_email=$10
+		WHERE id=$1 AND visibility='private'`,
 		id, so.By, s.clock(), so.AttestationVersion,
 		so.Name, so.Institution, so.Contact, so.ORCID, so.Scholar, so.Email)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		// Either the project is missing or it is already public.
+		p, err := s.Get(ctx, id)
+		if err != nil {
+			return err
+		}
+		if p.Visibility == VisibilityPublic {
+			return ErrAlreadyPublic
+		}
+		return fmt.Errorf("publish project %s: not updated while %s", id, p.Visibility)
 	}
 	return nil
 }

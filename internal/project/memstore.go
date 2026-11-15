@@ -165,14 +165,17 @@ func (s *MemStore) SetCreditCap(_ context.Context, id string, cap int64) error {
 	return nil
 }
 
-// SetPublic marks a project public and records the sign-off, superseding any
-// earlier withdrawal.
+// SetPublic marks a private project public and records the sign-off, leaving any
+// earlier withdrawal record in place as history. A public project is refused.
 func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.projects[id]
 	if !ok {
 		return ErrNotFound
+	}
+	if p.Visibility == VisibilityPublic {
+		return ErrAlreadyPublic
 	}
 	now := s.clock()
 	p.Visibility = VisibilityPublic
@@ -185,9 +188,6 @@ func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
 	p.SignedOffORCID = so.ORCID
 	p.SignedOffScholar = so.Scholar
 	p.SignedOffEmail = so.Email
-	p.WithdrawnAt = nil
-	p.WithdrawnBy = ""
-	p.WithdrawnReason = ""
 	s.projects[id] = p
 	return nil
 }

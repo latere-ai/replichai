@@ -146,17 +146,30 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Errorf("SetPrivate on a missing project: want ErrNotFound, got %v", err)
 	}
 
-	// Republishing supersedes the retraction: a fresh sign-off, and no withdrawal
-	// left on the row, so it never claims to be both live and withdrawn.
+	// Republishing replaces the sign-off with the new one and keeps the
+	// withdrawal as history: a project published, withdrawn, and published again
+	// must leave evidence of all three. The record sits beside a public
+	// Visibility, which is what says the project is live.
 	if err := s.SetPublic(ctx, second.ID, SignOff{By: "owner", AttestationVersion: "v2", Name: "Ada Again", Contact: "ada@example.org"}); err != nil {
 		t.Fatalf("republish: %v", err)
 	}
 	back, _ := s.Get(ctx, second.ID)
-	if back.Visibility != VisibilityPublic || back.WithdrawnAt != nil || back.WithdrawnBy != "" || back.WithdrawnReason != "" {
-		t.Errorf("republish did not clear the withdrawal: %+v", back)
+	if back.Visibility != VisibilityPublic {
+		t.Errorf("republish did not make the project public: %+v", back)
+	}
+	if back.WithdrawnAt == nil || !back.WithdrawnAt.Equal(first) || back.WithdrawnBy != "owner" || back.WithdrawnReason != "unreleased figure" {
+		t.Errorf("republish erased the withdrawal record: %+v", back)
 	}
 	if back.SignedOffName != "Ada Again" {
 		t.Errorf("republish did not overwrite the snapshot: %+v", back)
+	}
+	// A second publish without a withdrawal in between is refused and changes
+	// nothing, so it cannot replace who signed the live publication.
+	if err := s.SetPublic(ctx, second.ID, SignOff{By: "intruder", AttestationVersion: "v2", Name: "Someone Else", Contact: "x@example.org"}); !errors.Is(err, ErrAlreadyPublic) {
+		t.Errorf("publishing a public project: want ErrAlreadyPublic, got %v", err)
+	}
+	if still, _ := s.Get(ctx, second.ID); still.SignedOffBy != "owner" || still.SignedOffName != "Ada Again" {
+		t.Errorf("a refused publish changed the sign-off: %+v", still)
 	}
 	// Leave it private again so the rest of the contract starts from a known
 	// state.

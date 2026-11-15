@@ -42,6 +42,10 @@ const (
 var (
 	// ErrNotFound reports a missing project.
 	ErrNotFound = errors.New("project not found")
+	// ErrAlreadyPublic reports publishing a project that is already public. A
+	// second publish would replace who signed the first, so the owner has to
+	// withdraw the publication before publishing again.
+	ErrAlreadyPublic = errors.New("the project is already public")
 	// ErrNoOwner reports creating a project with no owning principal.
 	ErrNoOwner = errors.New("a project needs an owner")
 )
@@ -88,8 +92,9 @@ type Project struct {
 	// stored beside the sign-off rather than clearing it: withdrawing ends a
 	// publication but does not retract the attestation, and a project published,
 	// withdrawn, and published again under a different signer must leave
-	// evidence of all three. A later SetPublic clears it and supersedes it with
-	// a new sign-off.
+	// evidence of all three. A later SetPublic replaces the sign-off with a new
+	// one and leaves this record in place as history. Only a public project's
+	// Visibility says whether it is live, never these fields.
 	WithdrawnAt     *time.Time `json:"withdrawn_at,omitempty"`
 	WithdrawnBy     string     `json:"withdrawn_by,omitempty"`
 	WithdrawnReason string     `json:"withdrawn_reason,omitempty"`
@@ -115,6 +120,10 @@ type Project struct {
 // one of them.
 func (p Project) Redacted() Project {
 	p.Owner, p.SignedOffBy, p.WithdrawnBy = "", "", ""
+	// The reason is the owner's own record of why they withdrew, not a notice
+	// they published. A republished project keeps it as history, so a stranger
+	// reading the public page must not receive it.
+	p.WithdrawnReason = ""
 	return p
 }
 
