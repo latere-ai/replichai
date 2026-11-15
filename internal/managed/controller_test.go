@@ -584,3 +584,45 @@ func TestControllerSeparatesSilenceFromRuntimeFailure(t *testing.T) {
 		})
 	}
 }
+
+// A session that was running and then went silent is reported timed out, and
+// stays timed out when the runtime answers the controller's cancel.
+func TestASilentRunningSessionKeepsTheTimedOutReason(t *testing.T) {
+	temporary := &TemporaryError{Err: errors.New("offline")}
+	runtime := newControllerRuntime()
+	runtime.pollErrors = []error{nil}
+	for range 16 {
+		runtime.pollErrors = append(runtime.pollErrors, temporary)
+	}
+	// After the silence the runtime answers again and reports the session
+	// ended by the controller's cancel.
+	runtime.statuses = append(runtime.statuses[:1:1], Status{
+		Ref: runtime.statuses[0].Ref, Model: runtime.statuses[0].Model, State: StateFailed,
+		TerminalReason: ReasonCancelled, Usage: Usage{InputFresh: 2},
+	})
+	now := time.Unix(0, 0)
+	controller := NewController(controllerRouter{runtime: runtime}, WithWaitPolicy(WaitPolicy{
+		InitialDelay: time.Second, MaxDelay: time.Second, MaxTemporaryErrors: 50, MaxSilence: 3 * time.Second, CleanupTimeout: time.Hour,
+	}), withControllerClock(func() time.Time { return now }, func(_ context.Context, delay time.Duration) error {
+		now = now.Add(delay)
+		return nil
+	}))
+	result, _ := controller.Execute(context.Background(), controllerSpec(false), Hooks{})
+	if result.Status.State != StateFailed || result.Status.TerminalReason != ReasonTimedOut {
+		t.Fatalf("status = %s %s, want failed timed_out", result.Status.State, result.Status.TerminalReason)
+	}
+}
+
+// A resumed session whose caller says it was graded is held to a decided
+// verdict, as one that was never interrupted is.
+func TestResumeGradedHoldsTheSessionToAVerdict(t *testing.T) {
+	runtime := newControllerRuntime()
+	if _, err := instantController(runtime).ResumeGraded(context.Background(), runtime.ref, Hooks{}, true); !errors.Is(err, ErrContract) {
+		t.Fatalf("a graded resume finished with no verdict = %v, want ErrContract", err)
+	}
+	runtime = newControllerRuntime()
+	runtime.statuses[1].Verdict = &Verdict{Grade: GradePassed}
+	if _, err := instantController(runtime).ResumeGraded(context.Background(), runtime.ref, Hooks{}, true); err != nil {
+		t.Fatalf("a graded resume with a verdict: %v", err)
+	}
+}

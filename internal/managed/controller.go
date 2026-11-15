@@ -265,6 +265,18 @@ func (c *Controller) start(ctx context.Context, spec SessionSpec, hooks Hooks) (
 // when reconciliation retries a retention that failed, and drives the same
 // wait, retain, and release path to its end.
 func (c *Controller) Resume(ctx context.Context, ref SessionRef, hooks Hooks) (Result, error) {
+	return c.resume(ctx, ref, hooks, nil)
+}
+
+// ResumeGraded is Resume for a caller that knows whether the session was
+// started with an evaluation, which the persisted reference does not say. The
+// session is then held to the same verdict rule Execute applies: a graded one
+// may finish done only with a decided verdict, an ungraded one with none.
+func (c *Controller) ResumeGraded(ctx context.Context, ref SessionRef, hooks Hooks, graded bool) (Result, error) {
+	return c.resume(ctx, ref, hooks, &graded)
+}
+
+func (c *Controller) resume(ctx context.Context, ref SessionRef, hooks Hooks, graded *bool) (Result, error) {
 	runtime, err := c.router.ForRef(ref)
 	if err != nil {
 		return Result{Ref: ref}, err
@@ -273,9 +285,10 @@ func (c *Controller) Resume(ctx context.Context, ref SessionRef, hooks Hooks) (R
 		return Result{Ref: ref}, err
 	}
 	// The persisted reference does not encode whether the original request was
-	// graded. Resume therefore validates any verdict it sees, but does not infer
-	// that a missing verdict means the runtime violated the original request.
-	return c.wait(ctx, runtime, ref, hooks, nil)
+	// graded. Without the caller's word, a resume validates any verdict it
+	// sees but does not infer that a missing verdict means the runtime
+	// violated the original request.
+	return c.wait(ctx, runtime, ref, hooks, graded)
 }
 
 // Cancel stops a live session and still finishes the lifecycle: it waits for a
@@ -369,6 +382,12 @@ func (c *Controller) abort(ctx context.Context, runtime Runtime, ref SessionRef,
 	if terminalErr != nil {
 		cleanupErrors = append(cleanupErrors, fmt.Errorf("wait after cancel: %w", terminalErr))
 	} else {
+		// The cancel the controller sent is its own doing, so a session that
+		// was given up on for silence stays timed out rather than reading
+		// as cancelled. One that finished in the meantime keeps its result.
+		if status.TerminalReason == ReasonTimedOut && terminal.State == StateFailed && terminal.TerminalReason == ReasonCancelled {
+			terminal.TerminalReason = ReasonTimedOut
+		}
 		status = terminal
 	}
 	retainCtx, cancelRetain := c.retainContext(ctx)
@@ -586,12 +605,19 @@ func retryDelay(err error, fallback time.Duration) time.Duration {
 // is a timeout, not a fault the runtime reported, and operators investigate
 // the two in different places.
 func previousOrFailure(previous Status, ref SessionRef, timedOut bool) Status {
-	if previous.State.Valid() {
+	if previous.State.Terminal() {
 		return previous
 	}
 	reason := ReasonRuntimeFailed
 	if timedOut {
 		reason = ReasonTimedOut
+	}
+	if previous.State.Valid() {
+		// The last observation is kept for its usage and model, and the
+		// session is failed for the reason the controller gave up, not
+		// left to be defaulted to a runtime fault.
+		previous.State, previous.TerminalReason = StateFailed, reason
+		return previous
 	}
 	return Status{Ref: ref, State: StateFailed, TerminalReason: reason}
 }
