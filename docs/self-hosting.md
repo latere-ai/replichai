@@ -159,7 +159,10 @@ at every start. It is how the first admin exists before there is anyone to
 promote them. The address has to be the email your identity provider reports
 for that person. Revoking someone's access in the app is recorded rather than
 deleted, and a revoked address in `ADMIN_EMAILS` is skipped at the next start,
-so a restart does not undo it.
+so a restart does not undo it. You can revoke an address that has never signed
+in, and that person is refused at their first sign-in. Revoking someone, or
+their signing out, also removes the sign-in the server kept for them, so the
+server stops acting for them on the Latere platform.
 
 An admin adds credits to a person's wallet in **Admin → People**, and sets the
 start reserve (what a project must hold before a session may start) and the
@@ -189,6 +192,14 @@ The Stripe adapter reads `checkout.session.completed`,
 `checkout.session.async_payment_succeeded`, `payment_intent.succeeded`,
 `payment_intent.payment_failed`, `charge.refunded` and
 `charge.dispute.created`.
+
+A refund takes back only its share of the credit the purchase gave. Refunding
+a quarter of a charge takes back a quarter of the credit, and a second refund
+takes back its own share on top of the first. A lost dispute takes back
+whatever is left. The credit taken back for one purchase never passes what the
+purchase credited. An account whose wallet goes below zero can read everything,
+including exporting a project's archive, and can pay to top up, but cannot make
+any other change until the wallet is back at zero.
 
 ## The dev bypass is for your own machine
 

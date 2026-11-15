@@ -10,7 +10,39 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- **A refund takes back only its share of the credit.** Refunding a quarter of
+  a top-up now takes back a quarter of its credit, and a second refund takes
+  back its own share. Each refund used to take back the whole top-up, which sent
+  the wallet below zero and froze the account. A lost dispute takes back what is
+  left, and one top-up is never reversed by more than it gave.
+- **Revoking an address that has never signed in now holds.** That person is
+  refused at their first sign-in instead of being admitted.
+- **Signing out, and being revoked, end the stored sign-in.** The server stops
+  acting for the person on the Latere platform at that moment, where before it
+  kept doing so until Auth refused the token.
+- **A session whose server died before its run started is now ended by the
+  periodic check,** and its held credits are released, instead of waiting for
+  some server to restart. A server that lost a session to another one can no
+  longer finish or fail it, and a finished session no longer takes late progress
+  updates. One failing session no longer stops the start-up check from handling
+  the others.
+- **Publishing a project again keeps the record that it was withdrawn,** and a
+  project that is already public refuses a second publish instead of replacing
+  who signed the first.
+- **An account on hold gets full access again as soon as its wallet is back at
+  zero,** including when the credits come back from a project and not from a
+  top-up.
+
 ### Changed
+
+- **A published project takes no new papers or sessions.** Withdraw the
+  publication first; the project page now says so where those actions were.
+  Moving a paper already worked this way.
+- **The writes an account on hold can still make are listed in one place.** It
+  keeps reading everything, exporting a project, and paying to top up.
+- **Built with Go 1.27.4,** which fixes GO-2026-6859.
 
 - **The manifest comments say telemetry export is off.** The Dash0 collector
   is retired and no manifest sets `OTEL_EXPORTER_OTLP_ENDPOINT`.
