@@ -480,13 +480,19 @@ func (r *Runtime) Start(ctx context.Context, spec managed.SessionSpec) (managed.
 		return managed.SessionRef{}, fmt.Errorf("apply the session's agent: %w", err)
 	}
 	agent := fmt.Sprintf("%s@%d", manifest.Metadata.Name, version)
-	nonce, err := randomID()
-	if err != nil {
-		return managed.SessionRef{}, err
+	// A caller's key makes a repeated start resolve to the session the first
+	// one created; without one, each start is its own.
+	createKey := spec.Key
+	if createKey == "" {
+		nonce, err := randomID()
+		if err != nil {
+			return managed.SessionRef{}, err
+		}
+		createKey = nonce
 	}
 	created, err := r.platform.createSession(ctx, bearer, createSession{
 		Agent: agent, Title: "ReplicHAI session", Attended: false, Metadata: map[string]string{"product": "replichai"},
-	}, "create-"+nonce)
+	}, "create-"+createKey)
 	if err != nil {
 		return managed.SessionRef{}, fmt.Errorf("create the session: %w", err)
 	}
@@ -721,28 +727,28 @@ func replay(events []wireEvent, loc locator) progress {
 
 // advance is the grading loop's one step.
 func (r *Runtime) advance(ctx context.Context, bearer, id string, session wireSession, events []wireEvent, loc locator) (outcome, error) {
-	if session.metadataCancelled() {
-		// The interrupted turn saves the session's files as it ends, so the
-		// session is reported ended once it has stopped, or once the wait
-		// for it is over, and not at the cancel mark: a caller reading the
-		// folder then would miss the work the turn did.
-		at := cancelledAt(events, loc)
-		if session.Status != "running" || r.now().Sub(at) >= cancelSettle {
-			return ended(managed.ReasonCancelled, "", at), nil
-		}
-		return outcome{state: managed.StateRunning}, nil
-	}
+	cancelled := session.metadataCancelled()
 	p := replay(events, loc)
 	stop, at, idle := idleAfter(events, p.since)
 	if !idle {
+		if cancelled {
+			return r.cancelling(session, events, loc), nil
+		}
 		if session.Status == "ended" {
 			return ended(managed.ReasonRuntimeFailed, "ended", session.UpdatedAt), nil
 		}
 		return outcome{state: managed.StateRunning}, nil
 	}
+	// What the log already settled is reported as it is, whether or not a
+	// cancel mark arrived later: a session that finished stays finished. A
+	// step that would send another message is not taken once the session
+	// is marked cancelled.
 	switch stop {
 	case "end_turn":
 	case "interrupted":
+		if cancelled {
+			return r.cancelling(session, events, loc), nil
+		}
 		return ended(managed.ReasonCancelled, "", at), nil
 	case "budget", "turn_limit", "output_limit", "error":
 		return ended(managed.ReasonRuntimeFailed, stop, at), nil
@@ -753,11 +759,17 @@ func (r *Runtime) advance(ctx context.Context, bearer, id string, session wireSe
 		if !loc.Graded {
 			return outcome{state: managed.StateDone, reason: managed.ReasonSucceeded, at: at}, nil
 		}
+		if cancelled {
+			return r.cancelling(session, events, loc), nil
+		}
 		return r.requestGrade(ctx, bearer, id, p.round, 1)
 	}
 	verdict, err := graderVerdict(events, p.since, roundTask(p.round))
 	if err != nil {
 		if p.attempt < graderAttempts {
+			if cancelled {
+				return r.cancelling(session, events, loc), nil
+			}
 			return r.requestGrade(ctx, bearer, id, p.round, p.attempt+1)
 		}
 		return ended(managed.ReasonRuntimeFailed, "grading", at), nil
@@ -766,6 +778,9 @@ func (r *Runtime) advance(ctx context.Context, bearer, id string, session wireSe
 	case verdict.Passed():
 		return outcome{state: managed.StateDone, reason: managed.ReasonSucceeded, at: at, verdict: &verdict}, nil
 	case verdict.Grade == managed.GradeNeedsRevision && p.revisions < loc.MaxRevisions:
+		if cancelled {
+			return r.cancelling(session, events, loc), nil
+		}
 		key := fmt.Sprintf("%s-revise-%d", id, p.round+1)
 		if _, err := r.platform.message(ctx, bearer, id, revisionLead+verdict.Explanation, nil, key); err != nil {
 			return outcome{}, fmt.Errorf("send revision %d: %w", p.round+1, err)
@@ -779,6 +794,19 @@ func (r *Runtime) advance(ctx context.Context, bearer, id string, session wireSe
 		result.verdict = &verdict
 		return result, nil
 	}
+}
+
+// cancelling is the reading of a session marked cancelled whose work the log
+// has not settled. The interrupted turn saves the session's files as it ends,
+// so the session is reported ended once it has stopped, or once the wait for
+// it is over, and not at the cancel mark: a caller reading the folder then
+// would miss the work the turn did.
+func (r *Runtime) cancelling(session wireSession, events []wireEvent, loc locator) outcome {
+	at := cancelledAt(events, loc)
+	if session.Status != "running" || r.now().Sub(at) >= cancelSettle {
+		return ended(managed.ReasonCancelled, "", at)
+	}
+	return outcome{state: managed.StateRunning}
 }
 
 // cancelSettle bounds how long a cancelled session is reported running while
@@ -972,9 +1000,19 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 // stop before it can delete the session.
 const releaseAttempts = 30
 
+// releaseRetries bounds how many transient failures of the platform Release
+// retries, with a doubling pause from releaseBackoff, before it gives up and
+// leaves the session for a later release.
+const (
+	releaseRetries = 6
+	releaseBackoff = time.Second
+)
+
 // Release deletes the session, which removes its machine and its folder. The
 // platform refuses to delete a running session, so a running one is
-// interrupted and waited for. A session already gone is success.
+// interrupted and waited for. A session already gone is success. A transient
+// failure of the platform is retried with a doubling pause, up to
+// releaseRetries times, before it is returned.
 func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	if _, err := decode(ref); err != nil {
 		return err
@@ -983,7 +1021,23 @@ func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 	if err != nil {
 		return err
 	}
-	for attempt := range releaseAttempts {
+	pause, transient := releaseBackoff, 0
+	// retry reports whether err is a transient failure with budget left, and
+	// waits out its pause.
+	retry := func(err error) (bool, error) {
+		if !managed.IsTemporary(err) || transient >= releaseRetries {
+			return false, nil
+		}
+		transient++
+		wait := pause
+		var hint interface{ RetryAfter() time.Duration }
+		if errors.As(err, &hint) && hint.RetryAfter() > wait {
+			wait = hint.RetryAfter()
+		}
+		pause *= 2
+		return true, r.sleep(ctx, wait)
+	}
+	for attempt := 0; attempt < releaseAttempts; {
 		err := r.platform.remove(ctx, bearer, ref.ID)
 		switch {
 		case err == nil, errors.Is(err, managed.ErrNotFound):
@@ -992,13 +1046,28 @@ func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
 			r.mu.Unlock()
 			return nil
 		case code(err) != "conflict":
+			again, sleepErr := retry(err)
+			if sleepErr != nil {
+				return sleepErr
+			}
+			if again {
+				continue
+			}
 			return fmt.Errorf("delete the session: %w", err)
 		}
 		if attempt == 0 {
 			if err := r.platform.interrupt(ctx, bearer, ref.ID); err != nil && !errors.Is(err, managed.ErrNotFound) {
+				again, sleepErr := retry(err)
+				if sleepErr != nil {
+					return sleepErr
+				}
+				if again {
+					continue
+				}
 				return fmt.Errorf("interrupt the session before deleting it: %w", err)
 			}
 		}
+		attempt++
 		if err := r.sleep(ctx, 2*time.Second); err != nil {
 			return err
 		}

@@ -98,6 +98,9 @@ type SessionAuditor struct {
 	// repository without mounting one. This is the local path, where the host
 	// pushes what was committed once the session has ended.
 	workspaceIsARepository bool
+	// key names the start, so a start repeated after a crash resolves to the
+	// session the first one created on a runtime that honors it.
+	key string
 }
 
 // SessionOption configures a SessionAuditor.
@@ -163,6 +166,13 @@ func WithLocalWorkspace() SessionOption {
 // It applies when the session is created, so it affects Start and Run only.
 func WithSessionMount(mount SessionMount) SessionOption {
 	return func(a *SessionAuditor) { a.mount = mount }
+}
+
+// WithSessionKey names the session's start, for example by the job and its
+// attempt. A runtime that can honors it, so a start repeated after a crash
+// finds the session the first one created instead of making a second.
+func WithSessionKey(key string) SessionOption {
+	return func(a *SessionAuditor) { a.key = key }
 }
 
 // WithEnvironment names the environment the session's machine runs, such as
@@ -231,7 +241,9 @@ func (a *SessionAuditor) Resume(ctx context.Context, ref managed.SessionRef, pap
 	runCtx, cancel := a.runContext(ctx)
 	defer cancel()
 	result := SessionResult{Paper: paper, Ref: ref, ArtifactDir: destination, MethodDigest: a.method.Digest()}
-	managedResult, err := a.controller.Resume(runCtx, ref, a.retentionHooks(&result, destination))
+	// Every audit is started with an evaluation, so a resumed one is held
+	// to a decided verdict as Run is.
+	managedResult, err := a.controller.ResumeGraded(runCtx, ref, a.retentionHooks(&result, destination), true)
 	a.apply(&result, managedResult)
 	if errors.Is(err, context.DeadlineExceeded) && !a.unbounded {
 		err = errors.Join(ErrTimedOut, err)
@@ -299,6 +311,7 @@ func (a *SessionAuditor) spec(ctx context.Context, paper string) (managed.Sessio
 		},
 		Resources:  resources,
 		Evaluation: &managed.EvaluationSpec{Rubric: a.method.Rubric, MaxRevisions: a.maxRevisions},
+		Key:        a.key,
 	}
 	// A runtime that runs the grading loop itself keeps each round's
 	// findings and checks them before the grader reads them. One that grades

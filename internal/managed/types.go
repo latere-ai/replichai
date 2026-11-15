@@ -183,6 +183,12 @@ type SessionSpec struct {
 	Sandbox      SandboxSpec     `json:"sandbox"`
 	Resources    []Resource      `json:"resources,omitempty"`
 	Evaluation   *EvaluationSpec `json:"evaluation,omitzero"`
+	// Key names this start. A runtime that can honors it, so that a start
+	// repeated under one key after a crash finds the session the first one
+	// created instead of making a second. The caller derives it from what
+	// the session is for, such as a job and its attempt; empty means the
+	// start is not repeatable.
+	Key string `json:"key,omitempty"`
 }
 
 // SessionRef is the durable handle to a session: everything needed to poll it,

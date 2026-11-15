@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -319,5 +320,76 @@ func TestTheEnvironmentsOfferedAreReadEachTime(t *testing.T) {
 		if !capabilities.Environments[name] {
 			t.Errorf("a runtime with nothing to read does not offer %s", name)
 		}
+	}
+}
+
+// A session that finished stays finished when a cancel arrives after it.
+func TestAFinishedSessionStaysFinishedWhenACancelArrivesLate(t *testing.T) {
+	for name, graded := range map[string]bool{"ungraded": false, "graded": true} {
+		t.Run(name, func(t *testing.T) {
+			spec := gradedSpec()
+			if !graded {
+				spec.Evaluation = nil
+			}
+			r := newFakePlatform(t).runtime(t)
+			ref, done := run(t, r, spec)
+			if done.State != managed.StateDone {
+				t.Fatalf("the session ended %+v", done)
+			}
+			if err := r.Cancel(context.Background(), ref); err != nil {
+				t.Fatalf("Cancel: %v", err)
+			}
+			status, err := r.Poll(context.Background(), ref)
+			if err != nil {
+				t.Fatalf("Poll: %v", err)
+			}
+			if status.State != managed.StateDone || status.TerminalReason != managed.ReasonSucceeded {
+				t.Fatalf("a finished session reads %s %s after a late cancel", status.State, status.TerminalReason)
+			}
+		})
+	}
+}
+
+// Two starts under one key resolve to the session the first one created.
+func TestAStartRepeatedUnderOneKeyFindsTheSession(t *testing.T) {
+	f := newFakePlatform(t)
+	spec := gradedSpec()
+	spec.Key = "job-7-attempt-1"
+	first, err := f.runtime(t).Start(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// A fresh process after a crash that lost the reference starts again.
+	second, err := f.runtime(t).Start(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Start again: %v", err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("a repeated start made a second session: %s and %s", first.ID, second.ID)
+	}
+	if len(f.sessions) != 1 {
+		t.Fatalf("the platform holds %d sessions, want 1", len(f.sessions))
+	}
+	other := spec
+	other.Key = "job-7-attempt-2"
+	third, err := f.runtime(t).Start(context.Background(), other)
+	if err != nil || third.ID == first.ID {
+		t.Fatalf("a new attempt shared a session: %v, %v", third.ID, err)
+	}
+}
+
+// A transient failure of the platform while releasing is retried.
+func TestReleaseRetriesATransientFailure(t *testing.T) {
+	f := newFakePlatform(t)
+	r := f.runtime(t)
+	ref, _ := run(t, r, gradedSpec())
+	f.mu.Lock()
+	f.fail["DELETE /v1/agents/sessions/"] = http.StatusServiceUnavailable
+	f.mu.Unlock()
+	if err := r.Release(context.Background(), ref); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if got := f.count("DELETE " + route("/v1/agents/sessions/"+ref.ID)); got < 2 {
+		t.Fatalf("Release sent %d deletes, want a retry", got)
 	}
 }

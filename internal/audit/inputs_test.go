@@ -181,3 +181,17 @@ func TestANamedEnvironmentIsAskedForOrRefused(t *testing.T) {
 		t.Fatalf("the session's specification = %+v, want the science environment", specs)
 	}
 }
+
+// The key a caller names reaches the session's specification, where a runtime
+// can use it to find a session an earlier start created.
+func TestTheSessionKeyReachesTheSpecification(t *testing.T) {
+	runtime := managedmemory.New()
+	auditor := NewSessionAuditor(sessionController(t, runtime), testMethod, WithSessionKey("job-1-attempt-2"))
+	if _, err := auditor.Run(context.Background(), "paper", t.TempDir()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	specs := runtime.Specs()
+	if len(specs) != 1 || specs[0].Key != "job-1-attempt-2" {
+		t.Fatalf("the session's specification = %+v, want the key", specs)
+	}
+}
