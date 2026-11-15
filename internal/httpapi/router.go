@@ -344,9 +344,16 @@ type Deps struct {
 	// SSEKeepAlive is how long the event stream may stay silent before it
 	// writes a comment line. Zero selects defaultSSEKeepAlive.
 	SSEKeepAlive time.Duration
+	// SSERecheck is how often an open event stream checks again that its viewer
+	// may read the session. Zero selects streamRecheckEvery.
+	SSERecheck time.Duration
 	// SPA, when set, serves the frontend for any GET path not matched by an API
 	// route; it is the public app shell (006e). It is nil in API-only tests.
 	SPA http.Handler
+	// Ready reports whether the server can do its work, which for a deployment
+	// with a database is whether the database answers. /readyz returns 503 when
+	// it fails. Nil means always ready, which is the in-memory server.
+	Ready func(ctx context.Context) error
 }
 
 // Router wires the routes, mounts the gate on the operator set, and keeps the
@@ -376,6 +383,8 @@ type Router struct {
 	baseURL      string
 	sseInterval  time.Duration
 	sseKeepAlive time.Duration
+	sseRecheck   time.Duration
+	ready        func(ctx context.Context) error
 	spa          http.Handler
 	// site turns an app path into the absolute URL a crawler needs (042a).
 	// There is one per router, so a canonical link and a sitemap entry are the
@@ -429,10 +438,37 @@ func NewRouter(d Deps) *Router {
 	if keepAlive <= 0 {
 		keepAlive = defaultSSEKeepAlive
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, runtimes: d.Runtimes, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, sseKeepAlive: keepAlive, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
+	recheck := d.SSERecheck
+	if recheck <= 0 {
+		recheck = streamRecheckEvery
+	}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, runtimes: d.Runtimes, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, sseKeepAlive: keepAlive, sseRecheck: recheck, ready: d.Ready, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
 	rt.anonRegistry.ttl, rt.sitemapBody.ttl = publicTTL, publicTTL
 	rt.routes()
+	// /healthz says the process is up; /readyz says it can serve, so a pod
+	// whose database stopped answering leaves the Service without being
+	// restarted. Both sit outside the gate for the load balancer.
+	rt.openHandle("GET", "/readyz", rt.readyz)
 	return rt
+}
+
+// readyzTimeout bounds the readiness ping, so a database that hangs fails the
+// probe instead of holding it open.
+const readyzTimeout = 3 * time.Second
+
+// readyz answers 200 when the server can serve and 503 when its database does
+// not answer.
+func (rt *Router) readyz(w http.ResponseWriter, r *http.Request) {
+	if rt.ready != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), readyzTimeout)
+		defer cancel()
+		if err := rt.ready(ctx); err != nil {
+			slog.WarnContext(r.Context(), "readyz: the database did not answer", "error", err)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
 // publicChanged is called after any write that changes the public zone: a
