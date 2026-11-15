@@ -356,6 +356,79 @@ func (s *store) RefundRemainder(ctx context.Context, purchaseRef, reversalRef st
 	return s.reverse(ctx, purchaseRef, reversalRef, func(credited, taken int64) int64 { return max(credited-taken, 0) })
 }
 
+// lockReversals serializes the reversals and restorations that land on one
+// wallet, inside this process and across processes, until the returned function
+// runs.
+func (s *store) lockReversals(ctx context.Context, h Holder) (func(), error) {
+	reverseMu.Lock()
+	if s.lockWallet == nil {
+		return reverseMu.Unlock, nil
+	}
+	unlock, err := s.lockWallet(ctx, string(h))
+	if err != nil {
+		reverseMu.Unlock()
+		return nil, err
+	}
+	return func() {
+		unlock()
+		reverseMu.Unlock()
+	}, nil
+}
+
+// labelRestores names, on the entry that gives back what a won dispute took,
+// the dispute whose reversal it undoes.
+const labelRestores = "restores"
+
+// RestoreDispute gives back exactly what the reversal keyed disputeRef took
+// from purchaseRef, for a dispute decided for the merchant. The entry is keyed
+// disputeRef+":won", so a second delivery of the outcome credits nothing more,
+// and it carries the purchase's label so later refunds count the credit as no
+// longer reversed. It returns the credit given back, zero when the dispute took
+// nothing or was already restored. A wallet this leaves at or above zero is
+// reported through the solvency hook.
+func (s *store) RestoreDispute(ctx context.Context, purchaseRef, disputeRef string) (int64, error) {
+	if strings.TrimSpace(purchaseRef) == "" || strings.TrimSpace(disputeRef) == "" {
+		return 0, ErrNoRef
+	}
+	orig, ok, err := s.EntryByExternalRef(ctx, purchaseRef)
+	if err != nil {
+		return 0, err
+	}
+	email, wallet := WalletEmail(orig.Holder)
+	if !ok || !wallet || orig.Kind != KindTopup {
+		return 0, ErrUnknownPurchase
+	}
+	unlock, err := s.lockReversals(ctx, orig.Holder)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	took, ok, err := s.led.EntryByRef(ctx, disputeRef)
+	if err != nil {
+		return 0, err
+	}
+	if !ok || took.Labels[labelReverses] != purchaseRef || took.Amount >= 0 {
+		return 0, nil // the dispute took nothing from this purchase
+	}
+	wonRef := disputeRef + ":won"
+	if _, done, err := s.led.EntryByRef(ctx, wonRef); err != nil || done {
+		return 0, err // an adjust has no uniqueness of its own, so a repeat is found here
+	}
+	back := -int64(took.Amount)
+	if err := s.led.Adjust(ctx, ledger.Posting{
+		Holder: ledger.Holder(Wallet(email)),
+		Amount: money.Micro(back),
+		Reason: reasonAdjust,
+		Ref:    wonRef,
+		Actor:  "stripe:dispute_won:" + disputeRef,
+		Labels: map[string]string{labelReverses: purchaseRef, labelRestores: disputeRef},
+	}, true); err != nil {
+		return 0, err
+	}
+	s.solvent(ctx, email)
+	return back, nil
+}
+
 // reverse takes back owed(credited, taken) of one purchase's credit, where
 // taken is what earlier reversals of the purchase already took back, by posting
 // it under reversalRef. An amount of zero or less posts nothing. The reversals that land on one wallet run
@@ -374,15 +447,11 @@ func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, ow
 	if !ok || !wallet || orig.Amount <= 0 || orig.Kind != KindTopup {
 		return Reversal{}, ErrUnknownPurchase
 	}
-	reverseMu.Lock()
-	defer reverseMu.Unlock()
-	if s.lockWallet != nil {
-		unlock, err := s.lockWallet(ctx, string(orig.Holder))
-		if err != nil {
-			return Reversal{}, err
-		}
-		defer unlock()
+	unlock, err := s.lockReversals(ctx, orig.Holder)
+	if err != nil {
+		return Reversal{}, err
 	}
+	defer unlock()
 	taken, err := s.reversed(ctx, orig.Holder, purchaseRef)
 	if err != nil {
 		return Reversal{}, err

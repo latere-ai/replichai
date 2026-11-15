@@ -282,6 +282,12 @@ type Store interface {
 	// exceeds what it credited. ErrUnknownPurchase when the ledger never
 	// recorded the purchase.
 	RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (Reversal, error)
+	// RestoreDispute gives back what the reversal keyed disputeRef took from a
+	// purchase, for a dispute decided for the merchant. It is idempotent, keyed
+	// disputeRef+":won", and returns the credit given back, zero when the
+	// dispute took nothing or was already restored. ErrUnknownPurchase when the
+	// ledger never recorded the purchase.
+	RestoreDispute(ctx context.Context, purchaseRef, disputeRef string) (int64, error)
 	// EntryByExternalRef finds the entry carrying ref, if any. A refund uses it to
 	// reverse a purchase by the exact micro-USD it credited (022c).
 	EntryByExternalRef(ctx context.Context, ref string) (Entry, bool, error)
