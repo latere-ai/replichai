@@ -158,6 +158,63 @@ func storeContract(t *testing.T, s interface {
 	if _, ok, _ := s.SelfGrant(ctx, Principal{Email: ns + "-nosub@example.com"}); ok {
 		t.Error("a sign-in with no subject must not be admitted")
 	}
+
+	banContract(t, s, admin, ns)
+}
+
+// banContract asserts that a ban holds before its target has ever signed in.
+// Revoking an address with no grant used to change nothing, so the person was
+// admitted by their first sign-in, and the in-memory store bound a revoked
+// grant that had never been claimed. Both stores must refuse them, and an
+// admin must still be able to re-admit them.
+func banContract(t *testing.T, s Access, admin Principal, ns string) {
+	t.Helper()
+
+	// An address that has no grant at all.
+	stranger := Principal{Sub: ns + "-ban-stranger", Email: ns + "-ban-stranger@example.com"}
+	if err := s.Revoke(ctx, admin, stranger.Email); err != nil {
+		t.Fatalf("revoking an address with no grant: %v", err)
+	}
+	if _, ok, err := s.SelfGrant(ctx, stranger); err != nil || ok {
+		t.Errorf("a banned stranger's first sign-in = granted %v, %v; want refused", ok, err)
+	}
+	if _, ok, _ := s.Resolve(ctx, stranger); ok {
+		t.Error("a banned stranger resolves as granted")
+	}
+	g := grantOf(t, s, admin, stranger.Email)
+	if g == nil || !g.Revoked() || g.Principal != "" || g.Tier != TierNone {
+		t.Fatalf("the ban is not recorded as a revoked, unbound grant: %+v", g)
+	}
+	// A second ban is idempotent and does not rewrite when the first happened.
+	first := revocationOf(t, s, admin, stranger.Email)
+	if err := s.Revoke(ctx, admin, stranger.Email); err != nil {
+		t.Fatalf("revoking twice: %v", err)
+	}
+	if again := revocationOf(t, s, admin, stranger.Email); !again.Equal(first) {
+		t.Errorf("a second ban moved the revocation time from %v to %v", first, again)
+	}
+	// Re-admitting is the admin's deliberate act and works on a banned address.
+	if err := s.Grant(ctx, admin, stranger.Email, TierUser); err != nil {
+		t.Fatalf("re-admitting a banned address: %v", err)
+	}
+	if tier, ok, _ := s.SelfGrant(ctx, stranger); !ok || tier != TierUser {
+		t.Errorf("a re-admitted address = %s/%v, want user", tier, ok)
+	}
+
+	// A grant that was given but never claimed, then revoked.
+	unclaimed := Principal{Sub: ns + "-ban-unclaimed", Email: ns + "-ban-unclaimed@example.com"}
+	if err := s.Grant(ctx, admin, unclaimed.Email, TierUser); err != nil {
+		t.Fatalf("Grant: %v", err)
+	}
+	if err := s.Revoke(ctx, admin, unclaimed.Email); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	if _, ok, _ := s.Resolve(ctx, unclaimed); ok {
+		t.Error("a grant revoked before its first sign-in still binds and admits")
+	}
+	if g := grantOf(t, s, admin, unclaimed.Email); g == nil || g.Principal != "" {
+		t.Errorf("a revoked, unclaimed grant was bound to someone: %+v", g)
+	}
 }
 
 // grantOf reads one grant off the admin list.

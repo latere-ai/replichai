@@ -135,6 +135,11 @@ func (s *PGAccess) Grant(ctx context.Context, byAdmin Principal, email string, t
 // Revoke bans an email. Admin only; idempotent. See Access.Revoke for why this
 // records rather than deletes.
 //
+// An address with no grant gets a revoked, unbound row, because the ban has to
+// hold at that person's first sign-in: SelfGrant admits an address that has no
+// row, so a ban that wrote nothing would be undone by the sign-in it was meant
+// to stop. The row carries no one who granted it.
+//
 // The WHERE clause makes a second revocation a no-op rather than a rewrite of
 // when the first happened. The binding is deliberately left in place: it
 // ensures a re-login by the same person resolves to this row instead of
@@ -143,10 +148,18 @@ func (s *PGAccess) Revoke(ctx context.Context, byAdmin Principal, email string) 
 	if err := s.requireAdmin(ctx, byAdmin); err != nil {
 		return err
 	}
+	email = normalizeEmail(email)
+	if email == "" {
+		return ErrNoEmail
+	}
+	now := s.clock()
 	_, err := s.pool.Exec(ctx, `
-		UPDATE access_grants SET revoked_at=$1, revoked_by=$2, tier=$3
-		WHERE email=$4 AND revoked_at IS NULL`,
-		s.clock(), byAdmin.Sub, int16(TierNone), normalizeEmail(email))
+		INSERT INTO access_grants (email, tier, granted_by, granted_at, revoked_at, revoked_by)
+		VALUES ($1,$2,'',$3,$3,$4)
+		ON CONFLICT (email) DO UPDATE SET
+			revoked_at=EXCLUDED.revoked_at, revoked_by=EXCLUDED.revoked_by, tier=EXCLUDED.tier
+		WHERE access_grants.revoked_at IS NULL`,
+		email, int16(TierNone), now, byAdmin.Sub)
 	return err
 }
 

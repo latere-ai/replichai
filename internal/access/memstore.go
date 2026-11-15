@@ -96,7 +96,7 @@ func (s *MemStore) Resolve(_ context.Context, p Principal) (Tier, bool, error) {
 	// separate email_verified flag is required.
 	if p.Email != "" {
 		email := normalizeEmail(p.Email)
-		if g, ok := s.grants[email]; ok && g.Principal == "" {
+		if g, ok := s.grants[email]; ok && g.Principal == "" && !g.Revoked() {
 			g.Principal = p.Sub
 			s.grants[email] = g
 			s.principalEmail[p.Sub] = email
@@ -183,15 +183,24 @@ func (s *MemStore) Revoke(ctx context.Context, byAdmin Principal, email string) 
 		return err
 	}
 	email = normalizeEmail(email)
+	if email == "" {
+		return ErrNoEmail
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	g, ok := s.grants[email]
-	if !ok || g.Revoked() {
-		// Nothing to ban, or already banned: the first revocation is the one
-		// that counts, and a second must not rewrite when it happened.
+	if ok && g.Revoked() {
+		// Already banned: the first revocation is the one that counts, and a
+		// second must not rewrite when it happened.
 		return nil
 	}
+	// An address with no grant gets a revoked, unbound one, so the ban holds
+	// at that person's first sign-in rather than being undone by it.
 	at := s.clock()
+	g.Email = email
+	if !ok {
+		g.GrantedAt = at
+	}
 	g.RevokedAt, g.RevokedBy, g.Tier = &at, byAdmin.Sub, TierNone
 	s.grants[email] = g
 	// The binding stays. It ensures a re-login by the same person resolves to

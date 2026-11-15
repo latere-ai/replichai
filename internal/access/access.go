@@ -111,8 +111,10 @@ type Access interface {
 	// Revoke bans an email, locking its holder out on the next request. It
 	// records the revocation rather than deleting the row (006q): sign-in
 	// self-grants, so a deleted grant would be re-created by the next login and
-	// the ban would last exactly one request. Admin only; idempotent, and a
-	// second revocation does not overwrite the first.
+	// the ban would last exactly one request. An address with no grant gets a
+	// revoked one, so a person banned before their first sign-in is refused
+	// there. Admin only; idempotent, and a second revocation does not
+	// overwrite the first.
 	Revoke(ctx context.Context, byAdmin Principal, email string) error
 	// SelfGrant admits a principal who has just proven their identity, at
 	// TierUser (006q). Only the login calls it: signing in creates the row the
