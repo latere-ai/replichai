@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"slices"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
@@ -37,29 +38,34 @@ func Frozen(ctx context.Context, credits credit.Store, ov access.FreezeOverrides
 	return !active, nil
 }
 
-// isMutating reports whether a method changes state. Reads and CORS preflight
-// pass a frozen account untouched.
-func isMutating(method string) bool {
+// FrozenWrites is every write a frozen account may still make, and the only
+// place the list is kept. A frozen account keeps what it needs to see and take
+// its own work and to pay what it owes: it may read everything it could read
+// (projects, sessions, transcripts, and the project archive download, which is
+// its export), and these two writes. The checkout is its only way to become
+// solvent again, and the payment webhook carries no identity and credits the
+// account back. Any other write is refused with 402 account_frozen.
+var FrozenWrites = []httpapi.Route{
+	{Method: http.MethodPost, Pattern: "/me/credits/checkout"},
+	{Method: http.MethodPost, Pattern: "/stripe/webhook"},
+}
+
+// AllowedWhileFrozen reports whether a request may pass a frozen account: any
+// read, and the writes listed in FrozenWrites. Reads and CORS preflight change
+// no state, so they are allowed by method; a write is allowed only by listing.
+func AllowedWhileFrozen(method, path string) bool {
 	switch method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return false
-	default:
 		return true
 	}
+	return slices.Contains(FrozenWrites, httpapi.Route{Method: method, Pattern: path})
 }
 
-// allowedWhileFrozen reports the two mutating paths a frozen account may still
-// call: the checkout, which is its only way to become solvent again, and the
-// payment webhook, which carries no identity and credits the account back.
-func allowedWhileFrozen(path string) bool {
-	return path == "/me/credits/checkout" || path == "/stripe/webhook"
-}
-
-// FreezeGate refuses a mutating request from a negative-wallet account with
-// 402 account_frozen, at the single point every request passes. A frozen
-// account calling the API directly is therefore refused exactly as the UI is,
-// while reads, including the project archive download, and the top-up that
-// unfreezes it still go through. It composes inside the auth middleware, which
+// FreezeGate refuses a write from a negative-wallet account with 402
+// account_frozen unless AllowedWhileFrozen lists it, at the single point every
+// request passes. A frozen account calling the API directly is therefore
+// refused exactly as the UI is, while reads, including the project archive
+// download, and the top-up that unfreezes it still go through. It composes inside the auth middleware, which
 // has already put the identity on the request.
 //
 // It is a coarse check over a guarantee the ledger also keeps: spend is refused
@@ -73,7 +79,7 @@ func FreezeGate(credits credit.Store, ov access.FreezeOverrides) func(http.Handl
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !isMutating(r.Method) || allowedWhileFrozen(r.URL.Path) {
+			if AllowedWhileFrozen(r.Method, r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}

@@ -115,3 +115,72 @@ func TestFreezeGateThawsAndRespectsAOneShotOverride(t *testing.T) {
 		t.Fatalf("a new debt should re-freeze, a fresh decision")
 	}
 }
+
+// TestAFrozenAccountKeepsReadAndExportAndItsWayToPay checks the whole allowed
+// set. A frozen account may read everything it could read, which includes the
+// project archive download that is its export, and may make exactly the writes
+// FrozenWrites lists, the checkout and the payment webhook. Every other write is
+// refused with 402, whatever its method.
+func TestAFrozenAccountKeepsReadAndExportAndItsWayToPay(t *testing.T) {
+	ctx := context.Background()
+	email := "debtor@example.com"
+	gate, ledger, _ := frozenGate(t)
+	if err := ledger.TopupPaid(ctx, email, 5*credit.Dollar, "pi_1", "a"); err != nil {
+		t.Fatalf("TopupPaid: %v", err)
+	}
+	if err := ledger.RefundPaid(ctx, email, 7*credit.Dollar, "re_1", "a"); err != nil {
+		t.Fatalf("RefundPaid: %v", err)
+	}
+
+	for _, req := range []struct{ method, path string }{
+		{"GET", "/projects"},
+		{"GET", "/projects/p1"},
+		{"GET", "/projects/p1/papers"},
+		{"GET", "/jobs"},
+		{"GET", "/jobs/j1"},
+		{"GET", "/jobs/j1/transcript"},
+		{"GET", "/projects/p1/archive"},
+		{"HEAD", "/projects/p1/archive"},
+		{"OPTIONS", "/projects"},
+		{"POST", "/me/credits/checkout"},
+		{"POST", "/stripe/webhook"},
+	} {
+		if code := driveAs(gate, req.method, req.path, email); code != passthrough {
+			t.Errorf("%s %s while frozen = %d, want it allowed", req.method, req.path, code)
+		}
+	}
+	for _, req := range []struct{ method, path string }{
+		{"POST", "/projects"},
+		{"POST", "/projects/p1/sessions"},
+		{"POST", "/projects/p1/papers"},
+		{"POST", "/jobs/j1/cancel"},
+		{"POST", "/projects/p1/credits/reclaim"},
+		{"POST", "/projects/p1/public"},
+		{"DELETE", "/projects/p1"},
+		{"DELETE", "/jobs/j1"},
+		{"PATCH", "/me/profile"},
+		{"PUT", "/admin/settings"},
+		{"DELETE", "/me/credits/checkout"},
+	} {
+		if code := driveAs(gate, req.method, req.path, email); code != http.StatusPaymentRequired {
+			t.Errorf("%s %s while frozen = %d, want 402 account_frozen", req.method, req.path, code)
+		}
+	}
+}
+
+// TestTheFrozenWritesListIsTheWholeSet pins the list, so adding a write a frozen
+// account may make is a deliberate edit here and not a side effect.
+func TestTheFrozenWritesListIsTheWholeSet(t *testing.T) {
+	want := []httpapi.Route{
+		{Method: "POST", Pattern: "/me/credits/checkout"},
+		{Method: "POST", Pattern: "/stripe/webhook"},
+	}
+	if len(FrozenWrites) != len(want) {
+		t.Fatalf("FrozenWrites = %v, want %v", FrozenWrites, want)
+	}
+	for i := range want {
+		if FrozenWrites[i] != want[i] {
+			t.Fatalf("FrozenWrites[%d] = %v, want %v", i, FrozenWrites[i], want[i])
+		}
+	}
+}
