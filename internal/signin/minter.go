@@ -129,6 +129,7 @@ type keeper struct {
 	minter *Minter
 }
 
+// Forget removes the person's sign-in and drops the minter's cached tokens.
 func (k keeper) Forget(ctx context.Context, subject string) error {
 	return k.minter.Forget(ctx, subject)
 }

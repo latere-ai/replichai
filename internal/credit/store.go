@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/bits"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -359,9 +359,8 @@ func (s *store) RefundRemainder(ctx context.Context, purchaseRef, reversalRef st
 // share is floor(whole * part / total) without overflow. part must not exceed
 // total, so the result never exceeds whole.
 func share(whole, part, total int64) int64 {
-	hi, lo := bits.Mul64(uint64(whole), uint64(part))
-	q, _ := bits.Div64(hi, lo, uint64(total))
-	return int64(q)
+	n := new(big.Int).Mul(big.NewInt(whole), big.NewInt(part))
+	return n.Quo(n, big.NewInt(total)).Int64()
 }
 
 // reverse brings the credit taken back for one purchase up to target(credited),
