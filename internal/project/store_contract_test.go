@@ -923,6 +923,12 @@ func TestMigrationBackfillsPapersFromSessions(t *testing.T) {
 type recordingMover struct {
 	moves []string
 	fail  error
+	// running is the paper key the mover reports a session in flight for.
+	running string
+}
+
+func (m *recordingMover) PaperRunning(_ context.Context, _, key string) (bool, error) {
+	return m.running != "" && m.running == key, nil
 }
 
 func (m *recordingMover) MovePaperSessions(_ context.Context, from, to, key string) error {

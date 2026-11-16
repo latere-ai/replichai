@@ -148,6 +148,25 @@ func (s *PGStore) refuseActive(ctx context.Context, tx pgx.Tx, id string) error 
 	return ErrSessionsActive
 }
 
+// refuseActivePaper returns ErrSessionsActive when one paper of the project has
+// a session in flight. It runs inside the transaction that holds the project's
+// row lock, like refuseActive.
+func (s *PGStore) refuseActivePaper(ctx context.Context, tx pgx.Tx, id, key string) error {
+	if len(s.activePhases) == 0 {
+		return nil
+	}
+	var one int
+	err := tx.QueryRow(ctx, `SELECT 1 FROM jobs WHERE project_id = $1 AND paper_key = $2 AND phase = ANY($3) LIMIT 1`,
+		id, key, s.activePhases).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return ErrSessionsActive
+}
+
 // Trash moves a private project to the trash. The project row is locked and read
 // in the same transaction as the write, so the move is checked against the
 // state it writes over, and a session in flight refuses it. A project already in
@@ -574,6 +593,12 @@ func (s *PGStore) RemovePaper(ctx context.Context, projectID, key string) error 
 // the boundary: this store opens it and passes it to the mover, exactly as the
 // job store passes its own transaction to the credit ledger at settlement.
 //
+// Both project rows are locked in id order, so two moves between the same pair
+// cannot wait on each other, and the transaction refuses when either is public
+// or in the trash or when the paper has a session in flight. A publish, a trash
+// and a session insert each read a project row, so they are serialized with the
+// move rather than landing between a check and the write.
+//
 // The UPDATE is the duplicate check. A destination that already holds the key
 // violates the primary key, and reading that from the error keeps two
 // concurrent moves from both believing they were first, for the same reason
@@ -582,16 +607,25 @@ func (s *PGStore) MovePaper(ctx context.Context, fromID, toID, key string) error
 	if s.sessions == nil {
 		return ErrNoSessionMover
 	}
-	// Both projects are read outside the transaction only to distinguish a
-	// missing project from a missing paper; inside it, the UPDATE remains the
-	// authority on what moved.
-	if _, err := s.Get(ctx, fromID); err != nil {
-		return err
-	}
-	if _, err := s.Get(ctx, toID); err != nil {
-		return err
-	}
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		ids := []string{fromID, toID}
+		slices.Sort(ids)
+		locked := make(map[string]Project, len(ids))
+		for _, id := range ids {
+			p, err := lock(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			locked[id] = p
+		}
+		for _, id := range []string{fromID, toID} {
+			if err := checkMove(locked[id].State()); err != nil {
+				return err
+			}
+		}
+		if err := s.refuseActivePaper(ctx, tx, fromID, key); err != nil {
+			return err
+		}
 		tag, err := tx.Exec(ctx, `
 			UPDATE project_papers SET project_id=$2
 			WHERE project_id=$1 AND paper_key=$3`, fromID, toID, key)

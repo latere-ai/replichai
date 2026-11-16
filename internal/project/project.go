@@ -65,7 +65,7 @@ var (
 	// ErrNotTrashed reports restoring a project that is not in the trash.
 	ErrNotTrashed = errors.New("the project is not in the trash")
 	// ErrSessionsActive reports publishing or trashing a project that has a
-	// session still in flight. The store reads the sessions in the transaction
+	// session still in flight, or moving a paper that has one. The store reads the sessions in the transaction
 	// that locks the project row, so a session cannot start in between.
 	ErrSessionsActive = errors.New("the project has a session that is still running")
 )
@@ -628,6 +628,21 @@ type SessionMover interface {
 	// MovePaperSessions moves every session of one paper to another project. A
 	// paper with no sessions is not an error.
 	MovePaperSessions(ctx context.Context, fromID, toID, key string) error
+	// PaperRunning reports whether one paper has a session in flight in a
+	// project, so a move can refuse while one runs.
+	PaperRunning(ctx context.Context, projectID, key string) (bool, error)
+}
+
+// checkMove decides whether a paper may move into or out of a project in this
+// state: only a private project takes part in a move.
+func checkMove(from State) error {
+	switch from {
+	case StatePublic:
+		return ErrPublic
+	case StateTrashed:
+		return ErrTrashed
+	}
+	return nil
 }
 
 // newID returns a random project identifier.

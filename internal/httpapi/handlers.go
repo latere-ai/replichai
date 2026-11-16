@@ -848,6 +848,14 @@ func (rt *Router) moveProjectPaper(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "paper_not_found")
 	case errors.Is(err, project.ErrPaperExists):
 		writeError(w, http.StatusConflict, "paper_exists")
+	case errors.Is(err, project.ErrPublic):
+		// Published between the check above and the move, which the store saw
+		// under the project's row lock.
+		writeError(w, http.StatusConflict, "project_public")
+	case errors.Is(err, project.ErrTrashed):
+		writeError(w, http.StatusConflict, "project_trashed")
+	case errors.Is(err, project.ErrSessionsActive):
+		writeError(w, http.StatusConflict, "paper_running")
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "move_paper_failed")
 	default:

@@ -22,6 +22,12 @@ import (
 // against with no database. It copies on every boundary, so a caller cannot
 // mutate stored state through a value it holds.
 type MemStore struct {
+	// gate orders the operations that cross into the project store. Enqueue and
+	// ImportLocal read a project while holding mu, and the project store reads
+	// the sessions while holding its own lock when it publishes, trashes or
+	// moves a paper, so each side takes gate before its own lock. Neither side
+	// takes it from inside a call the other makes while holding it.
+	gate  sync.Mutex
 	mu    sync.Mutex
 	jobs  map[string]Job
 	order []string // submission order, so Claim is FIFO
@@ -72,6 +78,12 @@ func (s *MemStore) UseProjects(f ProjectLookup) {
 	defer s.mu.Unlock()
 	s.projects = f
 }
+
+// Gate is the lock a project store takes around a publish, a trash or a move
+// before its own lock, so a session start and any of them are one at a time
+// without the two stores' locks being taken in opposite orders. The project
+// store finds it through the session mover it is given.
+func (s *MemStore) Gate() sync.Locker { return &s.gate }
 
 // checkProject refuses a session for a project that is public or in the trash.
 // The caller holds the lock.
@@ -178,6 +190,8 @@ func (s *MemStore) ImportLocal(ctx context.Context, in Import) (Job, error) {
 		return Job{}, ErrNoPaperKey
 	}
 	now := s.clock()
+	s.gate.Lock()
+	defer s.gate.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -249,6 +263,8 @@ func (s *MemStore) Enqueue(ctx context.Context, sub Submission) (Job, error) {
 		Phase: PhaseSubmitted, CreatedAt: now, UpdatedAt: now,
 		PhaseAt: map[Phase]time.Time{PhaseSubmitted: now},
 	}
+	s.gate.Lock()
+	defer s.gate.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.checkProject(ctx, sub.Project); err != nil {
@@ -349,6 +365,20 @@ func (s *MemStore) ListByProject(_ context.Context, projectID string) ([]Job, er
 		}
 	}
 	return out, nil
+}
+
+// PaperRunning reports whether one paper has a session in flight in a project.
+// It is the in-memory half of the check a paper move makes before it moves the
+// sessions.
+func (s *MemStore) PaperRunning(_ context.Context, projectID, key string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, j := range s.jobs {
+		if j.ProjectID == projectID && j.PaperKey == key && j.Phase.Active() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // DeleteByProject removes every session belonging to a project.

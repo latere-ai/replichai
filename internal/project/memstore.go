@@ -6,6 +6,7 @@ package project
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -28,6 +29,12 @@ type MemStore struct {
 	// active reports whether a project has a session in flight. Nil means the
 	// store does not look.
 	active func(ctx context.Context, projectID string) (bool, error)
+	// gate is the lock the session store hands out for the operations that read
+	// sessions while holding mu (publish, trash, move). It is taken before mu so
+	// a session start, which holds the session store's lock and reads a project
+	// here, cannot wait on this store while this store waits on it. Nil when
+	// the session mover offers none.
+	gate sync.Locker
 	// history is each project's publications and withdrawals, oldest first.
 	history map[string][]Publication
 }
@@ -37,8 +44,27 @@ type MemOption func(*MemStore)
 
 // WithSessions sets the store that holds a paper's sessions, so a move takes
 // them with it (035). Without it MovePaper returns ErrNoSessionMover.
+//
+// A mover that has a Gate() sync.Locker method, as the in-memory job store does,
+// has that lock taken before this store's own around every operation that reads
+// its sessions.
 func WithSessions(m SessionMover) MemOption {
-	return func(s *MemStore) { s.sessions = m }
+	return func(s *MemStore) {
+		s.sessions = m
+		if g, ok := m.(interface{ Gate() sync.Locker }); ok {
+			s.gate = g.Gate()
+		}
+	}
+}
+
+// lockGate takes the session store's gate when there is one and returns what
+// releases it.
+func (s *MemStore) lockGate() func() {
+	if s.gate == nil {
+		return func() {}
+	}
+	s.gate.Lock()
+	return s.gate.Unlock
 }
 
 // WithActiveSessions sets how the store learns that a project has a session in
@@ -127,6 +153,7 @@ func (s *MemStore) refuseActive(ctx context.Context, id string) error {
 
 // Trash moves a private project to the trash.
 func (s *MemStore) Trash(ctx context.Context, id string) error {
+	defer s.lockGate()()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.projects[id]
@@ -205,6 +232,7 @@ func (s *MemStore) SetCreditCap(_ context.Context, id string, cap int64) error {
 // the earlier publications and withdrawals in the history. A public project is
 // refused, and so is one in the trash or with a session in flight.
 func (s *MemStore) SetPublic(ctx context.Context, id string, so SignOff) error {
+	defer s.lockGate()()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.projects[id]
@@ -459,21 +487,39 @@ func (s *MemStore) RemovePaper(_ context.Context, projectID, key string) error {
 }
 
 // MovePaper moves a paper to another project and takes its sessions with it.
-// The paper moves first and is put back if the sessions do not follow, so a
-// failure leaves the state as it started.
+// Both projects must be private, and the paper must have no session in flight,
+// as the Postgres store decides under the two project row locks. The paper moves
+// first and is put back if the sessions do not follow, so a failure leaves the
+// state as it started.
 //
 // It is not atomic and cannot be: this store has no transaction, and the lock
-// is released while the session mover runs. A concurrent reader in that window
-// would see the paper in its new project with its runs still in the old one.
-// That window is unobservable in the uses this store has, tests and a
-// no-database run, and Postgres, which production uses, does the whole move in
-// one transaction.
+// is released while the session mover runs. The session store's gate is held
+// throughout, so no session starts and no project is published or trashed in
+// that window. Postgres, which production uses, does the whole move in one
+// transaction.
 func (s *MemStore) MovePaper(ctx context.Context, fromID, toID, key string) error {
 	if s.sessions == nil {
 		return ErrNoSessionMover
 	}
+	defer s.lockGate()()
 	s.mu.Lock()
-	err := s.detachPaper(fromID, toID, key)
+	err := s.checkMovable(fromID, toID)
+	if err == nil {
+		err = s.hasPaper(fromID, key)
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	running, err := s.sessions.PaperRunning(ctx, fromID, key)
+	if err != nil {
+		return err
+	}
+	if running {
+		return ErrSessionsActive
+	}
+	s.mu.Lock()
+	err = s.detachPaper(fromID, toID, key)
 	s.mu.Unlock()
 	if err != nil {
 		return err
@@ -482,11 +528,42 @@ func (s *MemStore) MovePaper(ctx context.Context, fromID, toID, key string) erro
 		// Put the paper back, so a failed move leaves the two projects as they
 		// were rather than splitting the paper from its runs.
 		s.mu.Lock()
-		_ = s.detachPaper(toID, fromID, key)
+		restoreErr := s.detachPaper(toID, fromID, key)
 		s.mu.Unlock()
+		if restoreErr != nil {
+			return errors.Join(err, restoreErr)
+		}
 		return err
 	}
 	return nil
+}
+
+// checkMovable refuses a move when either project is missing, public or in the
+// trash. The caller holds the lock.
+func (s *MemStore) checkMovable(fromID, toID string) error {
+	from, ok := s.projects[fromID]
+	if !ok {
+		return ErrNotFound
+	}
+	to, ok := s.projects[toID]
+	if !ok {
+		return ErrNotFound
+	}
+	if err := checkMove(from.State()); err != nil {
+		return err
+	}
+	return checkMove(to.State())
+}
+
+// hasPaper reports ErrPaperNotFound when the project does not hold the paper.
+// The caller holds the lock.
+func (s *MemStore) hasPaper(projectID, key string) error {
+	for _, p := range s.papers[projectID] {
+		if p.Key == key {
+			return nil
+		}
+	}
+	return ErrPaperNotFound
 }
 
 // detachPaper moves one paper row between two projects under the held lock. It
