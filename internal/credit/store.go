@@ -68,6 +68,57 @@ type store struct {
 	// processes. Nil means this process's own mutex is the only guard, which is
 	// all a single in-memory ledger needs.
 	lockWallet func(ctx context.Context, key string) (unlock func(), err error)
+	// won records the disputes decided for the merchant, so a dispute whose own
+	// delivery arrives after its win takes nothing.
+	won wonDisputes
+}
+
+// wonDisputes remembers which disputes were decided for the merchant. A win is
+// recorded whether or not the dispute had taken anything yet, which is what
+// makes the order of the two deliveries not matter.
+type wonDisputes interface {
+	markWon(ctx context.Context, disputeRef string) error
+	isWon(ctx context.Context, disputeRef string) (bool, error)
+}
+
+// memWon is wonDisputes for the in-memory ledger.
+type memWon struct {
+	mu  sync.Mutex
+	set map[string]bool
+}
+
+func (m *memWon) markWon(_ context.Context, ref string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.set == nil {
+		m.set = make(map[string]bool)
+	}
+	m.set[ref] = true
+	return nil
+}
+
+func (m *memWon) isWon(_ context.Context, ref string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.set[ref], nil
+}
+
+// pgWon is wonDisputes over the credit_won_disputes table.
+type pgWon struct{ pool *pgxpool.Pool }
+
+func (p pgWon) markWon(ctx context.Context, ref string) error {
+	if _, err := p.pool.Exec(ctx, `INSERT INTO credit_won_disputes (dispute_ref) VALUES ($1) ON CONFLICT DO NOTHING`, ref); err != nil {
+		return fmt.Errorf("record the won dispute %s: %w", ref, err)
+	}
+	return nil
+}
+
+func (p pgWon) isWon(ctx context.Context, ref string) (bool, error) {
+	var won bool
+	if err := p.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM credit_won_disputes WHERE dispute_ref = $1)`, ref).Scan(&won); err != nil {
+		return false, fmt.Errorf("read the won dispute %s: %w", ref, err)
+	}
+	return won, nil
 }
 
 // reverseMu serializes the reversals of purchases inside this process. A
@@ -111,7 +162,7 @@ type MemStore struct {
 func NewMemStore(auth Authority, members Members, opts ...Option) *MemStore {
 	mem := ledger.NewMemStore()
 	s := &MemStore{mem: mem}
-	s.store = store{led: mem, auth: auth, members: members}
+	s.store = store{led: mem, auth: auth, members: members, won: &memWon{}}
 	for _, opt := range opts {
 		opt(&s.store)
 	}
@@ -129,7 +180,7 @@ type PGStore struct {
 func NewPGStore(pool *pgxpool.Pool, auth Authority, members Members, opts ...Option) *PGStore {
 	pg := pgledger.New(pool)
 	s := &PGStore{pg: pg, dbpool: pool}
-	s.store = store{led: pg, auth: auth, members: members, lockWallet: advisoryLock(pool)}
+	s.store = store{led: pg, auth: auth, members: members, lockWallet: advisoryLock(pool), won: pgWon{pool: pool}}
 	for _, opt := range opts {
 		opt(&s.store)
 	}
@@ -347,16 +398,17 @@ func (s *store) RefundShare(ctx context.Context, purchaseRef, reversalRef string
 	if refunded < 0 || charged <= 0 {
 		return Reversal{}, ErrNotPositive
 	}
-	return s.reverse(ctx, purchaseRef, reversalRef, func(credited, taken int64) int64 {
+	return s.reverse(ctx, purchaseRef, reversalRef, "", func(credited, taken int64) int64 {
 		return RefundReversal(credited, charged, refunded, taken)
 	})
 }
 
 // RefundRemainder takes back whatever credit of a purchase has not been taken
-// back yet, which is what a lost dispute does. It returns the credit taken back
-// by this call.
+// back yet, which is what a dispute does. reversalRef is the dispute's id, and
+// a dispute already decided for the merchant takes nothing, whichever of its
+// deliveries arrived first. It returns the credit taken back by this call.
 func (s *store) RefundRemainder(ctx context.Context, purchaseRef, reversalRef string) (Reversal, error) {
-	return s.reverse(ctx, purchaseRef, reversalRef, func(credited, taken int64) int64 { return max(credited-taken, 0) })
+	return s.reverse(ctx, purchaseRef, reversalRef, reversalRef, func(credited, taken int64) int64 { return max(credited-taken, 0) })
 }
 
 // lockReversals serializes the reversals and restorations that land on one
@@ -386,9 +438,10 @@ const labelRestores = "restores"
 // from purchaseRef, for a dispute decided for the merchant. The entry is keyed
 // disputeRef+":won", so a second delivery of the outcome credits nothing more,
 // and it carries the purchase's label so later refunds count the credit as no
-// longer reversed. It returns the credit given back, zero when the dispute took
-// nothing or was already restored. A wallet this leaves at or above zero is
-// reported through the solvency hook.
+// longer reversed. The win is recorded first, so a dispute whose own delivery
+// comes after it takes nothing. It returns the credit given back, zero when the
+// dispute took nothing or was already restored. A wallet this leaves at or above
+// zero is reported through the solvency hook.
 func (s *store) RestoreDispute(ctx context.Context, purchaseRef, disputeRef string) (int64, error) {
 	if strings.TrimSpace(purchaseRef) == "" || strings.TrimSpace(disputeRef) == "" {
 		return 0, ErrNoRef
@@ -406,12 +459,15 @@ func (s *store) RestoreDispute(ctx context.Context, purchaseRef, disputeRef stri
 		return 0, err
 	}
 	defer unlock()
+	if err := s.won.markWon(ctx, disputeRef); err != nil {
+		return 0, err
+	}
 	took, ok, err := s.led.EntryByRef(ctx, disputeRef)
 	if err != nil {
 		return 0, err
 	}
 	if !ok || took.Labels[labelReverses] != purchaseRef || took.Amount >= 0 {
-		return 0, nil // the dispute took nothing from this purchase
+		return 0, nil // the dispute took nothing from this purchase, and now never will
 	}
 	wonRef := disputeRef + ":won"
 	if _, done, err := s.led.EntryByRef(ctx, wonRef); err != nil || done {
@@ -434,11 +490,12 @@ func (s *store) RestoreDispute(ctx context.Context, purchaseRef, disputeRef stri
 
 // reverse takes back owed(credited, taken) of one purchase's credit, where
 // taken is what earlier reversals of the purchase already took back, by posting
-// it under reversalRef. An amount of zero or less posts nothing. The reversals that land on one wallet run
+// it under reversalRef. An amount of zero or less posts nothing, and so does a
+// reversal for disputeRef, when it is set, once that dispute is won. The reversals that land on one wallet run
 // one at a time, so the sum of what a purchase has had reversed is read and
 // extended without another reversal in between, and the balance read before and
 // after the post is the balance this reversal alone moved across zero.
-func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, owed func(credited, taken int64) int64) (Reversal, error) {
+func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef, disputeRef string, owed func(credited, taken int64) int64) (Reversal, error) {
 	if strings.TrimSpace(purchaseRef) == "" || strings.TrimSpace(reversalRef) == "" {
 		return Reversal{}, ErrNoRef
 	}
@@ -455,6 +512,15 @@ func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, ow
 		return Reversal{}, err
 	}
 	defer unlock()
+	if disputeRef != "" {
+		won, err := s.won.isWon(ctx, disputeRef)
+		if err != nil {
+			return Reversal{}, err
+		}
+		if won {
+			return Reversal{}, nil
+		}
+	}
 	taken, err := s.reversed(ctx, orig.Holder, purchaseRef)
 	if err != nil {
 		return Reversal{}, err
@@ -488,15 +554,27 @@ func (s *store) reverse(ctx context.Context, purchaseRef, reversalRef string, ow
 
 // reversed sums the credit already taken back from one purchase, as a positive
 // number, from the reversals labeled with its reference.
+//
+// The statement pages by time alone, and entries written in one transaction
+// share a time, so a page can end partway through the entries of its last
+// time. Each next page starts just after that time instead, which reads the
+// rest of them, and the entries already summed are skipped by id.
 func (s *store) reversed(ctx context.Context, h Holder, purchaseRef string) (int64, error) {
 	var total int64
 	var before time.Time
+	seen := make(map[string]bool)
 	for {
 		page, err := s.led.Entries(ctx, ledger.Holder(h), ledger.Page{Limit: reversalPage, Before: before})
 		if err != nil {
 			return 0, err
 		}
+		fresh := 0
 		for _, e := range page {
+			if seen[e.ID] {
+				continue
+			}
+			seen[e.ID] = true
+			fresh++
 			if e.Labels[labelReverses] == purchaseRef {
 				total -= int64(e.Amount)
 			}
@@ -504,7 +582,10 @@ func (s *store) reversed(ctx context.Context, h Holder, purchaseRef string) (int
 		if len(page) < reversalPage {
 			return total, nil
 		}
-		before = page[len(page)-1].CreatedAt
+		if fresh == 0 {
+			return 0, fmt.Errorf("credit: more than %d statement entries of %s share one time", reversalPage, h)
+		}
+		before = page[len(page)-1].CreatedAt.Add(time.Microsecond)
 	}
 }
 
@@ -547,6 +628,16 @@ func (s *store) Allocate(ctx context.Context, by access.Principal, project, proj
 	if err := s.requireMember(ctx, by, project); err != nil {
 		return err
 	}
+	// The ledger checks the wallet's balance under its own lock, but a reversal
+	// does not take that lock, so an allocation could read the balance before a
+	// reversal and land after the reversal had read the result. Taking the
+	// reversals' lock puts it wholly before or after one, so the reversal sees
+	// whether it moved the wallet below zero and the freeze mail goes out.
+	unlock, err := s.lockReversals(ctx, Wallet(by.Email))
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	return s.move(ctx, Wallet(by.Email), Pot(project), amount, reasonAllocate, by.Email, project, projectName)
 }
 

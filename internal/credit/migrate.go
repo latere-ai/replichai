@@ -31,7 +31,33 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := pgledger.Migrate(ctx, pool); err != nil {
 		return err
 	}
-	return backfill(ctx, pool)
+	if err := backfill(ctx, pool); err != nil {
+		return err
+	}
+	return migrateWonDisputes(ctx, pool)
+}
+
+// wonDisputesLock serializes creating the won-disputes table across the pods of
+// a rolling deploy, since two concurrent CREATE TABLE IF NOT EXISTS can still
+// collide on the catalog.
+const wonDisputesLock int64 = 0x1ED6E6
+
+// migrateWonDisputes creates the table that records disputes decided for the
+// merchant (see RestoreDispute).
+func migrateWonDisputes(ctx context.Context, pool *pgxpool.Pool) error {
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, wonDisputesLock); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			CREATE TABLE IF NOT EXISTS credit_won_disputes (
+				dispute_ref text PRIMARY KEY,
+				won_at timestamptz NOT NULL DEFAULT now()
+			)`); err != nil {
+			return fmt.Errorf("create credit_won_disputes: %w", err)
+		}
+		return nil
+	})
 }
 
 // backfillLock serializes the copy the way the schema migrations serialize

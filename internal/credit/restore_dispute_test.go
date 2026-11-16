@@ -82,3 +82,34 @@ func TestRestoringADisputeThatTookNothingPostsNothing(t *testing.T) {
 		})
 	}
 }
+
+// TestAWonDisputeBeforeItsDisputeKeepsTheCredit checks that a dispute whose win
+// is delivered before the dispute itself takes nothing when it arrives, and
+// that another dispute of the same purchase still takes what is left.
+func TestAWonDisputeBeforeItsDisputeKeepsTheCredit(t *testing.T) {
+	for _, tc := range storeMakers() {
+		t.Run(tc.name, func(t *testing.T) {
+			s, done := tc.make(t)
+			defer done()
+			ctx := context.Background()
+			w := Wallet(lead.Email)
+			if err := s.TopupPaid(ctx, lead.Email, 20*Dollar, "pi_o", "a"); err != nil {
+				t.Fatal(err)
+			}
+			if back, err := s.RestoreDispute(ctx, "pi_o", "dp_o"); err != nil || back != 0 {
+				t.Fatalf("win before its dispute restored %d, %v; want 0", back, err)
+			}
+			rev, err := s.RefundRemainder(ctx, "pi_o", "dp_o")
+			if err != nil || rev.Took != 0 || rev.Froze {
+				t.Fatalf("the won dispute's own delivery took %+v, %v; want nothing", rev, err)
+			}
+			if bal, _ := s.Balance(ctx, w); bal != 20*Dollar {
+				t.Fatalf("balance = %d, want the $20 kept", bal)
+			}
+			rev, err = s.RefundRemainder(ctx, "pi_o", "dp_other")
+			if err != nil || rev.Took != 20*Dollar {
+				t.Fatalf("another dispute took %d, %v; want $20", rev.Took, err)
+			}
+		})
+	}
+}
