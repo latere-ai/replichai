@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.41.0 - 2026-11-16
+
 ### Fixed
 
 - **A dispute that starts as an inquiry takes back the credit once it becomes
