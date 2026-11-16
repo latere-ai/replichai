@@ -21,8 +21,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"time"
+
+	"latere.ai/x/pkg/statemachine"
 
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/managed"
@@ -68,7 +69,7 @@ var (
 	// ErrIllegalTransition reports a phase change the state machine forbids. The
 	// transition function is the only writer of phase and refuses the change,
 	// which is what makes phase a state machine rather than a mutable column.
-	ErrIllegalTransition = errors.New("illegal job phase transition")
+	ErrIllegalTransition = statemachine.ErrIllegalTransition
 	// ErrEmptyRef reports enqueuing with no paper or experiment reference.
 	ErrEmptyRef = errors.New("job needs a paper or experiment reference")
 	// ErrNoPaperKey reports an audit session with no paper key. The key is
@@ -323,37 +324,33 @@ func (j Job) ManagedSessionRef() (managed.SessionRef, bool, error) {
 
 // Active reports whether the phase is one from which work continues, which
 // are the phases a failure may interrupt.
-func (p Phase) Active() bool { return len(transitions[p]) > 0 }
+func (p Phase) Active() bool { return len(Phases.Next(p)) > 0 }
 
 // Terminal reports whether no further transition is possible. A phase the table
 // does not list is not terminal.
-func (p Phase) Terminal() bool {
-	next, ok := transitions[p]
-	return ok && len(next) == 0
-}
+func (p Phase) Terminal() bool { return Phases.Terminal(p) }
 
-// transitions is the whole state machine: the legal successors of each phase.
+// Phases is the whole state machine: the legal successors of each phase.
 // Failed is reachable from every active phase; done is reachable only from
-// publishing.
-var transitions = map[Phase][]Phase{
+// publishing. Every write of a phase consults it.
+var Phases = statemachine.Must(statemachine.New("Job", []Phase{PhaseSubmitted}, map[Phase][]Phase{
 	PhaseSubmitted:  {PhaseResolving, PhaseFailed},
 	PhaseResolving:  {PhaseRunning, PhaseFailed},
 	PhaseRunning:    {PhasePublishing, PhaseFailed},
 	PhasePublishing: {PhaseDone, PhaseFailed},
 	PhaseDone:       nil,
 	PhaseFailed:     nil,
-}
+}))
 
 // ActivePhases lists the phases a session can still leave, sorted by name, for
 // a query that has to match every session still in flight.
 func ActivePhases() []Phase {
 	var out []Phase
-	for p, next := range transitions {
-		if len(next) > 0 {
+	for _, p := range Phases.States() {
+		if !Phases.Terminal(p) {
 			out = append(out, p)
 		}
 	}
-	slices.Sort(out)
 	return out
 }
 
@@ -372,38 +369,15 @@ func activeNames() []string { return phaseNames(ActivePhases()) }
 // sourcesOf lists the phases from which the table allows a move to the target,
 // sorted by name. A guarded UPDATE matches on it, so the SQL never spells a
 // phase list of its own.
-func sourcesOf(to Phase) []Phase {
-	var out []Phase
-	for from, next := range transitions {
-		if slices.Contains(next, to) {
-			out = append(out, from)
-		}
-	}
-	slices.Sort(out)
-	return out
-}
+func sourcesOf(to Phase) []Phase { return Phases.Sources(to) }
 
 // States lists every phase in the table, sorted by name.
-func States() []Phase {
-	out := make([]Phase, 0, len(transitions))
-	for p := range transitions {
-		out = append(out, p)
-	}
-	slices.Sort(out)
-	return out
-}
+func States() []Phase { return Phases.States() }
 
 // CanTransition reports whether a job may move from one phase to another.
-// Every store's Advance consults it, so no store can permit a transition the
-// machine forbids.
-func CanTransition(from, to Phase) bool {
-	return slices.Contains(transitions[from], to)
-}
-
-// illegal builds a descriptive ErrIllegalTransition for a refused change.
-func illegal(from, to Phase) error {
-	return fmt.Errorf("%w: %s -> %s", ErrIllegalTransition, from, to)
-}
+// Every store's Advance consults the table, so no store can permit a
+// transition the machine forbids.
+func CanTransition(from, to Phase) bool { return Phases.Can(from, to) }
 
 // newID returns a random job identifier.
 func newID() string {

@@ -445,7 +445,7 @@ func checkHolder(ctx context.Context, q querier, id string) error {
 }
 
 // Advance moves a job through the one transition function under a row lock,
-// refusing anything CanTransition forbids, and refusing a driver that does not
+// refusing anything Phases forbids, and refusing a driver that does not
 // hold the session's lease.
 func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(*Job)) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -456,8 +456,8 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 		if err := checkHolder(ctx, tx, id); err != nil {
 			return err
 		}
-		if !CanTransition(j.Phase, to) {
-			return illegal(j.Phase, to)
+		if err := Phases.Check(j.Phase, to); err != nil {
+			return err
 		}
 		if mutate != nil {
 			mutate(&j)

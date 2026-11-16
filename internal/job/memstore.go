@@ -560,8 +560,8 @@ func (s *MemStore) Advance(ctx context.Context, id string, to Phase, mutate func
 	if err := s.checkHolder(ctx, id); err != nil {
 		return err
 	}
-	if !CanTransition(j.Phase, to) {
-		return illegal(j.Phase, to)
+	if err := Phases.Check(j.Phase, to); err != nil {
+		return err
 	}
 	s.transition(&j, to, mutate)
 	s.jobs[id] = j

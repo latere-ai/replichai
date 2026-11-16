@@ -67,9 +67,8 @@ func isolatedPG(t *testing.T) *pgxpool.Pool {
 
 func TestTerminalPhasesMapToNil(t *testing.T) {
 	for _, p := range []Phase{PhaseDone, PhaseFailed} {
-		next, ok := transitions[p]
-		if !ok || next != nil {
-			t.Errorf("transitions[%s] = %v (listed %v), want nil", p, next, ok)
+		if !Phases.Terminal(p) || len(Phases.Next(p)) != 0 {
+			t.Errorf("%s has successors %v", p, Phases.Next(p))
 		}
 		if !p.Terminal() || p.Active() {
 			t.Errorf("%s: Terminal=%v Active=%v", p, p.Terminal(), p.Active())

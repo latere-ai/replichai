@@ -22,11 +22,7 @@ var phaseTSPath = filepath.Join("..", "..", "frontend", "src", "generated", "job
 // reads, so a phase the server adds is known to the browser by name and by
 // whether it is final, rather than shown as running.
 func renderPhaseTS() string {
-	phases := make([]Phase, 0, len(transitions))
-	for p := range transitions {
-		phases = append(phases, p)
-	}
-	slices.Sort(phases)
+	phases := Phases.States()
 	quote := func(ps []Phase) string {
 		q := make([]string, len(ps))
 		for i, p := range ps {
@@ -36,7 +32,7 @@ func renderPhaseTS() string {
 	}
 	var terminal []Phase
 	for _, p := range phases {
-		if len(transitions[p]) == 0 {
+		if Phases.Terminal(p) {
 			terminal = append(terminal, p)
 		}
 	}
@@ -50,8 +46,7 @@ func renderPhaseTS() string {
 	b.WriteString("// NEXT is every phase's legal successors. A final phase has none.\n")
 	b.WriteString("export const NEXT: Readonly<Record<Phase, readonly Phase[]>> = {\n")
 	for _, p := range phases {
-		next := slices.Clone(transitions[p])
-		slices.Sort(next)
+		next := Phases.Next(p)
 		fmt.Fprintf(&b, "  %s: [%s],\n", p, quote(next))
 	}
 	b.WriteString("}\n\n")
