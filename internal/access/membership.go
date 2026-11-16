@@ -6,8 +6,21 @@ package access
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"sync"
+)
+
+// Errors a membership store returns beyond the ones the package declares.
+var (
+	// ErrLastLead reports removing or demoting a project's only lead. A project
+	// with no lead has nobody who may change its membership or reclaim its
+	// credits, and the owner is always one of its leads.
+	ErrLastLead = errors.New("a project must keep at least one lead")
+	// ErrSeedConflict reports seeding a project's owner onto a membership the
+	// owner cannot take: the address belongs to a row bound to another
+	// principal, or the owner's new address is already a row of the project.
+	ErrSeedConflict = errors.New("the owner's membership conflicts with another row")
 )
 
 // member is one project-membership row.
@@ -47,23 +60,38 @@ func (m *MemMembership) SeedLead(_ context.Context, project string, lead Princip
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.put(project, email, RoleLead)
 	if lead.Sub == "" {
+		m.put(project, email, RoleLead)
 		return nil
 	}
-	// Bind, unless this project already holds a row for someone else on this
-	// email or another row for this principal, which are the rules Role and
-	// BindAll follow.
+	// The rows this seed could collide with: the one under the owner's current
+	// address, and the one the owner already holds under another address.
+	target, hasTarget := m.members[project][email]
+	mine, held := m.bound[project][lead.Sub]
+	switch {
+	case hasTarget && target.Principal != "" && target.Principal != lead.Sub:
+		return ErrSeedConflict // the address is bound to somebody else
+	case hasTarget && held && mine != email:
+		return ErrSeedConflict // two rows would carry the owner
+	case !hasTarget && held:
+		// The owner's address changed: the row they hold follows it.
+		row := m.members[project][mine]
+		delete(m.members[project], mine)
+		row.Email, row.Role = email, RoleLead
+		m.members[project][email] = row
+		m.bound[project][lead.Sub] = email
+		return nil
+	}
+	m.put(project, email, RoleLead)
 	row := m.members[project][email]
-	if _, held := m.bound[project][lead.Sub]; held || row.Principal != "" {
-		return nil
+	if row.Principal == "" {
+		row.Principal = lead.Sub
+		m.members[project][email] = row
+		if m.bound[project] == nil {
+			m.bound[project] = map[string]string{}
+		}
+		m.bound[project][lead.Sub] = email
 	}
-	row.Principal = lead.Sub
-	m.members[project][email] = row
-	if m.bound[project] == nil {
-		m.bound[project] = map[string]string{}
-	}
-	m.bound[project][lead.Sub] = email
 	return nil
 }
 
@@ -78,8 +106,22 @@ func (m *MemMembership) Add(ctx context.Context, byLead Principal, project, emai
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if row, ok := m.members[project][email]; ok && row.Role == RoleLead && r != RoleLead && m.leads(project) == 1 {
+		return ErrLastLead
+	}
 	m.put(project, email, r)
 	return nil
+}
+
+// leads counts a project's lead rows. The caller holds the lock.
+func (m *MemMembership) leads(project string) int {
+	n := 0
+	for _, row := range m.members[project] {
+		if row.Role == RoleLead {
+			n++
+		}
+	}
+	return n
 }
 
 // Remove drops a member by email. The caller must be the project's lead.
@@ -91,6 +133,9 @@ func (m *MemMembership) Remove(ctx context.Context, byLead Principal, project, e
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if row, ok := m.members[project][email]; ok {
+		if row.Role == RoleLead && m.leads(project) == 1 {
+			return ErrLastLead
+		}
 		if row.Principal != "" {
 			delete(m.bound[project], row.Principal)
 		}

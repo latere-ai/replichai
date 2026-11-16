@@ -25,6 +25,11 @@ type MemStore struct {
 	// sessions moves the runs of a paper that is being moved (035). Nil means
 	// MovePaper refuses rather than stranding them.
 	sessions SessionMover
+	// active reports whether a project has a session in flight. Nil means the
+	// store does not look.
+	active func(ctx context.Context, projectID string) (bool, error)
+	// history is each project's publications and withdrawals, oldest first.
+	history map[string][]Publication
 }
 
 // MemOption configures a MemStore.
@@ -36,9 +41,16 @@ func WithSessions(m SessionMover) MemOption {
 	return func(s *MemStore) { s.sessions = m }
 }
 
+// WithActiveSessions sets how the store learns that a project has a session in
+// flight. Publish and trash then refuse with ErrSessionsActive while it reports
+// one. The sessions are in another package, so the caller supplies the read.
+func WithActiveSessions(f func(ctx context.Context, projectID string) (bool, error)) MemOption {
+	return func(s *MemStore) { s.active = f }
+}
+
 // NewMemStore builds an empty in-memory store.
 func NewMemStore(opts ...MemOption) *MemStore {
-	s := &MemStore{projects: map[string]Project{}, papers: map[string][]Paper{}, clock: time.Now}
+	s := &MemStore{projects: map[string]Project{}, papers: map[string][]Paper{}, history: map[string][]Publication{}, clock: time.Now}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -97,29 +109,53 @@ func (s *MemStore) ListTrashed(_ context.Context, owner string) ([]Project, erro
 	return out, nil
 }
 
+// refuseActive returns ErrSessionsActive when the project has a session in
+// flight. The caller holds the lock.
+func (s *MemStore) refuseActive(ctx context.Context, id string) error {
+	if s.active == nil {
+		return nil
+	}
+	busy, err := s.active(ctx, id)
+	if err != nil {
+		return err
+	}
+	if busy {
+		return ErrSessionsActive
+	}
+	return nil
+}
+
 // Trash moves a project to the trash, keeping the first timestamp.
-func (s *MemStore) Trash(_ context.Context, id string) error {
+func (s *MemStore) Trash(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.projects[id]
 	if !ok {
 		return ErrNotFound
 	}
-	if !p.Trashed() {
-		now := s.clock()
-		p.DeletedAt = &now
-		s.projects[id] = p
+	done, err := checkTrash(p.State())
+	if done || err != nil {
+		return err
 	}
+	if err := s.refuseActive(ctx, id); err != nil {
+		return err
+	}
+	now := s.clock()
+	p.DeletedAt = &now
+	s.projects[id] = p
 	return nil
 }
 
-// Restore takes a project back out of the trash.
+// Restore takes a project back out of the trash. Any other project is refused.
 func (s *MemStore) Restore(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.projects[id]
 	if !ok {
 		return ErrNotFound
+	}
+	if err := checkRestore(p); err != nil {
+		return err
 	}
 	p.DeletedAt = nil
 	s.projects[id] = p
@@ -165,17 +201,21 @@ func (s *MemStore) SetCreditCap(_ context.Context, id string, cap int64) error {
 	return nil
 }
 
-// SetPublic marks a private project public and records the sign-off, leaving any
-// earlier withdrawal record in place as history. A public project is refused.
-func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
+// SetPublic marks a private project public and records the sign-off, leaving
+// the earlier publications and withdrawals in the history. A public project is
+// refused, and so is one in the trash or with a session in flight.
+func (s *MemStore) SetPublic(ctx context.Context, id string, so SignOff) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.projects[id]
 	if !ok {
 		return ErrNotFound
 	}
-	if p.Visibility == VisibilityPublic {
-		return ErrAlreadyPublic
+	if err := checkPublish(p.State()); err != nil {
+		return err
+	}
+	if err := s.refuseActive(ctx, id); err != nil {
+		return err
 	}
 	now := s.clock()
 	p.Visibility = VisibilityPublic
@@ -188,12 +228,18 @@ func (s *MemStore) SetPublic(_ context.Context, id string, so SignOff) error {
 	p.SignedOffORCID = so.ORCID
 	p.SignedOffScholar = so.Scholar
 	p.SignedOffEmail = so.Email
+	p.SignedOffHandle = so.Handle
 	s.projects[id] = p
+	s.history[id] = append(s.history[id], Publication{
+		Kind: PublicationPublished, At: now, By: so.By, AttestationVersion: so.AttestationVersion,
+		Name: so.Name, Institution: so.Institution, Contact: so.Contact, ORCID: so.ORCID,
+		Scholar: so.Scholar, Email: so.Email, Handle: so.Handle,
+	})
 	return nil
 }
 
 // SetPrivate withdraws a publication, recording the retraction beside the
-// sign-off it ends. A project that is already private is left exactly as it is.
+// sign-off it ends. A project that is not public is refused.
 func (s *MemStore) SetPrivate(_ context.Context, id string, w Withdrawal) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -201,8 +247,8 @@ func (s *MemStore) SetPrivate(_ context.Context, id string, w Withdrawal) error 
 	if !ok {
 		return ErrNotFound
 	}
-	if p.Visibility != VisibilityPublic {
-		return nil
+	if err := checkWithdraw(p.State()); err != nil {
+		return err
 	}
 	now := s.clock()
 	p.Visibility = VisibilityPrivate
@@ -210,7 +256,18 @@ func (s *MemStore) SetPrivate(_ context.Context, id string, w Withdrawal) error 
 	p.WithdrawnBy = w.By
 	p.WithdrawnReason = w.Reason
 	s.projects[id] = p
+	s.history[id] = append(s.history[id], Publication{Kind: PublicationWithdrawn, At: now, By: w.By, Reason: w.Reason})
 	return nil
+}
+
+// Publications returns a project's publication history, oldest first.
+func (s *MemStore) Publications(_ context.Context, id string) ([]Publication, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.projects[id]; !ok {
+		return nil, ErrNotFound
+	}
+	return slices.Clone(s.history[id]), nil
 }
 
 // ListPublic returns every public project, newest first.
@@ -264,6 +321,7 @@ func (s *MemStore) Delete(_ context.Context, id string) error {
 	defer s.mu.Unlock()
 	delete(s.projects, id)
 	delete(s.papers, id)
+	delete(s.history, id)
 	for i, oid := range s.order {
 		if oid == id {
 			s.order = append(s.order[:i], s.order[i+1:]...)
@@ -349,6 +407,20 @@ func (s *MemStore) EnrichPaper(_ context.Context, projectID, key, title string, 
 		}
 	}
 	return false, nil
+}
+
+// RecordPaperMiss stamps a paper whose lookup found nothing, ignoring a missing
+// project or paper.
+func (s *MemStore) RecordPaperMiss(_ context.Context, projectID, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, p := range s.papers[projectID] {
+		if p.Key == key {
+			now := s.clock()
+			s.papers[projectID][i].DetailsMissedAt = &now
+		}
+	}
+	return nil
 }
 
 // EditPaper records a correction, and refuses one aimed at a paper that is not

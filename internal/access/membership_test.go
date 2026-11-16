@@ -5,6 +5,7 @@ package access
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -181,6 +182,67 @@ func bindingContract(t *testing.T, m Membership, project string) {
 	}
 	if n, _ := m.BindAll(ctx, collab); n != 1 {
 		t.Errorf("a re-invited member must bind again on their next sign-in, bound %d", n)
+	}
+
+	ownerRowContract(t, m, project, lead, collab)
+}
+
+// ownerRowContract holds what both stores say about the lead row of a project's
+// owner: it cannot be removed or demoted while it is the only lead, seeding the
+// owner onto an address another principal holds is refused, and an owner whose
+// address changed keeps one row, under the new address.
+func ownerRowContract(t *testing.T, m Membership, project string, lead, collab Principal) {
+	t.Helper()
+	leadEmail := normalizeEmail(lead.Email)
+
+	if err := m.Remove(ctx, lead, project, lead.Email); !errors.Is(err, ErrLastLead) {
+		t.Errorf("removing the only lead = %v, want ErrLastLead", err)
+	}
+	if err := m.Add(ctx, lead, project, lead.Email, RoleCollaborator); !errors.Is(err, ErrLastLead) {
+		t.Errorf("demoting the only lead = %v, want ErrLastLead", err)
+	}
+	if role, ok, _ := m.Role(ctx, lead, project); !ok || role != RoleLead {
+		t.Errorf("a refused change touched the owner's row: %s/%v", role, ok)
+	}
+
+	// An address another principal holds is not the owner's to take.
+	stranger := Principal{Sub: project + "-stranger", Email: collab.Email}
+	if err := m.SeedLead(ctx, project, stranger); !errors.Is(err, ErrSeedConflict) {
+		t.Errorf("seeding a lead onto a bound address = %v, want ErrSeedConflict", err)
+	}
+	if role, _, _ := m.Role(ctx, collab, project); role != RoleCollaborator {
+		t.Errorf("a refused seed changed the collaborator's role to %s", role)
+	}
+
+	// The owner's address changed at the identity provider: their row follows
+	// it, and the project still has one owner row.
+	moved := Principal{Sub: lead.Sub, Email: "moved-" + project + "@example.com"}
+	if err := m.SeedLead(ctx, project, moved); err != nil {
+		t.Fatalf("seeding an owner whose address changed: %v", err)
+	}
+	var emails []string
+	for _, mem := range mustList(t, m, project) {
+		emails = append(emails, mem.Email)
+		if mem.Role == RoleLead && mem.Email != normalizeEmail(moved.Email) {
+			t.Errorf("the owner's old address %s is still a lead row", mem.Email)
+		}
+	}
+	if slices.Contains(emails, leadEmail) {
+		t.Errorf("the owner's old address is still listed: %v", emails)
+	}
+	if role, ok, _ := m.Role(ctx, moved, project); !ok || role != RoleLead {
+		t.Errorf("the owner lost the lead role after an address change: %s/%v", role, ok)
+	}
+
+	// A second lead makes the first removable, and the last one is protected again.
+	if err := m.Add(ctx, moved, project, collab.Email, RoleLead); err != nil {
+		t.Fatalf("promoting a second lead: %v", err)
+	}
+	if err := m.Add(ctx, moved, project, moved.Email, RoleCollaborator); err != nil {
+		t.Errorf("demoting one of two leads: %v", err)
+	}
+	if err := m.Remove(ctx, collab, project, collab.Email); !errors.Is(err, ErrLastLead) {
+		t.Errorf("removing the remaining lead = %v, want ErrLastLead", err)
 	}
 }
 

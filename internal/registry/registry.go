@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/publish"
@@ -195,6 +196,10 @@ func (r *Registry) CanonicalSlug(ctx context.Context, id paper.Identity) (string
 	return recs[0].manifest.Paper.Slug, true, nil
 }
 
+// widths are the suffix lengths a name allocation tries, in order: five draws of
+// four characters, then five of six.
+var widths = []int{4, 4, 4, 4, 4, 6, 6, 6, 6, 6}
+
 // AllocateName returns "<canonical-slug>-<suffix>" for the next reproduction of
 // an identity. The slug is the canonical slug, or the paper's own slug for a
 // first reproduction; the suffix is checked against every existing repository
@@ -222,7 +227,7 @@ func (r *Registry) AllocateName(ctx context.Context, id paper.Identity) (string,
 		taken[n] = true
 	}
 
-	for _, width := range []int{4, 4, 4, 4, 4, 6, 6, 6, 6, 6} {
+	for _, width := range widths {
 		suffix, err := r.suffix(width)
 		if err != nil {
 			return "", err
@@ -231,6 +236,55 @@ func (r *Registry) AllocateName(ctx context.Context, id paper.Identity) (string,
 		if !taken[name] {
 			return name, nil
 		}
+	}
+	return "", fmt.Errorf("could not allocate a free name for %q after widening", slug)
+}
+
+// AllocateAndCreate picks a name for the next reproduction of an identity and
+// creates the repository under it, so creating is the check. The names the
+// snapshot lists are skipped without a call, but the snapshot can be a minute
+// old and another session may have taken a name since; create is what decides.
+// When create reports that the repository already exists (github.ErrRepoExists),
+// the name belongs to somebody else, and a new suffix is drawn. The repository
+// that comes back is therefore always one this call created, never one that
+// was already there.
+func (r *Registry) AllocateAndCreate(ctx context.Context, id paper.Identity, create func(ctx context.Context, name string) error) (string, error) {
+	slug, ok, err := r.CanonicalSlug(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		slug = id.Slug
+	}
+	if slug == "" {
+		return "", fmt.Errorf("cannot allocate a name for an identity with no slug")
+	}
+	snap, err := r.load(ctx)
+	if err != nil {
+		return "", err
+	}
+	taken := make(map[string]bool, len(snap.names))
+	for _, n := range snap.names {
+		taken[n] = true
+	}
+	for _, width := range widths {
+		suffix, err := r.suffix(width)
+		if err != nil {
+			return "", err
+		}
+		name := slug + "-" + suffix
+		if taken[name] {
+			continue
+		}
+		err = create(ctx, name)
+		if errors.Is(err, github.ErrRepoExists) {
+			taken[name] = true
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return name, nil
 	}
 	return "", fmt.Errorf("could not allocate a free name for %q after widening", slug)
 }

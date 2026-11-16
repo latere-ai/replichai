@@ -19,6 +19,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
@@ -48,7 +49,145 @@ var (
 	ErrAlreadyPublic = errors.New("the project is already public")
 	// ErrNoOwner reports creating a project with no owning principal.
 	ErrNoOwner = errors.New("a project needs an owner")
+	// ErrNotPublic reports withdrawing a project that is not public. A
+	// withdrawal ends a publication, so a project that has none has nothing to
+	// end, and recording one would rewrite the moment the last one ended.
+	ErrNotPublic = errors.New("the project is not public")
+	// ErrTrashed reports publishing or withdrawing a project that is in the
+	// trash. Nothing about a trashed project changes until it is restored.
+	ErrTrashed = errors.New("the project is in the trash")
+	// ErrNotTrashed reports restoring a project that is not in the trash.
+	ErrNotTrashed = errors.New("the project is not in the trash")
+	// ErrSessionsActive reports publishing or trashing a project that has a
+	// session still in flight. The store reads the sessions in the transaction
+	// that locks the project row, so a session cannot start in between.
+	ErrSessionsActive = errors.New("the project has a session that is still running")
 )
+
+// State is where a project stands in its publication: private to its owner and
+// members, open in the public zone, or in the trash. It is derived from the
+// visibility and deleted_at columns, and the trash takes precedence: a trashed
+// project is trashed whatever its visibility says, and restoring it returns the
+// visibility it carried.
+type State string
+
+// The states a project may be in.
+const (
+	StatePrivate State = "private"
+	StatePublic  State = "public"
+	StateTrashed State = "trashed"
+)
+
+// publicationTransitions is the whole machine: the states a project may move to
+// from each state. Publishing is private to public, a withdrawal is public to
+// private, trashing leaves either, and restoring returns the state the
+// visibility column holds. Every write of the visibility or the trash goes
+// through it, in the transaction that makes the write.
+var publicationTransitions = map[State][]State{
+	StatePrivate: {StatePublic, StateTrashed},
+	StatePublic:  {StatePrivate, StateTrashed},
+	StateTrashed: {StatePrivate, StatePublic},
+}
+
+// State is the project's publication state.
+func (p Project) State() State {
+	switch {
+	case p.Trashed():
+		return StateTrashed
+	case p.Visibility == VisibilityPublic:
+		return StatePublic
+	default:
+		return StatePrivate
+	}
+}
+
+// restoredState is the state a project returns to when it leaves the trash.
+func (p Project) restoredState() State {
+	if p.Visibility == VisibilityPublic {
+		return StatePublic
+	}
+	return StatePrivate
+}
+
+// step checks one move against publicationTransitions and names the refusal. It
+// is the one place either store decides whether a write may happen, so the two
+// cannot disagree.
+func step(from, to State) error {
+	if slices.Contains(publicationTransitions[from], to) {
+		return nil
+	}
+	switch to {
+	case StatePublic:
+		return ErrAlreadyPublic
+	case StatePrivate:
+		return ErrNotPublic
+	}
+	return fmt.Errorf("project: no move from %s to %s", from, to)
+}
+
+// checkPublish decides whether a project in this state may be published. A
+// trashed project is refused before the table is read, because the table's
+// move out of the trash is a restore, not a publication.
+func checkPublish(from State) error {
+	if from == StateTrashed {
+		return ErrTrashed
+	}
+	return step(from, StatePublic)
+}
+
+// checkWithdraw decides whether a project in this state may be withdrawn.
+func checkWithdraw(from State) error {
+	if from == StateTrashed {
+		return ErrTrashed
+	}
+	return step(from, StatePrivate)
+}
+
+// checkTrash decides whether a project may be trashed. A project already in the
+// trash reports done, because trashing it again changes nothing.
+func checkTrash(from State) (done bool, err error) {
+	if from == StateTrashed {
+		return true, nil
+	}
+	return false, step(from, StateTrashed)
+}
+
+// checkRestore decides whether a project may leave the trash.
+func checkRestore(p Project) error {
+	if p.State() != StateTrashed {
+		return ErrNotTrashed
+	}
+	return step(StateTrashed, p.restoredState())
+}
+
+// PublicationKind says which side of a publication a record is.
+type PublicationKind string
+
+// The two events a publication history holds.
+const (
+	PublicationPublished PublicationKind = "published"
+	PublicationWithdrawn PublicationKind = "withdrawn"
+)
+
+// Publication is one entry of a project's publication history: a publication
+// with the sign-off it was made under, or a withdrawal with who ended it and
+// why. The project row carries only the latest of each; this keeps all of them.
+type Publication struct {
+	Kind PublicationKind `json:"kind"`
+	At   time.Time       `json:"at"`
+	By   string          `json:"by,omitempty"`
+	// Reason is the owner's note on a withdrawal. Empty on a publication.
+	Reason string `json:"reason,omitempty"`
+	// The sign-off of a publication; empty on a withdrawal.
+	AttestationVersion string `json:"attestation_version,omitempty"`
+	Name               string `json:"name,omitempty"`
+	Institution        string `json:"institution,omitempty"`
+	Contact            string `json:"contact,omitempty"`
+	ORCID              string `json:"orcid,omitempty"`
+	Scholar            string `json:"scholar,omitempty"`
+	Email              string `json:"email,omitempty"`
+	Handle             string `json:"handle,omitempty"`
+}
 
 // Project is the durable record of one research container.
 type Project struct {
@@ -82,6 +221,12 @@ type Project struct {
 	SignedOffContact     string `json:"signed_off_contact,omitempty"` // published for inquiries
 	SignedOffORCID       string `json:"signed_off_orcid,omitempty"`
 	SignedOffScholar     string `json:"signed_off_scholar,omitempty"`
+	// SignedOffHandle is the signer's profile handle as it was when they signed,
+	// which is where the attestation's signer name links. It is a snapshot like
+	// the rest of the sign-off, so a profile made private later does not change
+	// what an already published attestation links to. Empty on a sign-off that
+	// predates it, and on a deployment with no profiles.
+	SignedOffHandle string `json:"signed_off_handle,omitempty"`
 	// SignedOffEmail identifies the signer, stored already redacted
 	// (h***n@example.org). It is derived server-side from the session's verified
 	// email and never taken from a request body, so a published identity cannot
@@ -160,6 +305,7 @@ type SignOff struct {
 	ORCID              string
 	Scholar            string
 	Email              string // already redacted; see Project.SignedOffEmail
+	Handle             string // the signer's profile handle; see Project.SignedOffHandle
 }
 
 // Paper is one paper a project holds (012).
@@ -188,6 +334,22 @@ type Paper struct {
 	// permanently: a correction that a later refresh could undo is not a
 	// correction.
 	Edited []string `json:"edited,omitempty"`
+	// DetailsMissedAt is when a lookup of this paper's bibliography last found
+	// nothing to add, or could not resolve the reference at all. The sweep leaves
+	// a paper alone for PaperRetryWait after it, so a paper no source knows is not
+	// fetched again every pass. Nil means no lookup has come up empty.
+	DetailsMissedAt *time.Time `json:"-"`
+}
+
+// PaperRetryWait is how long the sweep leaves a paper alone after a lookup came
+// up empty. A source that did not know a paper yesterday rarely knows it today,
+// and the sources are free services shared with everyone.
+const PaperRetryWait = 7 * 24 * time.Hour
+
+// RecentlyMissed reports whether a lookup of this paper came up empty within
+// PaperRetryWait of now.
+func (p Paper) RecentlyMissed(now time.Time) bool {
+	return p.DetailsMissedAt != nil && now.Sub(*p.DetailsMissedAt) < PaperRetryWait
 }
 
 // The names Edited carries. They are the wire's field names, because a
@@ -347,21 +509,26 @@ type Store interface {
 	// owner's: a project deciding how far past its own balance it may run is
 	// the party with an interest in that number being large.
 	SetCreditCap(ctx context.Context, id string, cap int64) error
-	// SetPublic marks a project public and records the responsibility sign-off
-	// (006f, 006n): who signed, the attestation text version, the signer
-	// snapshot, and the time. It is repeatable: publishing a withdrawn project
-	// overwrites the snapshot with the new attestation and clears the retraction
-	// (006o), so the row never claims to be both live and withdrawn. The caller,
-	// the HTTP owner check and the manifest-clear gate, authorizes; this store
-	// only records.
+	// SetPublic marks a private project public and records the responsibility
+	// sign-off (006f, 006n): who signed, the attestation text version, the
+	// signer snapshot, and the time. It moves a project only out of private:
+	// a public project is ErrAlreadyPublic, a trashed one ErrTrashed, and one
+	// with a session in flight ErrSessionsActive. Publishing again after a
+	// withdrawal replaces the sign-off on the row and leaves the earlier
+	// publications and withdrawals in Publications. The caller, the HTTP owner
+	// check and the manifest-clear gate, authorizes; this store only records.
 	SetPublic(ctx context.Context, id string, s SignOff) error
 	// SetPrivate withdraws a publication (006o): visibility returns to private
-	// and the retraction is recorded, leaving every sign-off field unchanged. On
-	// a project that is already private it succeeds and changes nothing, because
-	// the timestamp must keep recording the moment the publication ended, not
-	// the last time somebody asked. The caller authorizes, and only the owner
-	// may call it.
+	// and the retraction is recorded, leaving every sign-off field unchanged. It
+	// moves a project only out of public: a private project is ErrNotPublic, so
+	// the timestamp keeps recording the moment the publication ended, and a
+	// trashed one is ErrTrashed. The caller authorizes, and only the owner may
+	// call it.
 	SetPrivate(ctx context.Context, id string, w Withdrawal) error
+	// Publications returns every publication and withdrawal of a project,
+	// oldest first. It is the project's publication history, which the row's
+	// sign-off and retraction fields summarize by their latest values.
+	Publications(ctx context.Context, id string) ([]Publication, error)
 	// ListAll returns every project, trashed ones included, oldest first. It is
 	// the platform's own read, not a person's: the paper sweep (037) walks it to
 	// fill in the projects nobody has opened since. It is oldest first because
@@ -380,9 +547,11 @@ type Store interface {
 	// and a credit move would each have had to update the column.
 	ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error)
 	// Trash moves a project to the trash, and Restore takes it back out (019).
-	// Both are idempotent, and Trash keeps the first timestamp: a repeated call
-	// must not rewrite the moment the project left the list. A missing project
-	// is ErrNotFound, because the caller has just authorized against one.
+	// Trash is idempotent and keeps the first timestamp: a repeated call must not
+	// rewrite the moment the project left the list. It refuses a project with a
+	// session in flight (ErrSessionsActive). Restore moves a project only out of
+	// the trash: any other project is ErrNotTrashed. A missing project is
+	// ErrNotFound, because the caller has just authorized against one.
 	Trash(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error
 	// ListTrashed returns an owner's trashed projects, newest-trashed first. It
@@ -422,6 +591,10 @@ type Store interface {
 	// stated once. A missing project or paper is not an error: the enrichment is
 	// best-effort, exactly as SetTitle is.
 	EnrichPaper(ctx context.Context, projectID, key, title string, rec paper.Record) (bool, error)
+	// RecordPaperMiss notes that a lookup of the paper's bibliography found
+	// nothing to add, so the sweep waits PaperRetryWait before trying it again.
+	// A missing project or paper is not an error, as for EnrichPaper.
+	RecordPaperMiss(ctx context.Context, projectID, key string) error
 	// EditPaper records a person's correction, and marks every field it wrote so
 	// no later enrichment undoes it. A missing project or paper is
 	// ErrPaperNotFound: a correction that applied to nothing is a mistake worth

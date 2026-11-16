@@ -35,14 +35,55 @@ func (m *PGMembership) SeedLead(ctx context.Context, project string, lead Princi
 	if lead.Sub == "" {
 		return m.upsert(ctx, project, email, RoleLead)
 	}
-	// COALESCE keeps a binding that already exists: seeding is idempotent and
-	// re-runs on every membership change, and it must never rebind a row.
-	_, err := m.pool.Exec(ctx, `
-		INSERT INTO project_members (project, email, role, principal) VALUES ($1,$2,$3,$4)
-		ON CONFLICT (project, email) DO UPDATE
-		SET role=EXCLUDED.role, principal=COALESCE(project_members.principal, EXCLUDED.principal)`,
-		project, email, int16(RoleLead), lead.Sub)
-	return err
+	return pgx.BeginFunc(ctx, m.pool, func(tx pgx.Tx) error {
+		// The project's rows are locked, so two seeds cannot both see the
+		// owner as missing and each add a row for them.
+		rows, err := tx.Query(ctx,
+			`SELECT email, principal FROM project_members WHERE project=$1 FOR UPDATE`, project)
+		if err != nil {
+			return err
+		}
+		type row struct {
+			email     string
+			principal *string
+		}
+		held, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (row, error) {
+			var x row
+			return x, r.Scan(&x.email, &x.principal)
+		})
+		if err != nil {
+			return err
+		}
+		var target, mine *row
+		for i := range held {
+			if held[i].email == email {
+				target = &held[i]
+			}
+			if held[i].principal != nil && *held[i].principal == lead.Sub {
+				mine = &held[i]
+			}
+		}
+		switch {
+		case target != nil && target.principal != nil && *target.principal != lead.Sub:
+			return ErrSeedConflict // the address is bound to somebody else
+		case target != nil && mine != nil && mine.email != email:
+			return ErrSeedConflict // two rows would carry the owner
+		case target == nil && mine != nil:
+			// The owner's address changed: the row they hold follows it.
+			_, err := tx.Exec(ctx,
+				`UPDATE project_members SET email=$3, role=$4 WHERE project=$1 AND email=$2`,
+				project, mine.email, email, int16(RoleLead))
+			return err
+		}
+		// COALESCE keeps a binding that already exists: seeding is idempotent and
+		// re-runs on every membership change, and it must never rebind a row.
+		_, err = tx.Exec(ctx, `
+			INSERT INTO project_members (project, email, role, principal) VALUES ($1,$2,$3,$4)
+			ON CONFLICT (project, email) DO UPDATE
+			SET role=EXCLUDED.role, principal=COALESCE(project_members.principal, EXCLUDED.principal)`,
+			project, email, int16(RoleLead), lead.Sub)
+		return err
+	})
 }
 
 // Add invites an email into a project. The caller must be the project's lead.
@@ -54,7 +95,48 @@ func (m *PGMembership) Add(ctx context.Context, byLead Principal, project, email
 	if email == "" {
 		return ErrNoEmail
 	}
-	return m.upsert(ctx, project, email, r)
+	return pgx.BeginFunc(ctx, m.pool, func(tx pgx.Tx) error {
+		if r != RoleLead {
+			if err := keepALead(ctx, tx, project, email); err != nil {
+				return err
+			}
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO project_members (project, email, role) VALUES ($1,$2,$3)
+			ON CONFLICT (project, email) DO UPDATE SET role=EXCLUDED.role`,
+			project, email, int16(r))
+		return err
+	})
+}
+
+// keepALead refuses a change that would leave a project with no lead: the row
+// at email is the project's only lead. It locks the project's rows, so two
+// changes that each leave the other lead standing cannot both go through.
+func keepALead(ctx context.Context, tx pgx.Tx, project, email string) error {
+	rows, err := tx.Query(ctx, `SELECT email, role FROM project_members WHERE project=$1 FOR UPDATE`, project)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	leads, targetIsLead := 0, false
+	for rows.Next() {
+		var e string
+		var r int16
+		if err := rows.Scan(&e, &r); err != nil {
+			return err
+		}
+		if r == int16(RoleLead) {
+			leads++
+			targetIsLead = targetIsLead || e == email
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if targetIsLead && leads == 1 {
+		return ErrLastLead
+	}
+	return nil
 }
 
 // Remove drops a member by email. The caller must be the project's lead.
@@ -62,9 +144,14 @@ func (m *PGMembership) Remove(ctx context.Context, byLead Principal, project, em
 	if err := m.requireLead(ctx, byLead, project); err != nil {
 		return err
 	}
-	_, err := m.pool.Exec(ctx,
-		`DELETE FROM project_members WHERE project=$1 AND email=$2`, project, normalizeEmail(email))
-	return err
+	email = normalizeEmail(email)
+	return pgx.BeginFunc(ctx, m.pool, func(tx pgx.Tx) error {
+		if err := keepALead(ctx, tx, project, email); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM project_members WHERE project=$1 AND email=$2`, project, email)
+		return err
+	})
 }
 
 // Role returns a principal's role in a project, binding a seeded membership on

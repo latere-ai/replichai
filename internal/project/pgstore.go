@@ -6,7 +6,7 @@ package project
 import (
 	"context"
 	"errors"
-	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,6 +40,10 @@ type PGStore struct {
 	// sessions moves the runs of a paper that is being moved (035). Nil means
 	// MovePaper refuses rather than stranding them.
 	sessions PGSessionMover
+	// activePhases are the session phases that count as a session in flight.
+	// Publishing and trashing read them under the project's row lock and refuse
+	// while one exists. Empty means the store does not look.
+	activePhases []string
 }
 
 // PGOption configures a PGStore.
@@ -50,6 +54,14 @@ type PGOption func(*PGStore)
 // returns ErrNoSessionMover.
 func WithPGSessions(m PGSessionMover) PGOption {
 	return func(s *PGStore) { s.sessions = m }
+}
+
+// WithActivePhases sets the session phases that count as a session in flight.
+// Publish and trash then lock the project row and refuse with ErrSessionsActive
+// while the jobs table holds a session of the project in one of them. The
+// project package cannot import the job package, so the caller names them.
+func WithActivePhases(phases []string) PGOption {
+	return func(s *PGStore) { s.activePhases = slices.Clone(phases) }
 }
 
 // NewPGStore builds a store over a pgx pool.
@@ -64,7 +76,7 @@ func NewPGStore(pool *pgxpool.Pool, opts ...PGOption) *PGStore {
 // projectColumns is the column list every read selects, in scan order.
 const projectColumns = `id, owner, title, description, visibility, credit_cap, created_at, signed_off_by, signed_off_at, attestation_version,
 	signed_off_name, signed_off_institution, signed_off_contact, signed_off_orcid, signed_off_scholar, signed_off_email,
-	withdrawn_at, withdrawn_by, withdrawn_reason, deleted_at`
+	withdrawn_at, withdrawn_by, withdrawn_reason, deleted_at, signed_off_handle`
 
 // scanProject reads one row in projectColumns order.
 func scanProject(row pgx.Row) (Project, error) {
@@ -73,7 +85,7 @@ func scanProject(row pgx.Row) (Project, error) {
 		&p.SignedOffBy, &p.SignedOffAt, &p.AttestationVersion,
 		&p.SignedOffName, &p.SignedOffInstitution, &p.SignedOffContact,
 		&p.SignedOffORCID, &p.SignedOffScholar, &p.SignedOffEmail,
-		&p.WithdrawnAt, &p.WithdrawnBy, &p.WithdrawnReason, &p.DeletedAt)
+		&p.WithdrawnAt, &p.WithdrawnBy, &p.WithdrawnReason, &p.DeletedAt, &p.SignedOffHandle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -112,33 +124,65 @@ func (s *PGStore) ListTrashed(ctx context.Context, owner string) ([]Project, err
 	return s.list(ctx, `WHERE owner = $1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC, id DESC`, owner)
 }
 
-// Trash moves a project to the trash. The NULL predicate keeps the first
-// timestamp, so a repeated call cannot rewrite the moment it left the list.
-// This costs one extra read to distinguish an already trashed project from a
-// missing one.
-func (s *PGStore) Trash(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE projects SET deleted_at=$2 WHERE id=$1 AND deleted_at IS NULL`, id, s.clock())
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		if _, err := s.Get(ctx, id); err != nil {
-			return err
-		}
-	}
-	return nil
+// lock reads a project under a row lock inside the caller's transaction, so the
+// state a write is checked against is the state it writes over.
+func lock(ctx context.Context, tx pgx.Tx, id string) (Project, error) {
+	return scanProject(tx.QueryRow(ctx, `SELECT `+projectColumns+` FROM projects WHERE id = $1 FOR UPDATE`, id))
 }
 
-// Restore takes a project back out of the trash.
-func (s *PGStore) Restore(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE projects SET deleted_at=NULL WHERE id=$1`, id)
+// refuseActive returns ErrSessionsActive when the project has a session in
+// flight. It runs inside the transaction that holds the project's row lock, and
+// a session insert reads that row, so the two orders are serialized.
+func (s *PGStore) refuseActive(ctx context.Context, tx pgx.Tx, id string) error {
+	if len(s.activePhases) == 0 {
+		return nil
+	}
+	var one int
+	err := tx.QueryRow(ctx, `SELECT 1 FROM jobs WHERE project_id = $1 AND phase = ANY($2) LIMIT 1`, id, s.activePhases).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return ErrSessionsActive
+}
+
+// Trash moves a project to the trash. The project row is locked and read in the
+// same transaction as the write, so the move is checked against the state it
+// writes over, and a session in flight refuses it. A project already in the
+// trash keeps its first timestamp.
+func (s *PGStore) Trash(ctx context.Context, id string) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		p, err := lock(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		done, err := checkTrash(p.State())
+		if done || err != nil {
+			return err
+		}
+		if err := s.refuseActive(ctx, tx, id); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE projects SET deleted_at=$2 WHERE id=$1`, id, s.clock())
+		return err
+	})
+}
+
+// Restore takes a project back out of the trash. Any other project is refused.
+func (s *PGStore) Restore(ctx context.Context, id string) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		p, err := lock(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := checkRestore(p); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE projects SET deleted_at=NULL WHERE id=$1`, id)
+		return err
+	})
 }
 
 // list runs one project read with a shared column list and scan.
@@ -189,56 +233,95 @@ func (s *PGStore) SetCreditCap(ctx context.Context, id string, cap int64) error 
 	return err
 }
 
-// SetPublic marks a private project public and records the sign-off. It leaves
-// the withdrawal record of an earlier publication in place as history. A project
-// that is already public is refused with ErrAlreadyPublic, so a second publish
-// cannot replace who signed the first without the owner withdrawing it.
+// SetPublic marks a private project public and records the sign-off. The row
+// is locked and read in the same transaction as the write: a public project is
+// refused with ErrAlreadyPublic, so a second publish cannot replace who signed
+// the first without the owner withdrawing it, and a session in flight refuses
+// it. The publication is appended to the history, which keeps every earlier
+// sign-off and withdrawal.
 func (s *PGStore) SetPublic(ctx context.Context, id string, so SignOff) error {
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE projects SET visibility='public', signed_off_by=$2, signed_off_at=$3, attestation_version=$4,
-			signed_off_name=$5, signed_off_institution=$6, signed_off_contact=$7,
-			signed_off_orcid=$8, signed_off_scholar=$9, signed_off_email=$10
-		WHERE id=$1 AND visibility='private'`,
-		id, so.By, s.clock(), so.AttestationVersion,
-		so.Name, so.Institution, so.Contact, so.ORCID, so.Scholar, so.Email)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		// Either the project is missing or it is already public.
-		p, err := s.Get(ctx, id)
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		p, err := lock(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		if p.Visibility == VisibilityPublic {
-			return ErrAlreadyPublic
+		if err := checkPublish(p.State()); err != nil {
+			return err
 		}
-		return fmt.Errorf("publish project %s: not updated while %s", id, p.Visibility)
-	}
-	return nil
+		if err := s.refuseActive(ctx, tx, id); err != nil {
+			return err
+		}
+		now := s.clock()
+		if _, err := tx.Exec(ctx, `
+			UPDATE projects SET visibility=$11, signed_off_by=$2, signed_off_at=$3, attestation_version=$4,
+				signed_off_name=$5, signed_off_institution=$6, signed_off_contact=$7,
+				signed_off_orcid=$8, signed_off_scholar=$9, signed_off_email=$10, signed_off_handle=$12
+			WHERE id=$1`,
+			id, so.By, now, so.AttestationVersion,
+			so.Name, so.Institution, so.Contact, so.ORCID, so.Scholar, so.Email, VisibilityPublic, so.Handle); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `
+			INSERT INTO project_publications
+				(project_id, kind, occurred_at, actor, attestation_version, name, institution, contact, orcid, scholar, email, handle)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+			id, PublicationPublished, now, so.By, so.AttestationVersion,
+			so.Name, so.Institution, so.Contact, so.ORCID, so.Scholar, so.Email, so.Handle)
+		return err
+	})
 }
 
 // SetPrivate withdraws a publication, recording the retraction beside the
-// sign-off it ends. The visibility predicate makes it a no-op on a project that
-// is already private, so a repeated call cannot overwrite the moment the
-// publication ended. This costs one extra read to distinguish that case from a
-// missing project.
+// sign-off it ends. The row is locked and read in the same transaction as the
+// write, so a project that is not public is refused with ErrNotPublic and the
+// timestamp keeps recording the moment the publication ended. The withdrawal is
+// appended to the history.
 func (s *PGStore) SetPrivate(ctx context.Context, id string, w Withdrawal) error {
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE projects SET visibility='private', withdrawn_at=$2, withdrawn_by=$3, withdrawn_reason=$4
-		WHERE id=$1 AND visibility='public'`,
-		id, s.clock(), w.By, w.Reason)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		// Either the project is missing or it was already private. Only the first
-		// is an error.
-		if _, err := s.Get(ctx, id); err != nil {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		p, err := lock(ctx, tx, id)
+		if err != nil {
 			return err
 		}
+		if err := checkWithdraw(p.State()); err != nil {
+			return err
+		}
+		now := s.clock()
+		if _, err := tx.Exec(ctx, `
+			UPDATE projects SET visibility=$5, withdrawn_at=$2, withdrawn_by=$3, withdrawn_reason=$4
+			WHERE id=$1`,
+			id, now, w.By, w.Reason, VisibilityPrivate); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `
+			INSERT INTO project_publications (project_id, kind, occurred_at, actor, reason)
+			VALUES ($1,$2,$3,$4,$5)`,
+			id, PublicationWithdrawn, now, w.By, w.Reason)
+		return err
+	})
+}
+
+// Publications returns a project's publication history, oldest first.
+func (s *PGStore) Publications(ctx context.Context, id string) ([]Publication, error) {
+	if _, err := s.Get(ctx, id); err != nil {
+		return nil, err
 	}
-	return nil
+	rows, err := s.pool.Query(ctx, `
+		SELECT kind, occurred_at, actor, reason, attestation_version, name, institution, contact, orcid, scholar, email, handle
+		FROM project_publications WHERE project_id = $1 ORDER BY occurred_at, id`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Publication
+	for rows.Next() {
+		var p Publication
+		if err := rows.Scan(&p.Kind, &p.At, &p.By, &p.Reason, &p.AttestationVersion, &p.Name,
+			&p.Institution, &p.Contact, &p.ORCID, &p.Scholar, &p.Email, &p.Handle); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // ListPublic returns every public project, newest first, excluding the trash.
@@ -301,7 +384,7 @@ func (s *PGStore) Delete(ctx context.Context, id string) error {
 
 // paperColumns is the column list every paper read selects, in scan order.
 const paperColumns = `paper_key, ref, title, added_by, added_at,
-	authors, venue, year, volume, issue, pages, publisher, abstract, edited`
+	authors, venue, year, volume, issue, pages, publisher, abstract, edited, details_missed_at`
 
 // scanPaper reads one paper row in paperColumns order.
 func scanPaper(row interface{ Scan(...any) error }) (Paper, error) { return scanPaperWith(row) }
@@ -313,7 +396,7 @@ func scanPaperWith(row interface{ Scan(...any) error }, before ...any) (Paper, e
 	var p Paper
 	err := row.Scan(append(before, &p.Key, &p.Ref, &p.Title, &p.AddedBy, &p.AddedAt,
 		&p.Record.Authors, &p.Record.Venue, &p.Record.Year,
-		&p.Record.Volume, &p.Record.Issue, &p.Record.Pages, &p.Record.Publisher, &p.Record.Abstract, &p.Edited)...)
+		&p.Record.Volume, &p.Record.Issue, &p.Record.Pages, &p.Record.Publisher, &p.Record.Abstract, &p.Edited, &p.DetailsMissedAt)...)
 	return p, err
 }
 
@@ -440,6 +523,15 @@ func (s *PGStore) EnrichPaper(ctx context.Context, projectID, key, title string,
 		return err
 	})
 	return changed, err
+}
+
+// RecordPaperMiss stamps a paper whose lookup found nothing, ignoring a missing
+// project or paper.
+func (s *PGStore) RecordPaperMiss(ctx context.Context, projectID, key string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE project_papers SET details_missed_at = $3
+		WHERE project_id = $1 AND paper_key = $2`, projectID, key, s.clock())
+	return err
 }
 
 // EditPaper records a correction and marks the fields it wrote, in one

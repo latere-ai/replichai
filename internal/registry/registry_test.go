@@ -6,11 +6,13 @@ package registry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/latere-ai/replichai/internal/github"
 	"github.com/latere-ai/replichai/internal/paper"
 	"github.com/latere-ai/replichai/internal/provider"
 	"github.com/latere-ai/replichai/internal/publish"
@@ -166,6 +168,56 @@ func TestAllocateNameRetriesAndWidens(t *testing.T) {
 	// Five colliding four-char draws, then a widened six-char one that is free.
 	if name != "fresh-paper-cccccc" {
 		t.Errorf("name = %q, want the widened suffix after exhausting four-char draws", name)
+	}
+}
+
+// TestAllocateAndCreateTakesANewNameWhenTheForgeSaysItExists covers a name the
+// snapshot did not list but the forge already holds, because another session
+// created it after the snapshot was read. Creating is the check: the repository
+// that comes back is one this call created, under a different suffix, and the
+// existing one is never reused.
+func TestAllocateAndCreateTakesANewNameWhenTheForgeSaysItExists(t *testing.T) {
+	src := &fakeSource{manifests: map[string]publish.Manifest{}}
+	scripted := []string{"aaaa", "bbbb"}
+	i := 0
+	r := New(src, WithSuffixer(func(int) (string, error) {
+		s := scripted[i]
+		i++
+		return s, nil
+	}))
+	id := paper.Identity{Key: "10.1145/new", Scheme: paper.SchemeDOI, Slug: "fresh-paper"}
+	var tried []string
+	name, err := r.AllocateAndCreate(context.Background(), id, func(_ context.Context, name string) error {
+		tried = append(tried, name)
+		if name == "fresh-paper-aaaa" {
+			return fmt.Errorf("create %s: %w", name, github.ErrRepoExists)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("AllocateAndCreate: %v", err)
+	}
+	if name != "fresh-paper-bbbb" {
+		t.Errorf("name = %q, want the second draw after the first existed", name)
+	}
+	if len(tried) != 2 || tried[0] != "fresh-paper-aaaa" {
+		t.Errorf("create was called with %v, want the taken name then a new one", tried)
+	}
+}
+
+// TestAllocateAndCreateReturnsOtherErrors checks a failure that is not a
+// collision stops the allocation instead of drawing names until one is tried.
+func TestAllocateAndCreateReturnsOtherErrors(t *testing.T) {
+	r := New(&fakeSource{manifests: map[string]publish.Manifest{}})
+	id := paper.Identity{Key: "10.1145/new", Scheme: paper.SchemeDOI, Slug: "fresh-paper"}
+	boom := errors.New("forge unavailable")
+	calls := 0
+	_, err := r.AllocateAndCreate(context.Background(), id, func(context.Context, string) error {
+		calls++
+		return boom
+	})
+	if !errors.Is(err, boom) || calls != 1 {
+		t.Errorf("err = %v after %d calls, want the forge's error after one", err, calls)
 	}
 }
 

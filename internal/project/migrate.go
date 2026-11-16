@@ -198,6 +198,67 @@ ALTER TABLE project_papers ADD COLUMN abstract TEXT NOT NULL DEFAULT '';
 `},
 	{version: 13, run: decodeStoredEntities},
 	{version: 14, run: keyUnkeyedSessions},
+	{version: 15, sql: `
+-- The publication history. A project row holds the latest sign-off and the
+-- latest retraction, so a project published, withdrawn and published again
+-- under a different signer would leave only the last of each. Every
+-- publication and withdrawal is appended here as it happens.
+CREATE TABLE project_publications (
+	id                  BIGSERIAL PRIMARY KEY,
+	project_id          TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+	kind                TEXT NOT NULL,
+	occurred_at         TIMESTAMPTZ NOT NULL,
+	actor               TEXT NOT NULL DEFAULT '',
+	reason              TEXT NOT NULL DEFAULT '',
+	attestation_version TEXT NOT NULL DEFAULT '',
+	name                TEXT NOT NULL DEFAULT '',
+	institution         TEXT NOT NULL DEFAULT '',
+	contact             TEXT NOT NULL DEFAULT '',
+	orcid               TEXT NOT NULL DEFAULT '',
+	scholar             TEXT NOT NULL DEFAULT '',
+	email               TEXT NOT NULL DEFAULT '',
+	handle              TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX project_publications_by_project ON project_publications (project_id, id);
+
+-- The signer's handle as it was when they signed, so a profile made private
+-- later does not change where an already published attestation links.
+ALTER TABLE projects ADD COLUMN signed_off_handle TEXT NOT NULL DEFAULT '';
+
+-- Backfill what the rows still hold: the latest sign-off and the latest
+-- withdrawal of each project that has one.
+INSERT INTO project_publications
+	(project_id, kind, occurred_at, actor, attestation_version, name, institution, contact, orcid, scholar, email)
+SELECT id, 'published', signed_off_at, signed_off_by, attestation_version,
+	signed_off_name, signed_off_institution, signed_off_contact, signed_off_orcid, signed_off_scholar, signed_off_email
+FROM projects WHERE signed_off_at IS NOT NULL;
+INSERT INTO project_publications (project_id, kind, occurred_at, actor, reason)
+SELECT id, 'withdrawn', withdrawn_at, withdrawn_by, withdrawn_reason
+FROM projects WHERE withdrawn_at IS NOT NULL;
+`},
+	{version: 16, sql: `
+-- The visibility each forge repository should have. A project's publication is
+-- here and the repository's visibility is on the forge, so a failed forge call
+-- would leave the two apart with nothing to say so. The wanted visibility is
+-- written first and applied after; a row with no applied_at is a flip the forge
+-- has not accepted yet, and the retry loop works through them.
+CREATE TABLE repo_visibility (
+	repo        TEXT PRIMARY KEY,
+	public      BOOLEAN NOT NULL,
+	wanted_at   TIMESTAMPTZ NOT NULL,
+	applied_at  TIMESTAMPTZ,
+	attempts    INT NOT NULL DEFAULT 0,
+	last_error  TEXT NOT NULL DEFAULT '',
+	next_try_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX repo_visibility_pending ON repo_visibility (next_try_at) WHERE applied_at IS NULL;
+`},
+	{version: 17, sql: `
+-- When a lookup of a paper's bibliography last found nothing to add. The sweep
+-- looks for papers with an incomplete record, and a paper no source knows stays
+-- incomplete, so without a mark it would be fetched on every pass for good.
+ALTER TABLE project_papers ADD COLUMN details_missed_at TIMESTAMPTZ;
+`},
 }
 
 // migrationLock is this migrator's advisory lock id. A rolling deploy runs the

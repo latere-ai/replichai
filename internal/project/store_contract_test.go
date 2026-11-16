@@ -131,12 +131,12 @@ func runStoreContract(t *testing.T, s Store) {
 		t.Errorf("ListPublic after withdrawal = %+v err=%v; want empty", list, err)
 	}
 
-	// Withdrawing again succeeds and changes nothing: the timestamp keeps
+	// Withdrawing again is refused and changes nothing: the timestamp keeps
 	// recording the moment the publication ended, not the last time somebody
 	// asked.
 	first := *gone.WithdrawnAt
-	if err := s.SetPrivate(ctx, second.ID, Withdrawal{By: "someone-else", Reason: "again"}); err != nil {
-		t.Fatalf("repeated SetPrivate: %v", err)
+	if err := s.SetPrivate(ctx, second.ID, Withdrawal{By: "someone-else", Reason: "again"}); !errors.Is(err, ErrNotPublic) {
+		t.Fatalf("repeated SetPrivate: want ErrNotPublic, got %v", err)
 	}
 	again, _ := s.Get(ctx, second.ID)
 	if !again.WithdrawnAt.Equal(first) || again.WithdrawnBy != "owner" || again.WithdrawnReason != "unreleased figure" {
@@ -330,8 +330,8 @@ func runTrashContract(t *testing.T, s Store) {
 	if mine, _ := s.ListByOwner(ctx, "tidy-owner"); !slices.ContainsFunc(mine, hasID(p.ID)) {
 		t.Error("a restored project is not back in its owner's list")
 	}
-	if err := s.Restore(ctx, p.ID); err != nil {
-		t.Errorf("idempotent Restore: %v", err)
+	if err := s.Restore(ctx, p.ID); !errors.Is(err, ErrNotTrashed) {
+		t.Errorf("Restore of a project that is not in the trash = %v, want ErrNotTrashed", err)
 	}
 
 	// Neither acts on a project that is not there.
