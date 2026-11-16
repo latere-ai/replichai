@@ -12,7 +12,10 @@ import (
 	"latere.ai/x/pkg/statemachine/statemachinetest"
 
 	"github.com/latere-ai/replichai/internal/access"
+	"github.com/latere-ai/replichai/internal/batch"
 	"github.com/latere-ai/replichai/internal/job"
+	"github.com/latere-ai/replichai/internal/managed"
+	"github.com/latere-ai/replichai/internal/project"
 )
 
 var update = flag.Bool("update", false, "rewrite the formal models under formal/")
@@ -24,5 +27,8 @@ func TestFormalModels(t *testing.T) {
 	statemachinetest.Models(t, "../../formal", *update,
 		job.Phases.Graph(),
 		access.Grants.Graph(),
+		managed.Sessions.Graph(),
+		batch.Entries.Graph(),
+		project.Publications.Graph(),
 	)
 }
