@@ -25,22 +25,35 @@ committed. The commit log already holds that.
   win twice. Subscribe the webhook endpoint to `charge.dispute.closed` and
   `charge.dispute.funds_reinstated`.
 - **A failed session says why it stopped** in `stop_reason`: `canceled`,
-  `interrupted` (a restart found no run to rejoin) or `error`.
+  `interrupted` (a restart found no run to rejoin) or `error`. Sessions
+  recorded before this release are labeled the same way.
 - **`/readyz` reports whether the database answers,** and the readiness probe
   uses it. `/healthz` stays a liveness check.
 
 ### Fixed
 
+- **A deploy no longer stops running sessions.** The server shutting down
+  stops following them and the next one picks them up and finishes them.
+  Requests in progress during a deploy finish, and open live views end. A
+  server that lost a session to another one stops following it without
+  stopping it.
 - **A session canceled on one server now stops its run on the server driving
   it,** instead of running on until it finished.
 - **A published project no longer takes paper edits, paper removals or a
   repository for a local run.** Withdraw it first. A session can no longer
   start on a project in the moment it is being published or moved to the
   trash, and publishing or trashing a project is refused while one of its
-  sessions is still running.
+  sessions is still running. Moving a paper into or out of a published or
+  trashed project, or while one of its sessions runs, is refused.
+- **Two partial refunds of one charge each take back their share** when
+  Stripe's refund event lists no refunds. The second used to be refused until
+  Stripe stopped retrying it.
+- **An inquiry no longer takes back credit or puts the account on hold.** An
+  inquiry is a dispute the card network opens to ask a question before it
+  takes any money.
 - **A refund or dispute that arrives before its purchase is retried** by
-  Stripe instead of dropped, and the webhook answers 503 when payments are not
-  configured.
+  Stripe instead of dropped, as long as the purchase can still arrive, and the
+  webhook answers 503 when payments are not configured.
 - **An account on hold can still cancel a session, withdraw a publication,
   reclaim credits and move a project to the trash.** The account-on-hold mail
   is sent once when two refunds arrive together.
@@ -55,8 +68,6 @@ committed. The commit log already holds that.
   platform failure.
 - A new run never pushes into a repository it did not create, and the
   repository a session publishes to is recorded as soon as it exists.
-- On shutdown the server waits for its sessions before closing the database,
-  and ends open live views.
 - A live session view checks access again every 30 seconds and ends cleanly
   when the session is gone. The page keeps updating when its live connection
   drops, and a Stop that takes a while says so.
@@ -64,7 +75,9 @@ committed. The commit log already holds that.
   fails.
 - Every publication and withdrawal of a project is kept, not only the latest,
   and restoring applies only to a project in the trash.
-- A repository's public or private setting is retried until GitHub matches.
+- A repository's public or private setting is retried, waiting longer after
+  each failure, until GitHub matches, and publishing a project and quickly
+  withdrawing it no longer leaves a repository public.
 - The signer link on a published attestation keeps the handle it was signed
   under when the signer later makes their profile private.
 - The public listing and the sitemap update right after a rename, a profile
@@ -82,6 +95,8 @@ committed. The commit log already holds that.
   runs them again.
 - A paper whose details no source knows is looked up again after 7 days, not
   on every pass.
+- The development server no longer hangs when a session starts while its
+  project is being published or moved to the trash.
 - Top-up: Pay waits for the fee, the page recovers after Back from the payment
   page, and it says when a payment is not confirmed yet.
 - Admin: actions show progress and refuse a second click, revoking asks
