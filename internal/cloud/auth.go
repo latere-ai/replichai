@@ -217,7 +217,7 @@ func (s *Session) Login(ctx context.Context, show func(Prompt)) (Token, error) {
 	}
 	saveErr := s.Store.Save(token)
 	if err := unlock(); err != nil {
-		slog.Warn("cloud: releasing the credential lock", "error", err)
+		slog.WarnContext(ctx, "cloud: releasing the credential lock", "error", err)
 	}
 	if saveErr != nil {
 		return Token{}, saveErr
@@ -281,7 +281,7 @@ func (s *Session) Current(ctx context.Context) (Token, error) {
 	}
 	defer func() {
 		if err := unlock(); err != nil {
-			slog.Warn("cloud: releasing the credential lock", "error", err)
+			slog.WarnContext(ctx, "cloud: releasing the credential lock", "error", err)
 		}
 	}()
 	token, err = s.Store.Load()
@@ -336,7 +336,7 @@ func (s *Session) SwitchOrg(ctx context.Context, org string) (Token, error) {
 	}
 	defer func() {
 		if err := unlock(); err != nil {
-			slog.Warn("cloud: releasing the credential lock", "error", err)
+			slog.WarnContext(ctx, "cloud: releasing the credential lock", "error", err)
 		}
 	}()
 	token, err := s.Store.Load()

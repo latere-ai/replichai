@@ -66,7 +66,7 @@ func Run(t *testing.T, factory Factory) {
 		// its result; any other ends cancelled.
 		finished := status.State == managed.StateDone
 		cancelled := status.State == managed.StateFailed && status.TerminalReason == managed.ReasonCancelled
-		if err != nil || !(finished || cancelled) {
+		if err != nil || !finished && !cancelled {
 			t.Fatalf("Poll after cancel = %+v, %v", status, err)
 		}
 		if _, err := runtime.Events(context.Background(), ref); err != nil {

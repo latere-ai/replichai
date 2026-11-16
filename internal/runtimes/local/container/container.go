@@ -334,7 +334,6 @@ func (s *Sandbox) Observe(ctx context.Context, handle hostsandbox.StageHandle) (
 		// such as an engine that did not answer, says nothing about the
 		// container and is returned.
 		if missingContainer(err) {
-			//nolint:nilerr // a missing container is an observation
 			return hostsandbox.StageStatus{Gone: true}, nil
 		}
 		return hostsandbox.StageStatus{}, fmt.Errorf("inspect container %s: %w", handle.ID, err)

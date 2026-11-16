@@ -91,8 +91,11 @@ func (w *grantWriters) driver(prefix string) statemachinetest.Driver[GrantState]
 				return err
 			case GrantBound:
 				gs, err := w.access.GrantsFor(ctx, w.admin, []string{email})
-				if err != nil || len(gs) != 1 {
-					return fmt.Errorf("reading %s: %v", email, err)
+				if err != nil {
+					return fmt.Errorf("reading %s: %w", email, err)
+				}
+				if len(gs) != 1 {
+					return fmt.Errorf("reading %s: %d grants, want 1", email, len(gs))
 				}
 				if gs[0].Revoked() {
 					if _, err := w.regrant(email); err != nil {

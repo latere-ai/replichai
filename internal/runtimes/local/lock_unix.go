@@ -20,7 +20,7 @@ func lockFile(path string) (func() error, error) {
 		return nil, err
 	}
 	for {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX) //nolint:gosec // a file descriptor fits an int
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
 		if !errors.Is(err, syscall.EINTR) {
 			break
 		}

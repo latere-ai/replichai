@@ -400,7 +400,7 @@ func run() error {
 	// timeout.
 	streams, endStreams := context.WithCancel(context.WithoutCancel(ctx))
 	defer endStreams()
-	srv := newServer(*addr, handler, streams)
+	srv := newServer(streams, *addr, handler)
 	logger.Info("listening", "addr", *addr, "base_url", baseURL)
 	serveErr := xotel.RunServer(ctx, srv, serverDrain, func(context.Context) error {
 		endStreams()
@@ -425,8 +425,9 @@ const (
 // activePhaseNames is the job table's active phases as the project store takes
 // them, so publish and trash see a session in flight under the row lock.
 func activePhaseNames() []string {
-	var out []string
-	for _, p := range job.ActivePhases() {
+	phases := job.ActivePhases()
+	out := make([]string, 0, len(phases))
+	for _, p := range phases {
 		out = append(out, string(p))
 	}
 	return out
@@ -453,7 +454,7 @@ func awaitWorker(stopped <-chan struct{}, timeout time.Duration) error {
 // base is the context every request context derives from. Cancelling it ends
 // the requests still open, which is how a live event stream stops when the
 // server drains.
-func newServer(addr string, handler http.Handler, base context.Context) *http.Server {
+func newServer(base context.Context, addr string, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		BaseContext:       func(net.Listener) context.Context { return base },

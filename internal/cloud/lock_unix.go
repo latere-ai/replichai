@@ -8,6 +8,7 @@ package cloud
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
@@ -15,7 +16,7 @@ import (
 // when absent, and returns the function that releases it. The lock is held by
 // the open file, so it is released if the process dies.
 func lockFile(path string) (func() error, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}

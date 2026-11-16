@@ -34,7 +34,7 @@ func TestServerFetcherRefusesPrivateAddresses(t *testing.T) {
 // kept-alive connection is closed, and that the deadlines that would cut a
 // running event stream short are left unset.
 func TestServerClosesIdleConnectionsAndLeavesStreamsAlone(t *testing.T) {
-	srv := newServer(":0", http.NotFoundHandler(), context.Background())
+	srv := newServer(context.Background(), ":0", http.NotFoundHandler())
 	if srv.IdleTimeout <= 0 {
 		t.Fatal("IdleTimeout is unset: a silent kept-alive connection is held forever")
 	}

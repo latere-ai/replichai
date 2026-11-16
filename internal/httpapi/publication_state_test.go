@@ -103,7 +103,7 @@ func TestTheStoresRefusalsOfANewSessionAreMapped(t *testing.T) {
 		if w.Code != http.StatusConflict || errorCode(w.Body.Bytes()) != tc.code {
 			t.Errorf("import refused with %v = %d %s, want 409 %s", tc.err, w.Code, w.Body, tc.code)
 		}
-		if tc.err == job.ErrSessionFinished {
+		if errors.Is(tc.err, job.ErrSessionFinished) {
 			continue // starting a session never rewrites a finished one
 		}
 		w = do(t, h, http.MethodPost, "/projects/"+id+"/sessions", `{"paper_key":"`+heldKey+`"}`, "me")
