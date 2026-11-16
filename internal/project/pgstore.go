@@ -148,18 +148,17 @@ func (s *PGStore) refuseActive(ctx context.Context, tx pgx.Tx, id string) error 
 	return ErrSessionsActive
 }
 
-// Trash moves a project to the trash. The project row is locked and read in the
-// same transaction as the write, so the move is checked against the state it
-// writes over, and a session in flight refuses it. A project already in the
-// trash keeps its first timestamp.
+// Trash moves a private project to the trash. The project row is locked and read
+// in the same transaction as the write, so the move is checked against the
+// state it writes over, and a session in flight refuses it. A project already in
+// the trash keeps its first timestamp.
 func (s *PGStore) Trash(ctx context.Context, id string) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		p, err := lock(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		done, err := checkTrash(p.State())
-		if done || err != nil {
+		if err := checkTrash(p.State()); err != nil {
 			return err
 		}
 		if err := s.refuseActive(ctx, tx, id); err != nil {
@@ -177,10 +176,10 @@ func (s *PGStore) Restore(ctx context.Context, id string) error {
 		if err != nil {
 			return err
 		}
-		if err := checkRestore(p); err != nil {
+		if err := checkRestore(p.State()); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `UPDATE projects SET deleted_at=NULL WHERE id=$1`, id)
+		_, err = tx.Exec(ctx, `UPDATE projects SET deleted_at=NULL, visibility=$2 WHERE id=$1`, id, VisibilityPrivate)
 		return err
 	})
 }

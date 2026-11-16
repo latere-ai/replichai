@@ -276,6 +276,14 @@ func runTrashContract(t *testing.T, s Store) {
 	if err := s.SetPublic(ctx, p.ID, SignOff{By: "tidy-owner", AttestationVersion: "v2", Contact: "a@b.c"}); err != nil {
 		t.Fatalf("SetPublic: %v", err)
 	}
+	// A public project is withdrawn before it is trashed, so the retraction is
+	// recorded; trashing it directly is refused.
+	if err := s.Trash(ctx, p.ID); !errors.Is(err, ErrPublic) {
+		t.Fatalf("Trash of a public project = %v, want ErrPublic", err)
+	}
+	if err := s.SetPrivate(ctx, p.ID, Withdrawal{By: "tidy-owner", Reason: "deleted"}); err != nil {
+		t.Fatalf("SetPrivate: %v", err)
+	}
 	if err := s.Trash(ctx, p.ID); err != nil {
 		t.Fatalf("Trash: %v", err)
 	}
@@ -305,11 +313,11 @@ func runTrashContract(t *testing.T, s Store) {
 		t.Errorf("ListTrashed for a stranger = %v, %v; want nothing", other, err)
 	}
 
-	// Trashing again keeps the first timestamp: a repeated call must not rewrite
-	// when the project left the list.
+	// Trashing again is refused and keeps the first timestamp: a repeated call
+	// must not rewrite when the project left the list.
 	first := *got.DeletedAt
-	if err := s.Trash(ctx, p.ID); err != nil {
-		t.Fatalf("repeated Trash: %v", err)
+	if err := s.Trash(ctx, p.ID); !errors.Is(err, ErrTrashed) {
+		t.Fatalf("repeated Trash = %v, want ErrTrashed", err)
 	}
 	again, _ := s.Get(ctx, p.ID)
 	if !again.DeletedAt.Equal(first) {
@@ -324,7 +332,7 @@ func runTrashContract(t *testing.T, s Store) {
 	if back.Trashed() {
 		t.Error("Restore left the project trashed")
 	}
-	if back.Visibility != VisibilityPublic || back.SignedOffBy != "tidy-owner" {
+	if back.Visibility != VisibilityPrivate || back.SignedOffBy != "tidy-owner" || back.WithdrawnReason != "deleted" {
 		t.Errorf("Restore did not return the project whole: %+v", back)
 	}
 	if mine, _ := s.ListByOwner(ctx, "tidy-owner"); !slices.ContainsFunc(mine, hasID(p.ID)) {

@@ -125,7 +125,7 @@ func (s *MemStore) refuseActive(ctx context.Context, id string) error {
 	return nil
 }
 
-// Trash moves a project to the trash, keeping the first timestamp.
+// Trash moves a private project to the trash.
 func (s *MemStore) Trash(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -133,8 +133,7 @@ func (s *MemStore) Trash(ctx context.Context, id string) error {
 	if !ok {
 		return ErrNotFound
 	}
-	done, err := checkTrash(p.State())
-	if done || err != nil {
+	if err := checkTrash(p.State()); err != nil {
 		return err
 	}
 	if err := s.refuseActive(ctx, id); err != nil {
@@ -154,10 +153,11 @@ func (s *MemStore) Restore(_ context.Context, id string) error {
 	if !ok {
 		return ErrNotFound
 	}
-	if err := checkRestore(p); err != nil {
+	if err := checkRestore(p.State()); err != nil {
 		return err
 	}
 	p.DeletedAt = nil
+	p.Visibility = VisibilityPrivate
 	s.projects[id] = p
 	return nil
 }

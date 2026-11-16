@@ -23,6 +23,8 @@ import (
 	"slices"
 	"time"
 
+	"latere.ai/x/pkg/statemachine"
+
 	"github.com/latere-ai/replichai/internal/paper"
 )
 
@@ -53,9 +55,13 @@ var (
 	// withdrawal ends a publication, so a project that has none has nothing to
 	// end, and recording one would rewrite the moment the last one ended.
 	ErrNotPublic = errors.New("the project is not public")
-	// ErrTrashed reports publishing or withdrawing a project that is in the
-	// trash. Nothing about a trashed project changes until it is restored.
+	// ErrTrashed reports publishing, withdrawing or trashing a project that is
+	// in the trash. Nothing about a trashed project changes until it is
+	// restored.
 	ErrTrashed = errors.New("the project is in the trash")
+	// ErrPublic reports trashing a public project. The owner withdraws the
+	// publication first, which records the retraction.
+	ErrPublic = errors.New("the project is public")
 	// ErrNotTrashed reports restoring a project that is not in the trash.
 	ErrNotTrashed = errors.New("the project is not in the trash")
 	// ErrSessionsActive reports publishing or trashing a project that has a
@@ -66,9 +72,8 @@ var (
 
 // State is where a project stands in its publication: private to its owner and
 // members, open in the public zone, or in the trash. It is derived from the
-// visibility and deleted_at columns, and the trash takes precedence: a trashed
-// project is trashed whatever its visibility says, and restoring it returns the
-// visibility it carried.
+// visibility and deleted_at columns, and the trash takes precedence: a project
+// with deleted_at set is trashed whatever its visibility column says.
 type State string
 
 // The states a project may be in.
@@ -78,16 +83,18 @@ const (
 	StateTrashed State = "trashed"
 )
 
-// publicationTransitions is the whole machine: the states a project may move to
-// from each state. Publishing is private to public, a withdrawal is public to
-// private, trashing leaves either, and restoring returns the state the
-// visibility column holds. Every write of the visibility or the trash goes
-// through it, in the transaction that makes the write.
-var publicationTransitions = map[State][]State{
+// Publications is the whole machine: the states a project may move to from each
+// state. Publishing is private to public and a withdrawal is public to private.
+// Only a private project is trashed, and a restore returns it to private. A
+// public project is withdrawn before it is trashed, so its retraction is
+// recorded, and a trashed project is never public: the product path that
+// trashes a public project withdraws it first. Every write of the visibility or
+// the trash is checked against it, in the transaction that makes the write.
+var Publications = statemachine.Must(statemachine.New("Publication", []State{StatePrivate}, map[State][]State{
 	StatePrivate: {StatePublic, StateTrashed},
-	StatePublic:  {StatePrivate, StateTrashed},
-	StateTrashed: {StatePrivate, StatePublic},
-}
+	StatePublic:  {StatePrivate},
+	StateTrashed: {StatePrivate},
+}))
 
 // State is the project's publication state.
 func (p Project) State() State {
@@ -101,63 +108,56 @@ func (p Project) State() State {
 	}
 }
 
-// restoredState is the state a project returns to when it leaves the trash.
-func (p Project) restoredState() State {
-	if p.Visibility == VisibilityPublic {
-		return StatePublic
-	}
-	return StatePrivate
-}
+// refuse names a refused step with the sentinel the caller reports, keeping the
+// table's ErrIllegalTransition in the chain.
+func refuse(sentinel, err error) error { return fmt.Errorf("%w: %w", sentinel, err) }
 
-// step checks one move against publicationTransitions and names the refusal. It
-// is the one place either store decides whether a write may happen, so the two
-// cannot disagree.
-func step(from, to State) error {
-	if slices.Contains(publicationTransitions[from], to) {
-		return nil
-	}
-	switch to {
-	case StatePublic:
-		return ErrAlreadyPublic
-	case StatePrivate:
-		return ErrNotPublic
-	}
-	return fmt.Errorf("project: no move from %s to %s", from, to)
-}
-
-// checkPublish decides whether a project in this state may be published. A
-// trashed project is refused before the table is read, because the table's
-// move out of the trash is a restore, not a publication.
+// checkPublish decides whether a project in this state may be published.
 func checkPublish(from State) error {
-	if from == StateTrashed {
-		return ErrTrashed
+	err := Publications.Check(from, StatePublic)
+	switch {
+	case err == nil:
+		return nil
+	case from == StateTrashed:
+		return refuse(ErrTrashed, err)
 	}
-	return step(from, StatePublic)
+	return refuse(ErrAlreadyPublic, err)
 }
 
-// checkWithdraw decides whether a project in this state may be withdrawn.
+// checkWithdraw decides whether a project in this state may be withdrawn. The
+// table's move from trashed to private is a restore, not a withdrawal, so a
+// trashed project is refused before the table is read.
 func checkWithdraw(from State) error {
-	if from == StateTrashed {
-		return ErrTrashed
+	err := Publications.Check(from, StatePrivate)
+	switch {
+	case from == StateTrashed:
+		return refuse(ErrTrashed, statemachine.ErrIllegalTransition)
+	case err != nil:
+		return refuse(ErrNotPublic, err)
 	}
-	return step(from, StatePrivate)
+	return nil
 }
 
-// checkTrash decides whether a project may be trashed. A project already in the
-// trash reports done, because trashing it again changes nothing.
-func checkTrash(from State) (done bool, err error) {
-	if from == StateTrashed {
-		return true, nil
+// checkTrash decides whether a project may be trashed.
+func checkTrash(from State) error {
+	err := Publications.Check(from, StateTrashed)
+	switch {
+	case err == nil:
+		return nil
+	case from == StateTrashed:
+		return refuse(ErrTrashed, err)
 	}
-	return false, step(from, StateTrashed)
+	return refuse(ErrPublic, err)
 }
 
-// checkRestore decides whether a project may leave the trash.
-func checkRestore(p Project) error {
-	if p.State() != StateTrashed {
-		return ErrNotTrashed
+// checkRestore decides whether a project may leave the trash. The table's move
+// from public to private is a withdrawal, so only a trashed project is let
+// through.
+func checkRestore(from State) error {
+	if from != StateTrashed {
+		return refuse(ErrNotTrashed, statemachine.ErrIllegalTransition)
 	}
-	return step(StateTrashed, p.restoredState())
+	return Publications.Check(from, StatePrivate)
 }
 
 // PublicationKind says which side of a publication a record is.
@@ -546,11 +546,11 @@ type Store interface {
 	// write site to forget: a rename, an added paper, a publish, a withdrawal
 	// and a credit move would each have had to update the column.
 	ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error)
-	// Trash moves a project to the trash, and Restore takes it back out (019).
-	// Trash is idempotent and keeps the first timestamp: a repeated call must not
-	// rewrite the moment the project left the list. It refuses a project with a
-	// session in flight (ErrSessionsActive). Restore moves a project only out of
-	// the trash: any other project is ErrNotTrashed. A missing project is
+	// Trash moves a private project to the trash, and Restore takes it back out
+	// to private (019). Trash refuses a public project (ErrPublic, withdraw it
+	// first), a project already in the trash (ErrTrashed, so its first timestamp
+	// is kept) and one with a session in flight (ErrSessionsActive). Restore
+	// moves a project only out of the trash: any other project is ErrNotTrashed. A missing project is
 	// ErrNotFound, because the caller has just authorized against one.
 	Trash(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error

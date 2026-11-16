@@ -2518,6 +2518,12 @@ func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 		rt.publicChanged()
 	}
 	switch err := rt.projects.Trash(r.Context(), proj.ID); {
+	case errors.Is(err, project.ErrTrashed):
+		// Already in the trash: the owner's second click finds what they wanted.
+	case errors.Is(err, project.ErrPublic):
+		// Published again between the withdrawal above and the trash.
+		writeError(w, http.StatusConflict, "project_public")
+		return
 	case errors.Is(err, project.ErrSessionsActive):
 		// A session started after the check above, and the store saw it under the
 		// project's row lock.

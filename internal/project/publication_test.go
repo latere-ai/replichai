@@ -6,8 +6,11 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
+
+	"latere.ai/x/pkg/statemachine/statemachinetest"
 
 	"github.com/latere-ai/replichai/internal/job"
 )
@@ -210,4 +213,97 @@ func TestPGStoreRecordsAPaperMiss(t *testing.T) {
 	pool := testPool(t)
 	defer pool.Close()
 	runPaperMissContract(t, NewPGStore(pool))
+}
+
+// publicationDriver reaches a store's own writers for statemachinetest. Enter
+// puts a project in a state, Move calls the writer that takes it there.
+func publicationDriver(s Store, enter func(t *testing.T, st State) string) statemachinetest.Driver[State] {
+	ctx := context.Background()
+	return statemachinetest.Driver[State]{
+		Enter: enter,
+		Move: func(id string, to State) error {
+			switch to {
+			case StatePublic:
+				return s.SetPublic(ctx, id, SignOff{By: "owner", AttestationVersion: "v1"})
+			case StateTrashed:
+				return s.Trash(ctx, id)
+			}
+			// Both withdrawing and restoring land in private. The writer is the
+			// one for the state the project is in when the move starts.
+			p, err := s.Get(ctx, id)
+			if err != nil {
+				return err
+			}
+			if p.State() == StateTrashed {
+				return s.Restore(ctx, id)
+			}
+			return s.SetPrivate(ctx, id, Withdrawal{By: "owner"})
+		},
+		State: func(t *testing.T, id string) State {
+			p, err := s.Get(ctx, id)
+			if err != nil {
+				t.Fatalf("read %s: %v", id, err)
+			}
+			return p.State()
+		},
+	}
+}
+
+// TestPGStorePublicationWritersFollowTheTable drives SetPublic, SetPrivate,
+// Trash and Restore through every pair of states and every pair of racing steps
+// against Postgres. Enter inserts the row in the state directly.
+func TestPGStorePublicationWritersFollowTheTable(t *testing.T) {
+	pool := testPool(t)
+	defer pool.Close()
+	s := NewPGStore(pool)
+	n := 0
+	enter := func(t *testing.T, st State) string {
+		t.Helper()
+		n++
+		id := fmt.Sprintf("table-%d", n)
+		visibility, deleted := VisibilityPrivate, any(nil)
+		switch st {
+		case StatePublic:
+			visibility = VisibilityPublic
+		case StateTrashed:
+			deleted = time.Now()
+		}
+		if _, err := pool.Exec(context.Background(), `
+			INSERT INTO projects (id, owner, title, visibility, created_at, deleted_at)
+			VALUES ($1, 'owner', 't', $2, now(), $3)`, id, visibility, deleted); err != nil {
+			t.Fatalf("insert a %s project: %v", st, err)
+		}
+		return id
+	}
+	d := publicationDriver(s, enter)
+	statemachinetest.Exhaustive(t, Publications, d)
+	statemachinetest.Race(t, Publications, d)
+}
+
+// TestMemStorePublicationWritersFollowTheTable is the same check against the
+// in-memory store, whose rows Enter writes directly.
+func TestMemStorePublicationWritersFollowTheTable(t *testing.T) {
+	s := NewMemStore()
+	n := 0
+	enter := func(t *testing.T, st State) string {
+		t.Helper()
+		n++
+		id := fmt.Sprintf("table-%d", n)
+		p := Project{ID: id, Owner: "owner", Title: "t", Visibility: VisibilityPrivate, CreatedAt: time.Now()}
+		switch st {
+		case StatePublic:
+			p.Visibility = VisibilityPublic
+		case StateTrashed:
+			now := time.Now()
+			p.DeletedAt = &now
+		}
+		s.mu.Lock()
+		s.projects[id] = p
+		s.order = append(s.order, id)
+		s.mu.Unlock()
+		return id
+	}
+	d := publicationDriver(s, enter)
+	statemachinetest.Exhaustive(t, Publications, d)
+	statemachinetest.Race(t, Publications, d)
 }

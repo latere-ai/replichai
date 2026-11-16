@@ -102,6 +102,10 @@ func TestTheSitemapListsNothingPrivate(t *testing.T) {
 		t.Fatalf("withdraw: %v", err)
 	}
 	trashed := describedProject(t, d)
+	// A public project is withdrawn before it is trashed, as the delete route does.
+	if err := d.Projects.SetPrivate(ctx, trashed.ID, project.Withdrawal{By: "owner-sub", Reason: "deleted"}); err != nil {
+		t.Fatalf("withdraw before trash: %v", err)
+	}
 	if err := d.Projects.Trash(ctx, trashed.ID); err != nil {
 		t.Fatalf("trash: %v", err)
 	}
