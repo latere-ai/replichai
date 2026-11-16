@@ -20,7 +20,7 @@ import (
 // reason other than the session finishing. Its data is {"reason": r}, where r is
 // streamGone when the session is no longer readable by this viewer (deleted,
 // moved out of reach, or the viewer lost access) and streamUnavailable when the
-// server could not read it. A viewer that sees it closes the stream; on
+// server could not read it or is draining. A viewer that sees it closes the stream; on
 // streamUnavailable it may reconnect.
 const streamEndEvent = "end"
 
@@ -124,6 +124,11 @@ func (rt *Router) jobEvents(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-rt.draining:
+			// The server is going away. The viewer may reconnect, to another
+			// replica, and resumes from the last event id.
+			end(streamUnavailable)
 			return
 		case <-recheck.C:
 			ok, err := rt.stillViewable(r, id)

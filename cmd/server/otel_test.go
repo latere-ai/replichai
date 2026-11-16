@@ -26,7 +26,7 @@ func TestServerRecordsAServerSpanAndJoinsTheCallersTrace(t *testing.T) {
 	recorder := oteltest.Record(t)
 
 	served := false
-	srv := newServer(context.Background(), ":0", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newServer(":0", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		served = true
 		w.WriteHeader(http.StatusNoContent)
 	}))

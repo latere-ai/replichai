@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,6 +28,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -223,7 +223,16 @@ func run() error {
 		return err
 	}
 	latereEnvironments.store = st.platform
-	defer st.close()
+	// The pool closes when run returns, unless the worker or the visibility
+	// loop did not stop in time: closing it under goroutines still writing
+	// would cut those writes off mid-statement, so the pool is then left open
+	// and closes when the process exits.
+	keepPool := false
+	defer func() {
+		if !keepPool {
+			st.close()
+		}
+	}()
 	jobStore, projectStore, accessStore, memberStore := st.jobs, st.projects, st.access, st.members
 	// A runtime the person pays for acts as the person, so the server keeps
 	// their Latere sign-in (048). It is required exactly when one is offered.
@@ -365,6 +374,12 @@ func run() error {
 	}
 	drafter := draftingModel(ctx, st.platform, os.Getenv("DRAFT_API_KEY"), draftRuntimeKey)
 
+	// draining closes when the server starts to drain, so the open event
+	// streams end then. Requests are not tied to it: they run to their own end
+	// within the drain.
+	draining := make(chan struct{})
+	startDraining := sync.OnceFunc(func() { close(draining) })
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Jobs:          jobStore,
 		Projects:      projectStore,
@@ -388,6 +403,7 @@ func run() error {
 		Notifier:      notifier,
 		SPA:           spaHandler,
 		Ready:         st.ready,
+		Draining:      draining,
 	})
 
 	handler, err := buildHandler(ctx, router.Handler(), accessStore, st.members, st.platform, st.credits, st.projects, sessionCredits(st), router.SweepPapers, prices, *dev, baseURL, signIns)
@@ -395,23 +411,32 @@ func run() error {
 		return err
 	}
 
-	// Open event streams end when draining starts: their request contexts come
-	// from here, and without that they would hold the shutdown for its full
-	// timeout.
-	streams, endStreams := context.WithCancel(context.WithoutCancel(ctx))
-	defer endStreams()
-	srv := newServer(streams, *addr, handler)
+	srv := newServer(*addr, handler)
 	logger.Info("listening", "addr", *addr, "base_url", baseURL)
-	serveErr := xotel.RunServer(ctx, srv, serverDrain, func(context.Context) error {
-		endStreams()
+	serveErr := serve(ctx, srv, startDraining)
+	// The pool is closed by the deferred function above, so the worker has to
+	// have stopped writing by then, whether the server ended on a signal or on
+	// its own.
+	startDraining()
+	stop()
+	// Both loops share one deadline: the grace period has room for one wait.
+	waitCtx, cancelWait := context.WithTimeout(context.Background(), workerStopTimeout)
+	defer cancelWait()
+	workerErr := awaitStop(waitCtx, "the worker", workerStopped)
+	visErr := awaitStop(waitCtx, "the repository visibility loop", visStopped)
+	keepPool = workerErr != nil || visErr != nil
+	return errors.Join(serveErr, workerErr, visErr)
+}
+
+// serve runs srv until ctx ends and then drains it. draining is called when the
+// drain starts, before the listener closes, so open event streams can end.
+// Requests still in flight are not cancelled: their contexts belong to their
+// connections, and the drain waits for them up to serverDrain.
+func serve(ctx context.Context, srv *http.Server, draining func()) error {
+	return xotel.RunServer(ctx, srv, serverDrain, func(context.Context) error {
+		draining()
 		return nil
 	})
-	// The pool is closed by the deferred st.close, so the worker has to have
-	// stopped writing by then, whether the server ended on a signal or on its
-	// own.
-	endStreams()
-	stop()
-	return errors.Join(serveErr, awaitWorker(workerStopped, workerStopTimeout), awaitWorker(visStopped, workerStopTimeout))
 }
 
 // serverDrain is how long the server waits for in-flight requests once it is
@@ -433,14 +458,20 @@ func activePhaseNames() []string {
 	return out
 }
 
-// awaitWorker waits for the worker to stop, up to timeout, and says so when it
-// did not.
-func awaitWorker(stopped <-chan struct{}, timeout time.Duration) error {
+// awaitStop waits for the named background loop to stop until ctx ends, and says
+// so when it did not. run leaves the database pool open then, so the loop's
+// writes are not cut off under it.
+func awaitStop(ctx context.Context, name string, stopped <-chan struct{}) error {
 	select {
 	case <-stopped:
 		return nil
-	case <-time.After(timeout):
-		return fmt.Errorf("the worker did not stop within %s; its database writes may be cut off", timeout)
+	default:
+	}
+	select {
+	case <-stopped:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("%s did not stop in time; the database pool is left open until the process exits", name)
 	}
 }
 
@@ -451,13 +482,13 @@ func awaitWorker(stopped <-chan struct{}, timeout time.Duration) error {
 // The header deadline is separate from any handler timeout: it bounds a client
 // that opens a connection and then says nothing.
 //
-// base is the context every request context derives from. Cancelling it ends
-// the requests still open, which is how a live event stream stops when the
-// server drains.
-func newServer(base context.Context, addr string, handler http.Handler) *http.Server {
+// Request contexts are the server's default: each ends with its own
+// connection, never with the server draining, so a request in flight at a
+// deploy finishes with its normal answer. The event stream ends on the
+// router's drain signal instead.
+func newServer(addr string, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
-		BaseContext:       func(net.Listener) context.Context { return base },
 		Handler:           xotel.Handler(handler, serviceName),
 		ReadHeaderTimeout: 10 * time.Second,
 		// An idle kept-alive connection is closed. There is no ReadTimeout and

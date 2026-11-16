@@ -122,3 +122,24 @@ func TestStreamSaysSoWhenTheReadFails(t *testing.T) {
 		t.Fatalf("end frame = %q, want reason unavailable", got)
 	}
 }
+
+// TestStreamEndsWhenTheServerStartsDraining checks that an open stream says it
+// is ending, and closes, when the drain signal fires, without the viewer
+// disconnecting and without the request context ending.
+func TestStreamEndsWhenTheServerStartsDraining(t *testing.T) {
+	store := job.NewMemStore()
+	projects, j := publicSession(t, store)
+	draining := make(chan struct{})
+	rt := NewRouter(Deps{Jobs: store, Projects: projects, Reproductions: &fakeRepro{}, Gate: allowAll,
+		SSEInterval: 5 * time.Millisecond, SSERecheck: time.Hour, Draining: draining})
+	srv := httptest.NewServer(rt.Handler())
+	defer srv.Close()
+
+	go func() {
+		time.Sleep(60 * time.Millisecond)
+		close(draining)
+	}()
+	if got := readUntilEnd(t, srv.URL+"/jobs/"+j.ID+"/events"); got != `{"reason":"unavailable"}` {
+		t.Fatalf("end frame = %q, want reason unavailable", got)
+	}
+}

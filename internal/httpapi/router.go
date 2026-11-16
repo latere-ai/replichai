@@ -358,6 +358,10 @@ type Deps struct {
 	// with a database is whether the database answers. /readyz returns 503 when
 	// it fails. Nil means always ready, which is the in-memory server.
 	Ready func(ctx context.Context) error
+	// Draining is closed when the server starts to drain. An open event stream
+	// ends with its end event then, so it does not hold the drain for its full
+	// timeout. Nil never fires, which is a server that does not drain.
+	Draining <-chan struct{}
 }
 
 // Router wires the routes, mounts the gate on the operator set, and keeps the
@@ -389,6 +393,7 @@ type Router struct {
 	sseKeepAlive time.Duration
 	sseRecheck   time.Duration
 	ready        func(ctx context.Context) error
+	draining     <-chan struct{}
 	spa          http.Handler
 	// site turns an app path into the absolute URL a crawler needs (042a).
 	// There is one per router, so a canonical link and a sitemap entry are the
@@ -446,7 +451,7 @@ func NewRouter(d Deps) *Router {
 	if recheck <= 0 {
 		recheck = streamRecheckEvery
 	}
-	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, runtimes: d.Runtimes, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, sseKeepAlive: keepAlive, sseRecheck: recheck, ready: d.Ready, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
+	rt := &Router{mux: http.NewServeMux(), gate: gate, jobs: d.Jobs, projects: d.Projects, members: d.Members, profiles: d.Profiles, repro: d.Reproductions, repoPub: d.RepoPublisher, repos: d.Repos, canceler: d.Canceler, live: d.Live, resolver: d.Resolver, notifier: d.Notifier, credits: d.Credits, reserve: d.Reserve, payments: d.Payments, policy: d.Platform, modelResolver: d.Models, runtimes: d.Runtimes, drafter: d.Drafter, baseURL: d.BaseURL, sseInterval: interval, sseKeepAlive: keepAlive, sseRecheck: recheck, ready: d.Ready, draining: d.Draining, spa: d.SPA, site: seo.NewSite(d.BaseURL)}
 	rt.anonRegistry.ttl, rt.sitemapBody.ttl = publicTTL, publicTTL
 	rt.routes()
 	// /healthz says the process is up; /readyz says it can serve, so a pod
