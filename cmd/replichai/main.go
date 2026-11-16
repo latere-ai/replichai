@@ -419,15 +419,16 @@ func newPublisher(ctx context.Context, owner, paperRef, methodDigest string, tim
 		}
 	}
 
-	name, err := reg.AllocateName(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("allocate name: %w", err)
-	}
-
-	repo, err := gh.CreateRepo(ctx, owner, name, true)
-	if errors.Is(err, github.ErrRepoExists) {
-		repo, err = gh.GetRepo(ctx, owner, name)
-	}
+	// Creating the repository is the check that its name is free: a name
+	// GitHub already has goes to another run, so a fresh run never pushes into
+	// a repository it did not create. A resumed paper returns to its own
+	// repository through reattachPublisher instead.
+	var repo github.Repo
+	name, err := reg.AllocateAndCreate(ctx, id, func(ctx context.Context, n string) error {
+		var cerr error
+		repo, cerr = gh.CreateRepo(ctx, owner, n, true)
+		return cerr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("prepare repository: %w", err)
 	}
