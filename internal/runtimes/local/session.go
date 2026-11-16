@@ -233,6 +233,37 @@ func (s *Session) ReadLocator() (Locator, error) {
 // from disk rather than from a runtime that no longer exists.
 func (s *Session) WriteStatus(status managed.Status) error { return s.writeJSON(statusFile, status) }
 
+// MoveStatus is the writer of a change of state: it reads the stored
+// observation and persists status only when the step from the stored state to
+// status's is one managed.Sessions has. A refused step wraps
+// managed.ErrIllegalStateStep and leaves the stored status as it was, and so
+// does a step to the state the session is already in. The caller holds the
+// session's lock, so the read and the write are one step.
+func (s *Session) MoveStatus(status managed.Status) error {
+	stored, err := s.ReadStatus()
+	if err != nil {
+		return err
+	}
+	if err := managed.Sessions.Check(stored.State, status.State); err != nil {
+		return fmt.Errorf("%w: %w", managed.ErrIllegalStateStep, err)
+	}
+	return s.WriteStatus(status)
+}
+
+// RecordStatus persists an observation: a change of state goes through
+// MoveStatus, and an observation in the state the session is already in, such
+// as a running one with new usage, is written as it is.
+func (s *Session) RecordStatus(status managed.Status) error {
+	stored, err := s.ReadStatus()
+	if err != nil {
+		return err
+	}
+	if stored.State == status.State && status.State.Valid() {
+		return s.WriteStatus(status)
+	}
+	return s.MoveStatus(status)
+}
+
 // ReadStatus reads the last observation.
 func (s *Session) ReadStatus() (managed.Status, error) {
 	var status managed.Status

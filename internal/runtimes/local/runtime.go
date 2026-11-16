@@ -11,6 +11,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"maps"
 	"net/url"
 	"os"
@@ -63,6 +65,9 @@ type Config struct {
 	Clock func() time.Time
 }
 
+// lockFileName is the advisory lock file in a session's evidence directory.
+const lockFileName = "session/lock"
+
 // Runtime executes a managed session on this machine. It owns the stage
 // sequence, the transcript pump, and the grading loop. Isolation belongs to
 // the driver and harness specifics to the adapter.
@@ -75,15 +80,18 @@ type Runtime struct {
 	locks sync.Map
 }
 
-// lock takes the mutex of the session ref names and returns its release. The
-// key is the locator's directory, which is what attach opens, so every call
-// that reaches one session contends on one mutex. A reference whose locator
-// cannot be read falls back to its id; attach then refuses it.
-func (r *Runtime) lock(ref managed.SessionRef) func() {
-	key := ref.ID
+// lock takes the lock of the session ref names and returns its release. Two
+// levels are held: a mutex per session directory, for calls in this process,
+// and an advisory lock file in the session's evidence directory, for another
+// process polling the same session. The key is the locator's directory, which
+// is what attach opens, so every call that reaches one session contends on one
+// lock. A reference whose locator cannot be read falls back to its id and takes
+// no lock file; attach then refuses it.
+func (r *Runtime) lock(ref managed.SessionRef) (func(), error) {
+	key, dir := ref.ID, ""
 	var locator Locator
 	if err := json.Unmarshal(ref.Locator, &locator); err == nil && locator.Dir != "" {
-		key = locator.Dir
+		key, dir = locator.Dir, locator.Dir
 	}
 	entry, _ := r.locks.LoadOrStore(key, &sync.Mutex{})
 	mutex, ok := entry.(*sync.Mutex)
@@ -91,7 +99,24 @@ func (r *Runtime) lock(ref managed.SessionRef) func() {
 		mutex = &sync.Mutex{}
 	}
 	mutex.Lock()
-	return mutex.Unlock
+	if dir == "" {
+		return mutex.Unlock, nil
+	}
+	unlockFile, err := lockFile(filepath.Join(dir, lockFileName))
+	if errors.Is(err, fs.ErrNotExist) {
+		// No session directory: attach reports it.
+		return mutex.Unlock, nil
+	}
+	if err != nil {
+		mutex.Unlock()
+		return nil, fmt.Errorf("lock session %s: %w", ref.ID, err)
+	}
+	return func() {
+		if err := unlockFile(); err != nil {
+			slog.Warn("local: releasing a session lock", "session", ref.ID, "error", err)
+		}
+		mutex.Unlock()
+	}, nil
 }
 
 // New composes a local runtime, refusing a configuration that could not run a
@@ -340,7 +365,11 @@ func (r *Runtime) abandon(ctx context.Context, session *Session, locator Locator
 // carries the run's total cost. Draining first folded the bill from a
 // per-message maximum instead of the session total.
 func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Status, error) {
-	defer r.lock(ref)()
+	unlock, err := r.lock(ref)
+	if err != nil {
+		return managed.Status{}, err
+	}
+	defer unlock()
 	session, locator, err := r.attach(ref)
 	if err != nil {
 		return managed.Status{}, err
@@ -871,7 +900,11 @@ func (r *Runtime) FetchArtifact(_ context.Context, ref managed.SessionRef, artif
 // Cancel stops the running stage and records why the session ended. The
 // directory is left intact, so evidence stays readable until Release.
 func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
-	defer r.lock(ref)()
+	unlock, err := r.lock(ref)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	session, locator, err := r.attach(ref)
 	if err != nil {
 		return err
@@ -889,19 +922,20 @@ func (r *Runtime) Cancel(ctx context.Context, ref managed.SessionRef) error {
 			return err
 		}
 	}
-	if err := managed.CheckStateStep(status.State, managed.StateFailed); err != nil {
-		return err
-	}
 	r.finish(&status, managed.StateFailed, managed.ReasonCancelled, "")
 	status.Ref = ref
-	return session.WriteStatus(status)
+	return session.RecordStatus(status)
 }
 
 // Release discards what the driver created. The retention policy decides what
 // happens to the directory, and the default keeps it, because the workspace is
 // the reproduction and the push may not have taken it yet.
 func (r *Runtime) Release(ctx context.Context, ref managed.SessionRef) error {
-	defer r.lock(ref)()
+	unlock, err := r.lock(ref)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	session, locator, err := r.attach(ref)
 	if err != nil {
 		if errors.Is(err, managed.ErrNotFound) {
@@ -974,13 +1008,6 @@ func (r *Runtime) attach(ref managed.SessionRef) (*Session, Locator, error) {
 // old one, so the reference a caller threaded was always one observation
 // behind the journal it named.
 func (r *Runtime) save(session *Session, locator Locator, status *managed.Status, ref managed.SessionRef) error {
-	stored, err := session.ReadStatus()
-	if err != nil {
-		return err
-	}
-	if err := managed.CheckStateStep(stored.State, status.State); err != nil {
-		return err
-	}
 	if err := session.WriteLocator(locator); err != nil {
 		return err
 	}
@@ -999,7 +1026,7 @@ func (r *Runtime) save(session *Session, locator Locator, status *managed.Status
 		return err
 	}
 	status.Ref = next
-	return session.WriteStatus(*status)
+	return session.RecordStatus(*status)
 }
 
 func (r *Runtime) reference(session *Session, locator Locator, revision uint64) (managed.SessionRef, error) {
