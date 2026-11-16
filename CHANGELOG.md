@@ -10,6 +10,8 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## v0.40.0 - 2026-11-16
+
 ### Added
 
 - **Every lifecycle the server stores is one declared table, and the build
