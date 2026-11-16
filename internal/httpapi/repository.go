@@ -51,8 +51,11 @@ type Provisioned struct {
 const MaxProvisionBytes = 4 << 10
 
 // provisionRepository allocates the repository a local run will push to.
+//
+// A published project is refused with 409 project_public: a repository
+// provisioned for it would be filled by a session the project cannot take.
 func (rt *Router) provisionRepository(w http.ResponseWriter, r *http.Request) {
-	proj, ok := rt.projectForWork(w, r)
+	proj, ok := rt.projectForNewWork(w, r)
 	if !ok {
 		return
 	}

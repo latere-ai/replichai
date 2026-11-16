@@ -91,6 +91,7 @@ func TestTheOpenSetIsExactlyWhatWasDecided(t *testing.T) {
 	rt := NewRouter(testDeps(denyAll))
 	want := map[string]bool{
 		"GET /healthz":                true,
+		"GET /readyz":                 true,
 		"GET /profiles/{handle}":      true,
 		"POST /stripe/webhook":        true,
 		"GET /public":                 true,

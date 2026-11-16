@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/latere-ai/replichai/internal/project"
@@ -26,11 +27,11 @@ import (
 // Every URL comes from the seo package's path helpers, so a listed address and
 // the canonical link on the page it names are the same string by construction.
 
-// sitemapTTL is how long a crawler may reuse the file. The queries behind it
-// are the registry's own and are small, but crawlers request the file often
-// enough to make it a hot read. An hour is short enough that a publication
-// appears the same day it happens.
-const sitemapTTL = "public, max-age=3600"
+// sitemapTTL is how long a crawler may reuse the file. It is the lifetime of
+// the server's own copy, publicTTL, so a crawler never holds the file longer
+// than the server would: a withdrawn project leaves the file within one TTL, and
+// no layer in front of it keeps it for longer.
+var sitemapTTL = "public, max-age=" + strconv.Itoa(int(publicTTL/time.Second))
 
 // urlset is the sitemaps.org document as a struct rather than a string. XML
 // built by string concatenation would produce an unparseable file the first
@@ -99,10 +100,10 @@ func (rt *Router) buildSitemap(ctx context.Context) ([]byte, error) {
 		})
 		urls = append(urls, rt.sessionURLs(ctx, p)...)
 		// The researchers listed are exactly those who signed public work, and
-		// signerHandle already returns nothing for a profile its owner has not
-		// made public. There is therefore no separate read of public profiles,
+		// signerPageHandle returns nothing for a profile its owner has not made
+		// public. There is therefore no separate read of public profiles,
 		// and this file cannot name a page that does not exist.
-		if h := rt.signerHandle(ctx, p); h != "" && !handles[h] {
+		if h := rt.signerPageHandle(ctx, p); h != "" && !handles[h] {
 			handles[h] = true
 			urls = append(urls, sitemap{Loc: rt.site.Abs(seo.ProfilePath(h))})
 		}

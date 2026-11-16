@@ -286,7 +286,7 @@ func (rt *Router) addProjectPaper(w http.ResponseWriter, r *http.Request) {
 // for removing and moving: a paper key is `doi:10.1145/3772318.3791265`, and
 // the slash in it is not a path separator.
 func (rt *Router) editProjectPaper(w http.ResponseWriter, r *http.Request) {
-	proj, ok := rt.projectForWork(w, r)
+	proj, ok := rt.projectForNewWork(w, r)
 	if !ok {
 		return
 	}
@@ -399,11 +399,8 @@ func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
 		if !p.NeedsDetails() {
 			continue
 		}
-		got, err := rt.resolver.Resolve(r.Context(), p.Ref)
-		if err != nil {
-			continue // A source that cannot answer now does not fail this request.
-		}
-		changed, err := rt.projects.EnrichPaper(r.Context(), proj.ID, p.Key, got.Title, got.Record)
+		// The owner asked, so a paper a lookup missed earlier is tried again.
+		changed, err := rt.fillPaper(r.Context(), proj.ID, p)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "enrich_failed")
 			return
@@ -411,6 +408,10 @@ func (rt *Router) refreshProjectPapers(w http.ResponseWriter, r *http.Request) {
 		if changed {
 			filled++
 		}
+	}
+	if filled > 0 {
+		// The public listing shows each paper's citation.
+		rt.publicChanged()
 	}
 	papers, err = rt.projects.ListPapers(r.Context(), proj.ID)
 	if err != nil {
@@ -667,20 +668,66 @@ func (rt *Router) SweepPapers(ctx context.Context) (projects, filled int, err er
 		}
 		projects++
 		for _, p := range papers {
-			if !p.NeedsDetails() || ctx.Err() != nil {
+			// A paper a lookup came up empty for within PaperRetryWait is left
+			// alone: the sources are free shared services, and one that did not
+			// know the paper last week rarely knows it now.
+			if !p.NeedsDetails() || p.RecentlyMissed(time.Now()) || ctx.Err() != nil {
 				continue
 			}
-			got, err := rt.resolver.Resolve(ctx, p.Ref)
+			changed, err := rt.fillPaper(ctx, proj.ID, p)
 			if err != nil {
+				slog.WarnContext(ctx, "paper sweep: enrichment not stored", "project", proj.ID, "paper", p.Key, "error", err)
 				continue
 			}
-			changed, err := rt.projects.EnrichPaper(ctx, proj.ID, p.Key, got.Title, got.Record)
-			if err == nil && changed {
+			if changed {
 				filled++
 			}
 		}
 	}
 	return projects, filled, nil
+}
+
+// fillPaper looks a paper's bibliography up and completes its record, and
+// reports whether anything was added. A lookup that comes up empty, because the
+// source answered with nothing new or says the reference cannot be resolved, is
+// recorded on the paper so the sweep waits before trying again. A source that
+// cannot be reached is not recorded: nothing was learned about the paper, and
+// the next pass should try. Only a failure to store is returned.
+func (rt *Router) fillPaper(ctx context.Context, projectID string, p project.Paper) (bool, error) {
+	got, err := rt.resolver.Resolve(ctx, p.Ref)
+	if err != nil {
+		if errors.Is(err, paper.ErrUnresolvable) {
+			rt.recordPaperMiss(ctx, projectID, p.Key)
+		}
+		return false, nil
+	}
+	changed, err := rt.projects.EnrichPaper(ctx, projectID, p.Key, got.Title, got.Record)
+	if err != nil {
+		return false, err
+	}
+	if !changed {
+		rt.recordPaperMiss(ctx, projectID, p.Key)
+	}
+	return changed, nil
+}
+
+// paperMissRecorder is the part of a project store that remembers a lookup that
+// came up empty. Both project stores have it; a store without it simply does not
+// remember.
+type paperMissRecorder interface {
+	RecordPaperMiss(ctx context.Context, projectID, key string) error
+}
+
+// recordPaperMiss notes that a lookup found nothing for a paper. A failed write
+// only costs the sweep one more lookup, so it is logged.
+func (rt *Router) recordPaperMiss(ctx context.Context, projectID, key string) {
+	rec, ok := rt.projects.(paperMissRecorder)
+	if !ok {
+		return
+	}
+	if err := rec.RecordPaperMiss(ctx, projectID, key); err != nil {
+		slog.WarnContext(ctx, "paper lookup: miss not recorded", "project", projectID, "paper", key, "error", err)
+	}
 }
 
 // removeProjectPaper removes a paper a project has never run.
@@ -690,7 +737,7 @@ func (rt *Router) SweepPapers(ctx context.Context) (projects, filled int, err er
 // definition, so nothing that predates this endpoint can be removed through it.
 // Only a lead may remove, matching who may move credits out.
 func (rt *Router) removeProjectPaper(w http.ResponseWriter, r *http.Request) {
-	proj, ok := rt.projectForWork(w, r)
+	proj, ok := rt.projectForNewWork(w, r)
 	if !ok {
 		return
 	}
@@ -1000,11 +1047,12 @@ func (rt *Router) projectForWork(w http.ResponseWriter, r *http.Request) (projec
 	return rt.resolveProject(w, r, r.PathValue("id"), needWork, false, "project_not_found")
 }
 
-// projectForNewWork is projectForWork for a route that adds a session or a
-// paper. It also refuses a published project with 409 project_public: a signed
-// attestation covers the papers and sessions the project held when it was
-// signed, so adding either has to wait until the owner withdraws the
-// publication. The caller's right to work in the project is decided first, so
+// projectForNewWork is projectForWork for a route that changes what a signed
+// attestation covers: starting or importing a session, adding, editing or
+// removing a paper, and provisioning a repository for a local run. It also
+// refuses a published project with 409 project_public: the attestation covers
+// the papers and sessions the project held when it was signed, so changing
+// either has to wait until the owner withdraws the publication. The caller's right to work in the project is decided first, so
 // a refusal never tells a stranger whether a project is published.
 func (rt *Router) projectForNewWork(w http.ResponseWriter, r *http.Request) (project.Project, bool) {
 	proj, ok := rt.projectForWork(w, r)
@@ -1065,8 +1113,10 @@ func (rt *Router) mayWorkInProject(r *http.Request, p project.Project, sub strin
 	return ok
 }
 
-// writeEnqueueError maps an Enqueue failure to a status: the double-trigger
-// guard is a 409, an empty reference or paper key a 400, anything else a 500.
+// writeEnqueueError maps an Enqueue or ImportLocal failure to a status: the
+// double-trigger guard, a published or trashed project and a finished imported
+// session are each a 409, an empty reference or paper key a 400, anything else
+// a 500.
 func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, job.ErrActiveSession):
@@ -1077,6 +1127,15 @@ func (rt *Router) writeEnqueueError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "missing_url")
 	case errors.Is(err, job.ErrNoPaperKey):
 		writeError(w, http.StatusBadRequest, "missing_key")
+	case errors.Is(err, job.ErrProjectPublic):
+		// The store read the project in the transaction that inserts the
+		// session, so a publication that committed after the handler's own check
+		// is still refused.
+		writeError(w, http.StatusConflict, "project_public")
+	case errors.Is(err, job.ErrProjectTrashed):
+		writeError(w, http.StatusConflict, "project_trashed")
+	case errors.Is(err, job.ErrSessionFinished):
+		writeError(w, http.StatusConflict, "session_finished")
 	default:
 		writeError(w, http.StatusInternalServerError, "enqueue_failed")
 	}
@@ -1273,10 +1332,18 @@ func (rt *Router) enrichTitles(ctx context.Context, projectID, placeholder strin
 			// A source that answered with a bibliography and no title still has
 			// something to record.
 			if strings.TrimSpace(got.Title) == "" && got.Record.Empty() {
+				rt.recordPaperMiss(ctx, projectID, papers[i].Key)
 				return
 			}
 			titles[i] = got.Title
-			_, _ = rt.projects.EnrichPaper(ctx, projectID, papers[i].Key, got.Title, got.Record)
+			changed, err := rt.projects.EnrichPaper(ctx, projectID, papers[i].Key, got.Title, got.Record)
+			if err != nil {
+				slog.WarnContext(ctx, "paper lookup: enrichment not stored", "project", projectID, "paper", papers[i].Key, "error", err)
+				return
+			}
+			if !changed {
+				rt.recordPaperMiss(ctx, projectID, papers[i].Key)
+			}
 		}(i)
 	}
 	wg.Wait()
@@ -1562,6 +1629,8 @@ func (rt *Router) renameProject(w http.ResponseWriter, r *http.Request) {
 		}
 		proj.Description = desc
 	}
+	// The public listing shows the title and the description.
+	rt.publicChanged()
 	writeJSON(w, http.StatusOK, proj)
 }
 
@@ -1605,15 +1674,12 @@ type ProjectView struct {
 	// receive it (028), and an absent figure must not read as a project that
 	// spent nothing. Nil means the figure is withheld; zero is a fact.
 	Spend30d *int64 `json:"spend_30d,omitzero"`
-	// SignerHandle is where the signer's name links (006r). It is resolved on
-	// every read from the signer's profile as it is now, and deliberately not
-	// snapshotted onto the project: a stored handle would be a second, staler
-	// copy of the same person, and 006n's position is that a published
-	// attestation reports what was signed, not what a profile says later.
-	//
-	// The link therefore follows the profile. Somebody who makes theirs private
-	// after publishing keeps their attestation intact and loses the link, which
-	// is correct because the record was never the profile.
+	// SignerHandle is where the signer's name links (006r). It is the handle the
+	// signer had when they signed, kept on the project with the rest of the
+	// sign-off, so an attestation that was published links where it always did
+	// whatever the profile does later. A sign-off recorded before the handle was
+	// kept reads the signer's handle from their profile as it is now, and only
+	// while that profile is public.
 	SignerHandle string `json:"signer_handle,omitempty"`
 	// Papers is what this project is a reproduction of (043): every paper it
 	// holds, trimmed to a citation. It is a list because the store holds a list
@@ -1944,6 +2010,9 @@ func (rt *Router) saveProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "profile_save_failed")
 		return
 	}
+	// The public listing names each owner by their profile, and a profile that
+	// went private takes the name and the link out of it.
+	rt.publicChanged()
 	writeJSON(w, http.StatusOK, saved)
 }
 
@@ -2054,10 +2123,13 @@ func (rt *Router) withdrawProject(w http.ResponseWriter, r *http.Request) {
 	if len(reason) > maxWithdrawReason {
 		reason = reason[:maxWithdrawReason]
 	}
+	// A project that is already private answers like a withdrawal: the owner's
+	// second click finds what they wanted, and the store kept the moment the
+	// publication ended.
 	if err := rt.projects.SetPrivate(r.Context(), proj.ID, project.Withdrawal{
 		By:     principal(r),
 		Reason: reason,
-	}); err != nil {
+	}); err != nil && !errors.Is(err, project.ErrNotPublic) {
 		writeError(w, http.StatusInternalServerError, "withdraw_failed")
 		return
 	}
@@ -2155,6 +2227,13 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "sessions_read_failed")
 		return
 	}
+	// A session still in flight would be unfinished work under a signed
+	// attestation. The store checks again under the project's row lock; this
+	// answers the common case before any blocker is computed.
+	if slices.ContainsFunc(sessions, func(s job.Job) bool { return s.Phase.Active() }) {
+		writeError(w, http.StatusConflict, "sessions_running")
+		return
+	}
 	blockers, repos := rt.publishBlockers(r.Context(), sessions)
 	if len(blockers) > 0 {
 		writeBlockedError(w, http.StatusConflict, headlineBlock(blockers), blockers)
@@ -2181,13 +2260,19 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 		ORCID:              signer.ORCID,
 		Scholar:            signer.Scholar,
 		Email:              profile.RedactEmail(id.Email),
+		Handle:             rt.publicHandle(r.Context(), proj.Owner),
 	}); err != nil {
-		if errors.Is(err, project.ErrAlreadyPublic) {
+		switch {
+		case errors.Is(err, project.ErrAlreadyPublic):
 			// Publishing again would replace who signed the first publication.
 			writeError(w, http.StatusConflict, "already_public")
-			return
+		case errors.Is(err, project.ErrSessionsActive):
+			writeError(w, http.StatusConflict, "sessions_running")
+		case errors.Is(err, project.ErrTrashed):
+			writeError(w, http.StatusConflict, "project_trashed")
+		default:
+			writeError(w, http.StatusInternalServerError, "publish_failed")
 		}
-		writeError(w, http.StatusInternalServerError, "publish_failed")
 		return
 	}
 	// The forge repository is made public on a best-effort basis unless the
@@ -2213,14 +2298,42 @@ func (rt *Router) makeProjectPublic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated)
 }
 
-// signerHandle resolves the public handle of whoever signed a project, empty
-// when nobody signed it or their profile is not public. See ProjectView for why
-// this is a view and never a stored field.
+// signerHandle is where a project's sign-off links its signer, empty when
+// nobody signed it. The handle was recorded with the sign-off, so a profile made
+// private or renamed afterwards does not change an attestation already
+// published. A sign-off that predates the recorded handle falls back to the
+// signer's public profile as it is now.
 func (rt *Router) signerHandle(ctx context.Context, p project.Project) string {
-	if rt.profiles == nil || p.SignedOffBy == "" {
+	if p.SignedOffBy == "" {
 		return ""
 	}
-	handle, ok, err := rt.profiles.PrincipalHandle(ctx, p.SignedOffBy)
+	if p.SignedOffHandle != "" {
+		return p.SignedOffHandle
+	}
+	return rt.publicHandle(ctx, p.SignedOffBy)
+}
+
+// signerPageHandle is signerHandle for a reader that lists pages, such as the
+// sitemap: it is empty unless the signer's profile is public under that handle
+// now, so a listing never names a page that does not exist.
+func (rt *Router) signerPageHandle(ctx context.Context, p project.Project) string {
+	h := rt.signerHandle(ctx, p)
+	if h == "" {
+		return ""
+	}
+	if live := rt.publicHandle(ctx, p.SignedOffBy); live != h {
+		return ""
+	}
+	return h
+}
+
+// publicHandle is the handle of a principal's profile while it is public, empty
+// otherwise.
+func (rt *Router) publicHandle(ctx context.Context, principal string) string {
+	if rt.profiles == nil || principal == "" {
+		return ""
+	}
+	handle, ok, err := rt.profiles.PrincipalHandle(ctx, principal)
 	if err != nil || !ok {
 		return ""
 	}
@@ -2395,13 +2508,22 @@ func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 	// not skip the record, so the withdrawal happens first and through the same
 	// path an ordinary withdrawal takes.
 	if proj.Visibility == project.VisibilityPublic {
-		if err := rt.projects.SetPrivate(r.Context(), proj.ID, project.Withdrawal{By: id.Sub, Reason: withdrawnByDeletion}); err != nil {
+		// Already private means somebody withdrew it between the read and here,
+		// which is the state this step wanted.
+		if err := rt.projects.SetPrivate(r.Context(), proj.ID, project.Withdrawal{By: id.Sub, Reason: withdrawnByDeletion}); err != nil && !errors.Is(err, project.ErrNotPublic) {
 			writeError(w, http.StatusInternalServerError, "withdraw_failed")
 			return
 		}
 		rt.closeRepos(r.Context(), sessions)
+		rt.publicChanged()
 	}
-	if err := rt.projects.Trash(r.Context(), proj.ID); err != nil {
+	switch err := rt.projects.Trash(r.Context(), proj.ID); {
+	case errors.Is(err, project.ErrSessionsActive):
+		// A session started after the check above, and the store saw it under the
+		// project's row lock.
+		writeError(w, http.StatusConflict, "sessions_running")
+		return
+	case err != nil:
 		writeError(w, http.StatusInternalServerError, "trash_failed")
 		return
 	}
@@ -2487,13 +2609,18 @@ func (rt *Router) closeRepos(ctx context.Context, sessions []job.Job) {
 }
 
 // restoreProject takes a project back out of the trash. Only the owner may
-// restore, and restoring a project that was never in the trash succeeds.
+// restore, and a project that is not in the trash is refused with 409
+// not_trashed.
 func (rt *Router) restoreProject(w http.ResponseWriter, r *http.Request) {
 	proj, _, ok := rt.trashableProject(w, r)
 	if !ok {
 		return
 	}
-	if err := rt.projects.Restore(r.Context(), proj.ID); err != nil {
+	switch err := rt.projects.Restore(r.Context(), proj.ID); {
+	case errors.Is(err, project.ErrNotTrashed):
+		writeError(w, http.StatusConflict, "not_trashed")
+		return
+	case err != nil:
 		writeError(w, http.StatusInternalServerError, "restore_failed")
 		return
 	}
@@ -2580,8 +2707,13 @@ func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 	if body.Role == "lead" {
 		role = access.RoleLead
 	}
+	// The owner's own row is the project's lead row: it keeps the lead role.
+	if role != access.RoleLead && sameEmail(body.Email, id.Email) {
+		writeError(w, http.StatusConflict, "owner_member")
+		return
+	}
 	if err := rt.members.SeedLead(r.Context(), proj.ID, access.Principal{Sub: id.Sub, Email: id.Email}); err != nil {
-		writeError(w, http.StatusInternalServerError, "member_add_failed")
+		writeMemberError(w, err, "member_add_failed")
 		return
 	}
 	// Membership is checked before the add, so an existing member can be told
@@ -2590,7 +2722,7 @@ func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 	// removed is a real invitation and gets one.
 	already := rt.isMember(r.Context(), proj.ID, body.Email)
 	if err := rt.members.Add(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, proj.ID, body.Email, role); err != nil {
-		writeError(w, http.StatusInternalServerError, "member_add_failed")
+		writeMemberError(w, err, "member_add_failed")
 		return
 	}
 	if !already && rt.notifier != nil {
@@ -2599,6 +2731,26 @@ func (rt *Router) addMember(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// sameEmail reports whether two addresses are the same address, ignoring case
+// and surrounding space, as the membership store compares them.
+func sameEmail(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
+}
+
+// writeMemberError answers a membership write that failed: a change that would
+// leave the project without a lead, or an owner's row that conflicts with
+// another, is a 409; anything else is the route's own 500.
+func writeMemberError(w http.ResponseWriter, err error, code string) {
+	switch {
+	case errors.Is(err, access.ErrLastLead):
+		writeError(w, http.StatusConflict, "last_lead")
+	case errors.Is(err, access.ErrSeedConflict):
+		writeError(w, http.StatusConflict, "owner_conflict")
+	default:
+		writeError(w, http.StatusInternalServerError, code)
+	}
 }
 
 // isMember reports whether an email is already a member of a project. A store
@@ -2634,12 +2786,16 @@ func (rt *Router) removeMember(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if sameEmail(r.PathValue("email"), id.Email) {
+		writeError(w, http.StatusConflict, "owner_member")
+		return
+	}
 	if err := rt.members.SeedLead(r.Context(), proj.ID, access.Principal{Sub: id.Sub, Email: id.Email}); err != nil {
-		writeError(w, http.StatusInternalServerError, "member_remove_failed")
+		writeMemberError(w, err, "member_remove_failed")
 		return
 	}
 	if err := rt.members.Remove(r.Context(), access.Principal{Sub: id.Sub, Email: id.Email}, proj.ID, r.PathValue("email")); err != nil {
-		writeError(w, http.StatusInternalServerError, "member_remove_failed")
+		writeMemberError(w, err, "member_remove_failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -3348,5 +3504,7 @@ func (rt *Router) deleteSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "delete_failed")
 		return
 	}
+	// The public listing counts a project's sessions.
+	rt.publicChanged()
 	w.WriteHeader(http.StatusNoContent)
 }

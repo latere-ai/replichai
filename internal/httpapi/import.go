@@ -88,6 +88,11 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "session_not_terminal")
 		return
 	}
+	repo := strings.TrimSpace(body.Repo)
+	if repo != "" && !rt.importableRepo(repo) {
+		writeError(w, http.StatusBadRequest, "bad_repo")
+		return
+	}
 	held, ok := rt.paperHeldBy(w, r, proj, body.PaperKey)
 	if !ok {
 		return
@@ -99,7 +104,7 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 	imported, err := rt.jobs.ImportLocal(r.Context(), job.Import{
 		Principal: principal(r), Project: proj.ID, Ref: ref, PaperKey: held.Key,
 		Runtime: strings.TrimSpace(body.Runtime), ExternalID: strings.TrimSpace(body.SessionID),
-		Phase: phase, RepoName: strings.TrimSpace(body.Repo), Err: body.Error,
+		Phase: phase, RepoName: repo, Err: body.Error,
 		Status:     statusOf(body),
 		StartedAt:  body.StartedAt,
 		FinishedAt: body.FinishedAt,
@@ -109,11 +114,61 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		// A published or trashed project and a re-import that would change a
+		// finished row are each a 409 here.
 		rt.writeEnqueueError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, importAnswer{JobID: imported.ID, Origin: string(imported.Origin), ProjectID: proj.ID})
 }
+
+// forgeOwner is implemented by the forge wiring that knows which organization
+// the deployment publishes reproductions under.
+type forgeOwner interface{ Owner() string }
+
+// publishOrg is the organization this deployment publishes reproductions to:
+// the one its forge wiring names, else the default.
+func (rt *Router) publishOrg() string {
+	if o, ok := rt.repoPub.(forgeOwner); ok && o.Owner() != "" {
+		return o.Owner()
+	}
+	if o, ok := rt.repos.(forgeOwner); ok && o.Owner() != "" {
+		return o.Owner()
+	}
+	return defaultOrg
+}
+
+// importableRepo reports whether a repository an imported session names is one
+// this deployment could have published: "owner/name" under its organization,
+// with a name made of the characters a repository name allows. A later publish or
+// withdrawal changes the visibility of every repository a session names, so a
+// name outside the organization, or one that is not a plain repository name, is
+// not accepted.
+func (rt *Router) importableRepo(repo string) bool {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || !strings.EqualFold(owner, rt.publishOrg()) {
+		return false
+	}
+	if name == "" || len(name) > maxRepoName || name == "." || name == ".." {
+		return false
+	}
+	for _, c := range name {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// defaultOrg is the organization reproductions are published under when the
+// forge wiring does not name one. It is spelled here because this package must
+// not depend on the publishing engine.
+const defaultOrg = "open-hai"
+
+// maxRepoName is the longest repository name GitHub accepts.
+const maxRepoName = 100
 
 // importAnswer is the answer to an import. Its members are declared in
 // sorted order, so a re-push of the same session answers the same bytes.
