@@ -392,7 +392,6 @@ func TestMemStoreTrashWithdrawing(t *testing.T) {
 func TestPGStoreTrashWithdrawing(t *testing.T) {
 	pool := testPool(t)
 	defer pool.Close()
-	ctx := context.Background()
 	s := NewPGStore(pool, WithActivePhases(activeStrings()))
 	runTrashWithdrawingContract(t, s, func(t *testing.T, id string, on bool) {
 		t.Helper()
@@ -400,7 +399,7 @@ func TestPGStoreTrashWithdrawing(t *testing.T) {
 			seedSession(t, pool, legacySession{id: "del-job-" + id, project: id, principal: "del-owner", ref: "r", key: "doi:1", phase: string(job.PhaseRunning), created: time.Now()})
 			return
 		}
-		if _, err := pool.Exec(ctx, `UPDATE jobs SET phase=$2 WHERE project_id=$1`, id, string(job.PhaseDone)); err != nil {
+		if _, err := pool.Exec(t.Context(), `UPDATE jobs SET phase=$2 WHERE project_id=$1`, id, string(job.PhaseDone)); err != nil {
 			t.Fatalf("finish the session: %v", err)
 		}
 	})

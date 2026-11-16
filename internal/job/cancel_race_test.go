@@ -29,9 +29,8 @@ func (r closeHookRunner) Close(ctx context.Context, ref managed.SessionRef) erro
 
 // claimedRun enqueues a session, claims it for w and records a backend run id,
 // so Worker.Cancel has a backend run to close.
-func claimedRun(t *testing.T, s Store, w *Worker) Job {
+func claimedRun(ctx context.Context, t *testing.T, s Store, w *Worker) Job {
 	t.Helper()
-	ctx := context.Background()
 	j, err := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -52,8 +51,8 @@ func runCancelRaceContract(t *testing.T, newStore func(t *testing.T) Store) {
 		s := newStore(t)
 		hook := &closeHookRunner{fakeRunner: &fakeRunner{}}
 		w := NewWorker(s, hook)
-		j := claimedRun(t, s, w)
-		hook.onClose = func() {
+		j := claimedRun(ctx, t, s, w)
+		hook.onClose = func() { //nolint:contextcheck // fail writes on a context of its own, as the worker does when the run's context has ended
 			if err := w.fail(j.ID, errors.New("session ended")); err != nil {
 				t.Errorf("fail: %v", err)
 			}
@@ -70,8 +69,8 @@ func runCancelRaceContract(t *testing.T, newStore func(t *testing.T) Store) {
 	t.Run("a failure with no cancel requested is an error", func(t *testing.T) {
 		s := newStore(t)
 		w := NewWorker(s, &fakeRunner{})
-		j := claimedRun(t, s, w)
-		if err := w.fail(j.ID, errors.New("boom")); err != nil {
+		j := claimedRun(ctx, t, s, w)
+		if err := w.fail(j.ID, errors.New("boom")); err != nil { //nolint:contextcheck // fail writes on a context of its own, as the worker does when the run's context has ended
 			t.Fatalf("fail: %v", err)
 		}
 		got, _ := s.Get(ctx, j.ID)
@@ -83,14 +82,14 @@ func runCancelRaceContract(t *testing.T, newStore func(t *testing.T) Store) {
 	t.Run("a cancel whose close fails leaves the row active, and its later failure reads as the stop", func(t *testing.T) {
 		s := newStore(t)
 		w := NewWorker(s, &fakeRunner{closeErr: errors.New("backend down")})
-		j := claimedRun(t, s, w)
+		j := claimedRun(ctx, t, s, w)
 		if err := w.Cancel(ctx, j.ID); err == nil {
 			t.Fatal("Cancel succeeded despite a failed close")
 		}
 		if got, _ := s.Get(ctx, j.ID); got.Phase.Terminal() {
 			t.Fatalf("a failed close made the row %s", got.Phase)
 		}
-		if err := w.fail(j.ID, errors.New("session ended")); err != nil {
+		if err := w.fail(j.ID, errors.New("session ended")); err != nil { //nolint:contextcheck // fail writes on a context of its own, as the worker does when the run's context has ended
 			t.Fatalf("fail: %v", err)
 		}
 		if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseFailed || got.StopReason != StopCanceled {
@@ -104,7 +103,7 @@ func runCancelRaceContract(t *testing.T, newStore func(t *testing.T) Store) {
 			t.Errorf("unknown session: %v, want ErrNotFound", err)
 		}
 		w := NewWorker(s, &fakeRunner{})
-		j := claimedRun(t, s, w)
+		j := claimedRun(ctx, t, s, w)
 		if err := w.advance(ctx, j.ID, PhaseFailed, func(j *Job) { j.Err = "x" }); err != nil {
 			t.Fatalf("advance: %v", err)
 		}
