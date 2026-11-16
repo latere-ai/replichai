@@ -108,3 +108,46 @@ func TestStripeWebhookConcurrentRefundsEmailTheFreezeOnce(t *testing.T) {
 		}
 	}
 }
+
+// TestStripeWebhookAWonDisputeGivesTheCreditBackOnce checks that a won dispute
+// restores what the dispute took, and that a second delivery of the outcome, as
+// Stripe sends for one win, credits nothing more.
+func TestStripeWebhookAWonDisputeGivesTheCreditBackOnce(t *testing.T) {
+	_, rt, ledger, _ := paymentsDeps(t)
+	paid, err := json.Marshal(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: "pi_w", Meta: map[string]string{"credited_micro": "18700000"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := rt.deliverWebhook(paid); code != http.StatusOK {
+		t.Fatalf("purchase = %d", code)
+	}
+	if code := rt.deliverWebhook(refundDelivery(t, pay.Event{Kind: pay.KindDisputed, Ref: "pi_w", ReversalRef: "dp_w"}, 0, 0)); code != http.StatusOK {
+		t.Fatalf("dispute = %d", code)
+	}
+	bal := func() int64 {
+		n, _ := ledger.Balance(context.Background(), credit.Wallet(payer.Email))
+		return n
+	}
+	if bal() != 0 {
+		t.Fatalf("balance after the dispute = %d, want 0", bal())
+	}
+	won, err := json.Marshal(pay.Event{Kind: pay.KindDisputeWon, Ref: "pi_w", ReversalRef: "dp_w"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if code := rt.deliverWebhook(won); code != http.StatusOK {
+			t.Fatalf("won dispute = %d, want 200", code)
+		}
+	}
+	if bal() != 18_700_000 {
+		t.Fatalf("balance after a won dispute delivered twice = %d, want the credit back once", bal())
+	}
+	unknown, err := json.Marshal(pay.Event{Kind: pay.KindDisputeWon, Ref: "pi_none", ReversalRef: "dp_none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := rt.deliverWebhook(unknown); code != http.StatusInternalServerError {
+		t.Fatalf("won dispute of an unrecorded purchase = %d, want 500", code)
+	}
+}

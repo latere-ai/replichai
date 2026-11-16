@@ -118,8 +118,33 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 			writeError(w, code, "refund_failed") // Stripe retries on a non-2xx status.
 			return
 		}
+	case pay.KindDisputeWon:
+		if code := rt.restoreDispute(r, ev); code != http.StatusOK {
+			writeError(w, code, "refund_failed") // Stripe retries on a non-2xx status.
+			return
+		}
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// restoreDispute gives back the credit a lost-then-won dispute took. Stripe may
+// report one win twice, and the store keys the credit on the dispute id, so the
+// second delivery credits nothing. A purchase this ledger has not recorded
+// answers 500 for a retry, as a refund does.
+func (rt *Router) restoreDispute(r *http.Request, ev pay.Event) int {
+	if rt.credits == nil {
+		return http.StatusOK
+	}
+	if ev.Ref == "" || ev.ReversalRef == "" {
+		slog.WarnContext(r.Context(), "stripe webhook: won dispute without a purchase or a dispute id", "ref", ev.Ref, "dispute", ev.ReversalRef)
+		return http.StatusOK
+	}
+	_, err := rt.credits.RestoreDispute(r.Context(), ev.Ref, ev.ReversalRef)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "stripe webhook: won dispute not restored", "ref", ev.Ref, "dispute", ev.ReversalRef, "error", err)
+		return http.StatusInternalServerError
+	}
+	return http.StatusOK
 }
 
 // creditPurchase posts the wallet credit a paid checkout earned, from the

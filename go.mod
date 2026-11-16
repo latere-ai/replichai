@@ -13,7 +13,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.47.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.7
 	golang.org/x/oauth2 v0.37.0
-	latere.ai/x/pay v0.2.0
+	latere.ai/x/pay v0.3.0
 	latere.ai/x/pkg v0.116.0
 )
 
@@ -33,8 +33,9 @@ require (
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/pb33f/go-yaml v0.1.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.2 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
-	github.com/stripe/stripe-go/v85 v85.2.0 // indirect
+	github.com/stripe/stripe-go/v87 v87.1.0 // indirect
 	github.com/tidwall/gjson v1.20.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.2 // indirect
