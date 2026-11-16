@@ -1118,3 +1118,50 @@ func TestAPersonsCancelStillCancelsTheBackendSession(t *testing.T) {
 		t.Errorf("cancelled job = %s/%q, want failed/cancelled", got.Phase, got.Err)
 	}
 }
+
+// TestALostLeaseDetachesWithoutCancellingTheBackendSession checks that a driver
+// whose lease another replica took stops with managed.ErrDetached as the cause
+// of its run, so the controller leaves the backend session to the new owner,
+// and that it writes nothing to the row.
+func TestALostLeaseDetachesWithoutCancellingTheBackendSession(t *testing.T) {
+	s := NewMemStore()
+	ctx := t.Context()
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
+
+	const ttl = 60 * time.Millisecond
+	held := make(chan struct{})
+	causes := make(chan error, 1)
+	r := &fakeRunner{observed: provider.RunStatus{RunID: "sesn_moved_01"}}
+	r.runExecute = func(ctx context.Context) error {
+		close(held)
+		<-ctx.Done()
+		causes <- context.Cause(ctx)
+		return context.Cause(ctx)
+	}
+	driver := NewWorker(s, r, WithWorkerID("pod-a"), WithPoll(time.Millisecond), withLeaseTTL(ttl))
+	go driver.Start(ctx, 1)
+	<-held
+
+	if won, err := s.Adopt(ctx, j.ID, "pod-b", 0); err != nil || !won {
+		t.Fatalf("Adopt = %v/%v, want pod-b to win", won, err)
+	}
+	select {
+	case cause := <-causes:
+		if !errors.Is(cause, managed.ErrDetached) {
+			t.Fatalf("the run ended with cause %v, want managed.ErrDetached so the backend session is left running", cause)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the driver kept running a session whose lease it had lost")
+	}
+	r.mu.Lock()
+	closed := slices.Clone(r.closed)
+	r.mu.Unlock()
+	if len(closed) != 0 {
+		t.Errorf("the driver closed backend runs %v", closed)
+	}
+	// Give the stopped driver time to write, then check it did not.
+	time.Sleep(50 * time.Millisecond)
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseRunning || got.Err != "" {
+		t.Errorf("row = %s/%q, want running with no error, left to the new owner", got.Phase, got.Err)
+	}
+}

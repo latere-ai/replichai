@@ -96,7 +96,7 @@ type Worker struct {
 	// rather than waiting for the next phase boundary. It covers the sessions
 	// this process drives; the lease keeps other replicas off them.
 	mu      sync.Mutex
-	running map[string]context.CancelFunc
+	running map[string]context.CancelCauseFunc
 	// background counts every goroutine this worker started, so Start can return
 	// only once none of them is still writing to the store.
 	background sync.WaitGroup
@@ -180,7 +180,20 @@ func (w *Worker) interrupt(id string) {
 	cancel := w.running[id]
 	w.mu.Unlock()
 	if cancel != nil {
-		cancel()
+		cancel(nil)
+	}
+}
+
+// detach stops driving a session this worker is driving without touching its
+// backend session, because another replica now owns the run. The run context
+// ends with managed.ErrDetached, which the controller answers by leaving the
+// session running.
+func (w *Worker) detach(id string) {
+	w.mu.Lock()
+	cancel := w.running[id]
+	w.mu.Unlock()
+	if cancel != nil {
+		cancel(managed.ErrDetached)
 	}
 }
 
@@ -208,7 +221,7 @@ func withWorkerSleep(f func(context.Context, time.Duration) error) WorkerOption 
 // random id would not.
 func NewWorker(store Store, runner Runner, opts ...WorkerOption) *Worker {
 	w := &Worker{store: store, runner: runner, poll: time.Second, sleep: wait.Sleep,
-		sweepEvery: LeaseTTL, leaseTTL: LeaseTTL, id: defaultWorkerID(), running: map[string]context.CancelFunc{}}
+		sweepEvery: LeaseTTL, leaseTTL: LeaseTTL, id: defaultWorkerID(), running: map[string]context.CancelCauseFunc{}}
 	for _, opt := range opts {
 		opt(w)
 	}
@@ -363,6 +376,9 @@ func (w *Worker) heartbeat(ctx context.Context) {
 // to publish. A store error is ignored: the next tick is soon, and a transient
 // database error must not cancel a healthy run.
 //
+// The yield leaves the backend session alone: the replica that holds the lease
+// is driving it, and cancelling it from here would end its run.
+//
 // A row that went terminal also reports held=false. Either this run finished
 // and the heartbeat ran between its final transition and the driver
 // deregistering, or a person cancelled the session on another replica, whose
@@ -385,7 +401,7 @@ func (w *Worker) beat(ctx context.Context) {
 			continue
 		}
 		slog.InfoContext(ctx, "worker: yielding session; its lease is held elsewhere", "session", id)
-		w.interrupt(id)
+		w.detach(id)
 	}
 }
 
@@ -544,7 +560,7 @@ func (w *Worker) register(pool context.Context, id string) (context.Context, fun
 	// the lease this replica holds.
 	ctx, cancel := context.WithCancelCause(WithWorker(context.WithoutCancel(pool), w.id))
 	detach := context.AfterFunc(pool, func() { cancel(managed.ErrDetached) })
-	w.running[id] = func() { cancel(nil) }
+	w.running[id] = cancel
 	return ctx, func() {
 		w.mu.Lock()
 		delete(w.running, id)
@@ -731,6 +747,9 @@ func apply(src Job) func(*Job) {
 // own context is cancelled, not the pool's, so the row is still failed here,
 // and the store's cancel write, made first, wins in the state machine.
 func (w *Worker) stop(pool context.Context, id string, cause error) error {
+	if errors.Is(cause, managed.ErrDetached) {
+		return nil // this replica stopped driving; the row belongs to whoever drives the session now
+	}
 	if pool.Err() != nil {
 		return nil //nolint:nilerr // a shutdown is not a failed session: leaving the row in phase is what lets the next boot rejoin it
 	}
