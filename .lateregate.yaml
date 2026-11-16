@@ -211,3 +211,17 @@ e2e:
     services: [postgres]
     env:
       TEST_DATABASE_URL: "${postgres.url}"
+
+# The state types whose every switch must name each state, so a state added
+# to a table cannot fall through a switch that predates it.
+enums:
+  go:
+    types:
+      - internal/job.Phase
+      - internal/access.GrantState
+      - internal/project.State
+      - internal/managed.State
+      - internal/batch.Phase
+    parsers:
+      internal/job.ParsePhase: Reads a session phase from an uploaded session record and reports whether job.Phases has it.
+      internal/managed.ParseState: Reads a runtime state's stable name from a stored locator or a wire payload and reports whether managed.Sessions has it.

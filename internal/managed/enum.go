@@ -82,15 +82,25 @@ func (s *State) UnmarshalJSON(raw []byte) error {
 	if err := json.Unmarshal(raw, &name); err != nil {
 		return err
 	}
+	state, ok := ParseState(name)
+	if !ok {
+		return fmt.Errorf("unknown managed state %q", name)
+	}
+	*s = state
+	return nil
+}
+
+// ParseState reads a state's stable name and reports whether it is one this
+// build knows. "unknown" is the zero value; any other name must be a state of
+// Sessions.
+func ParseState(name string) (State, bool) {
 	if name == "unknown" {
-		*s = StateUnknown
-		return nil
+		return StateUnknown, true
 	}
 	if candidate := State(name); candidate.Valid() {
-		*s = candidate
-		return nil
+		return candidate, true
 	}
-	return fmt.Errorf("unknown managed state %q", name)
+	return StateUnknown, false
 }
 
 // Grade is a runtime evaluator's decision.

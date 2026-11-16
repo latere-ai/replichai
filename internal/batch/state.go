@@ -179,7 +179,7 @@ func (s State) Summarize() Totals {
 			totals.Done++
 		case Failed:
 			totals.Failed++
-		default:
+		case Pending, Running, Interrupted:
 			totals.Pending++
 		}
 		// This uses Grade.String rather than a conversion. Grade is a uint8,

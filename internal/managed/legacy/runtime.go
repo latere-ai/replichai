@@ -277,6 +277,8 @@ func (r *Runtime) Poll(ctx context.Context, ref managed.SessionRef) (managed.Sta
 		}
 	case managed.StateFailed:
 		result.TerminalReason = managed.ReasonRuntimeFailed
+	case managed.StatePending, managed.StateRunning, managed.StateUnknown:
+		// A live or unread state has no terminal reason yet.
 	}
 	return result, nil
 }

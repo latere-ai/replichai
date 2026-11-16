@@ -518,6 +518,8 @@ func providerState(state managed.State) provider.RunState {
 		return provider.StateDone
 	case managed.StateFailed:
 		return provider.StateFailed
+	case managed.StateUnknown:
+		return provider.StateUnknown
 	default:
 		return provider.StateUnknown
 	}

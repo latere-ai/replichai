@@ -538,6 +538,8 @@ func stateRank(state State) int {
 		return 2
 	case StateDone, StateFailed:
 		return 3
+	case StateUnknown:
+		return 0
 	default:
 		return 0
 	}

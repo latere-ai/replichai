@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"latere.ai/x/pkg/statemachine"
@@ -329,6 +330,13 @@ func (p Phase) Active() bool { return len(Phases.Next(p)) > 0 }
 // Terminal reports whether no further transition is possible. A phase the table
 // does not list is not terminal.
 func (p Phase) Terminal() bool { return Phases.Terminal(p) }
+
+// ParsePhase reads a phase written as text outside the store, such as a
+// session record a person uploads, and reports whether Phases has it.
+func ParsePhase(name string) (Phase, bool) {
+	p := Phase(name)
+	return p, slices.Contains(Phases.States(), p)
+}
 
 // Phases is the whole state machine: the legal successors of each phase.
 // Failed is reachable from every active phase; done is reachable only from

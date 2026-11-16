@@ -83,8 +83,8 @@ func (rt *Router) importSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
-	phase := job.Phase(strings.TrimSpace(body.Phase))
-	if !phase.Terminal() {
+	phase, known := job.ParsePhase(strings.TrimSpace(body.Phase))
+	if !known || !phase.Terminal() {
 		writeError(w, http.StatusBadRequest, "session_not_terminal")
 		return
 	}
