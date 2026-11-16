@@ -162,7 +162,7 @@ func (s *MemStore) grant(email string, tier Tier, by string) (GrantState, error)
 			return from, ErrLastAdmin
 		}
 	} else if err := Grants.CheckStart(GrantInvited); err != nil {
-		return "", err
+		return from, err
 	}
 	s.upsert(email, tier, by)
 	return from, nil
