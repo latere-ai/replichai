@@ -191,15 +191,18 @@ endpoint in Stripe at `$BASE_URL/stripe/webhook`, and put its signing secret in
 The Stripe adapter reads `checkout.session.completed`,
 `checkout.session.async_payment_succeeded`, `payment_intent.succeeded`,
 `payment_intent.payment_failed`, `charge.refunded`, `charge.dispute.created`,
-`charge.dispute.closed` and `charge.dispute.funds_reinstated`. Subscribe the
-webhook endpoint to all of them: without the last two, credit a won dispute
+`charge.dispute.funds_withdrawn`, `charge.dispute.closed` and
+`charge.dispute.funds_reinstated`. Subscribe the webhook endpoint to all of
+them: without `charge.dispute.funds_withdrawn`, an inquiry that becomes a
+chargeback takes nothing back, and without the last two, credit a won dispute
 took back is never given back.
 
 A refund takes back only its share of the credit the purchase gave. Refunding
 a quarter of a charge takes back a quarter of the credit, and a second refund
 takes back its own share on top of the first. A dispute takes back whatever
 is left, and a won dispute gives it back. An inquiry, a dispute the card
-network opens to ask a question before taking any money, takes nothing. The
+network opens to ask a question before taking any money, takes nothing until
+it becomes a chargeback. The
 credit taken back for one purchase never passes what the purchase credited. An account whose wallet goes below zero can read everything,
 including exporting a project's archive, and can pay to top up, but cannot make
 any other change until the wallet is back at zero.
