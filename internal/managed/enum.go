@@ -10,90 +10,85 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"latere.ai/x/pkg/statemachine"
 )
 
-// State is the externally visible lifecycle of a managed session.
-type State uint8
+// State is the externally visible lifecycle of a managed session. Its values
+// are the stable names the wire and every stored locator carry.
+type State string
 
-// The lifecycle a session moves through. StateUnknown is the zero value, so a
-// Status that was never filled in cannot pass for a live or a finished session.
+// The lifecycle a session moves through. StateUnknown is the zero value, the
+// empty string, so a Status that was never filled in cannot pass for a live or
+// a finished session: it is no state of Sessions.
 const (
-	StateUnknown State = iota
-	StatePending
-	StateRunning
-	StateDone
-	StateFailed
+	StateUnknown State = ""
+	StatePending State = "pending"
+	StateRunning State = "running"
+	StateDone    State = "done"
+	StateFailed  State = "failed"
 )
 
-var stateNames = map[State]string{
-	StateUnknown: "unknown",
-	StatePending: "pending",
-	StateRunning: "running",
-	StateDone:    "done",
-	StateFailed:  "failed",
-}
-
-// stateTransitions is every step a session's state may take. Every valid state
-// is a key and a terminal state maps to nil. StateUnknown is the zero value of
-// a Status nobody filled in, not a state a session is ever in, so it is no key.
-// A session may begin at StatePending or StateRunning.
-var stateTransitions = map[State][]State{
+// Sessions is every step a session's state may take. A session begins at
+// StatePending or StateRunning, and a terminal state maps to nil.
+var Sessions = statemachine.Must(statemachine.New("RuntimeSession", []State{StatePending, StateRunning}, map[State][]State{
 	StatePending: {StateRunning, StateDone, StateFailed},
 	StateRunning: {StateDone, StateFailed},
 	StateDone:    nil,
 	StateFailed:  nil,
-}
+}))
 
 // ErrIllegalStateStep reports a state change the lifecycle does not allow,
-// such as a finished session reported as running again.
+// such as a finished session reported as running again. The error also wraps
+// statemachine.ErrIllegalTransition.
 var ErrIllegalStateStep = errors.New("illegal session state change")
 
 // CheckStateStep returns nil when a session in state from may be reported in
 // state to. Reporting the state it is already in is not a change and is
-// allowed; any other step must be one stateTransitions lists.
+// allowed; any other step must be one Sessions lists.
 func CheckStateStep(from, to State) error {
 	if from == to && from.Valid() {
 		return nil
 	}
-	if slices.Contains(stateTransitions[from], to) {
-		return nil
+	if err := Sessions.Check(from, to); err != nil {
+		return fmt.Errorf("%w: %w", ErrIllegalStateStep, err)
 	}
-	return fmt.Errorf("%w: %s to %s", ErrIllegalStateStep, from, to)
+	return nil
 }
 
 // Terminal reports whether no further state change is expected, which is the
 // controller's signal to stop polling and release the session.
-func (s State) Terminal() bool { return s == StateDone || s == StateFailed }
+func (s State) Terminal() bool { return Sessions.Terminal(s) }
 
-// Valid reports whether s is a state this package defines. The test is an
-// ordered range, so StateFailed must stay the last member of the block above.
-func (s State) Valid() bool { return s > StateUnknown && s <= StateFailed }
+// Valid reports whether s is a state of Sessions.
+func (s State) Valid() bool { return slices.Contains(Sessions.States(), s) }
 
-// String returns the value's stable name.
+// String returns the value's stable name; the zero value reads "unknown".
 func (s State) String() string {
-	if name, ok := stateNames[s]; ok {
-		return name
+	if s == StateUnknown {
+		return "unknown"
 	}
-	return fmt.Sprintf("State(%d)", s)
+	return string(s)
 }
 
-// MarshalJSON encodes the state as its stable name, so the wire form does not
-// depend on the numbering of the constants.
+// MarshalJSON encodes the state as its stable name.
 func (s State) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
 
 // UnmarshalJSON decodes a stable name and rejects any it does not know, so
 // that a state this build cannot interpret is an error instead of arriving as
-// StateUnknown.
+// StateUnknown. "unknown" decodes to the zero value.
 func (s *State) UnmarshalJSON(raw []byte) error {
 	var name string
 	if err := json.Unmarshal(raw, &name); err != nil {
 		return err
 	}
-	for value, candidate := range stateNames {
-		if candidate == name {
-			*s = value
-			return nil
-		}
+	if name == "unknown" {
+		*s = StateUnknown
+		return nil
+	}
+	if candidate := State(name); candidate.Valid() {
+		*s = candidate
+		return nil
 	}
 	return fmt.Errorf("unknown managed state %q", name)
 }

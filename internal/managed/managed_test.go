@@ -12,6 +12,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"latere.ai/x/pkg/statemachine"
 )
 
 func validSpec() SessionSpec {
@@ -471,10 +473,10 @@ func TestUsageInitializesMapsAndDetectsFixedDecrease(t *testing.T) {
 }
 
 func TestEnumErrorPathsAndModelRef(t *testing.T) {
-	if StateUnknown.Valid() || !StatePending.Valid() || State(99).Valid() {
+	if StateUnknown.Valid() || !StatePending.Valid() || State("paused").Valid() {
 		t.Fatal("state validity is wrong")
 	}
-	if !strings.Contains(State(99).String(), "99") || !strings.Contains(Grade(99).String(), "99") {
+	if !strings.Contains(State("paused").String(), "paused") || !strings.Contains(Grade(99).String(), "99") {
 		t.Fatal("unknown enum string lacks value")
 	}
 	if err := json.Unmarshal([]byte(`1`), new(State)); err == nil {
@@ -527,5 +529,36 @@ func TestCheckStateStepFollowsTheLifecycle(t *testing.T) {
 		if err := CheckStateStep(step[0], step[1]); !errors.Is(err, ErrIllegalStateStep) {
 			t.Errorf("%s to %s = %v, want ErrIllegalStateStep", step[0], step[1], err)
 		}
+	}
+}
+
+// Each name an older build wrote decodes to the state it names, an unknown
+// name is refused, and every state encodes to the same name.
+func TestStateNamesDecodeAsOlderBuildsWroteThem(t *testing.T) {
+	for name, want := range map[string]State{
+		"unknown": StateUnknown, "pending": StatePending, "running": StateRunning, "done": StateDone, "failed": StateFailed,
+	} {
+		var got State
+		if err := json.Unmarshal([]byte(`"`+name+`"`), &got); err != nil || got != want {
+			t.Errorf("decode %q = %q, %v; want %q", name, got, err, want)
+		}
+		encoded, err := json.Marshal(want)
+		if err != nil || string(encoded) != `"`+name+`"` {
+			t.Errorf("encode %q = %s, %v", want, encoded, err)
+		}
+	}
+	var got State
+	if err := json.Unmarshal([]byte(`"paused"`), &got); err == nil {
+		t.Error("an unknown state name decoded")
+	}
+	if StateUnknown.Valid() || State("paused").Valid() {
+		t.Error("a state outside Sessions is valid")
+	}
+}
+
+func TestAnIllegalStepWrapsBothErrors(t *testing.T) {
+	err := CheckStateStep(StateDone, StateRunning)
+	if !errors.Is(err, ErrIllegalStateStep) || !errors.Is(err, statemachine.ErrIllegalTransition) {
+		t.Fatalf("err = %v", err)
 	}
 }
