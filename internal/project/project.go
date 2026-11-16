@@ -637,6 +637,8 @@ type SessionMover interface {
 // state: only a private project takes part in a move.
 func checkMove(from State) error {
 	switch from {
+	case StatePrivate:
+		return nil
 	case StatePublic:
 		return ErrPublic
 	case StateTrashed:

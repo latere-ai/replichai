@@ -688,7 +688,7 @@ func TestWaitDetachedLeavesTheSessionRunning(t *testing.T) {
 			if test.wantCancel != cancelled {
 				t.Fatalf("calls = %v, want cancel=%v", runtime.calls, test.wantCancel)
 			}
-			if test.cause == ErrDetached {
+			if errors.Is(test.cause, ErrDetached) {
 				if !errors.Is(got.err, ErrDetached) {
 					t.Fatalf("error = %v, want ErrDetached", got.err)
 				}
