@@ -100,6 +100,9 @@ func runStoreContract(t *testing.T, s Store) {
 	if n, _ := s.Balance(ctx, Wallet("keyed@example.org")); n != 3*Dollar {
 		t.Fatalf("wallet after a keyed grant sent twice = %d, want %d", n, 3*Dollar)
 	}
+	if err := s.Topup(ctx, admin, "keyed@example.org", 4*Dollar, "grant-7f3a"); !errors.Is(err, ErrKeyReused) {
+		t.Fatalf("key reused for another amount: want ErrKeyReused, got %v", err)
+	}
 	if err := s.Topup(ctx, admin, "keyed@example.org", 3*Dollar, "bad key"); !errors.Is(err, ErrBadKey) {
 		t.Fatalf("key with a space: want ErrBadKey, got %v", err)
 	}

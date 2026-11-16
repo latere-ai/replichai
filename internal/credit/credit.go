@@ -68,6 +68,9 @@ var (
 	// ErrBadKey reports an admin grant's idempotency key that is too long or
 	// holds anything but printable ASCII.
 	ErrBadKey = errors.New("an idempotency key must be printable ASCII and at most 128 bytes")
+	// ErrKeyReused reports an admin grant's idempotency key already used for a
+	// grant with another email or amount.
+	ErrKeyReused = errors.New("this idempotency key was used for a different grant")
 )
 
 // Reserve reports how much a project must have available before a session may
@@ -247,7 +250,8 @@ type Store interface {
 	// Topup creates credits in one email's wallet. Only a platform admin may
 	// call it; until a payment provider posts the same entry, this is the only
 	// way money enters. A non-empty key makes the grant idempotent: a request
-	// retried with the same key is one grant. An empty key is a new grant.
+	// retried with the same key is one grant, and the same key with another
+	// email or amount is ErrKeyReused. An empty key is a new grant.
 	Topup(ctx context.Context, byAdmin access.Principal, email string, amount int64, key string) error
 	// TopupPaid posts a purchased credit into a wallet, idempotent on ref. It has
 	// no principal to check: authority came from a verified webhook signature

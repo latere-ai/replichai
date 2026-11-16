@@ -532,6 +532,8 @@ func writeAdminError(w http.ResponseWriter, err error) {
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_card")
 	case errors.Is(err, credit.ErrBadKey):
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_idempotency_key")
+	case errors.Is(err, credit.ErrKeyReused):
+		httpapi.WriteError(w, http.StatusConflict, "idempotency_key_reused")
 	case errors.Is(err, platform.ErrEnvironments):
 		httpapi.WriteError(w, http.StatusBadRequest, "bad_environments")
 	default:

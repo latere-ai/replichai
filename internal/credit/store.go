@@ -278,6 +278,9 @@ func (s *store) Topup(ctx context.Context, byAdmin access.Principal, email strin
 		Ref:    ref,
 		Actor:  byAdmin.Email,
 	}); err != nil {
+		if errors.Is(err, ledger.ErrRefConflict) {
+			return ErrKeyReused
+		}
 		return err
 	}
 	s.solvent(ctx, email)
