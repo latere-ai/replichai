@@ -10,6 +10,23 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+## Unreleased
+
+### Fixed
+
+- **A won dispute keeps its credit even when Stripe delivers the win before
+  the dispute,** which can happen when a failed delivery is sent again by
+  hand.
+- **Stopping a session is always recorded as a stop,** even when the session
+  fails at the same moment because it was stopped.
+- **Deleting a published project withdraws it and moves it to the trash in
+  one step,** so a session that starts at the same moment can no longer leave
+  it withdrawn but not in the trash.
+- The account-on-hold mail is sent when a refund puts the wallet below zero
+  while credits are being moved to a project at the same moment.
+- A refund counts every earlier refund of the same purchase on wallets with a
+  long history.
+
 ## v0.40.0 - 2026-11-16
 
 ### Added
