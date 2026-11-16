@@ -2513,25 +2513,13 @@ func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// A publication ends only with a recorded retraction (006o). Deleting does
-	// not skip the record, so the withdrawal happens first and through the same
-	// path an ordinary withdrawal takes.
-	if proj.Visibility == project.VisibilityPublic {
-		// Already private means somebody withdrew it between the read and here,
-		// which is the state this step wanted.
-		if err := rt.projects.SetPrivate(r.Context(), proj.ID, project.Withdrawal{By: id.Sub, Reason: withdrawnByDeletion}); err != nil && !errors.Is(err, project.ErrNotPublic) {
-			writeError(w, http.StatusInternalServerError, "withdraw_failed")
-			return
-		}
-		rt.closeRepos(r.Context(), sessions)
-		rt.publicChanged()
-	}
-	switch err := rt.projects.Trash(r.Context(), proj.ID); {
+	// not skip the record: the store withdraws and trashes in one transaction, so
+	// no session can start between the two and a refusal leaves the project as it
+	// was. The repositories are closed once that has committed; the repository
+	// visibility code applies a public want only while the project is public.
+	switch err := rt.projects.TrashWithdrawing(r.Context(), proj.ID, project.Withdrawal{By: id.Sub, Reason: withdrawnByDeletion}); {
 	case errors.Is(err, project.ErrTrashed):
 		// Already in the trash: the owner's second click finds what they wanted.
-	case errors.Is(err, project.ErrPublic):
-		// Published again between the withdrawal above and the trash.
-		writeError(w, http.StatusConflict, "project_public")
-		return
 	case errors.Is(err, project.ErrSessionsActive):
 		// A session started after the check above, and the store saw it under the
 		// project's row lock.
@@ -2540,6 +2528,10 @@ func (rt *Router) trashProject(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "trash_failed")
 		return
+	default:
+		if proj.Visibility == project.VisibilityPublic {
+			rt.closeRepos(r.Context(), sessions)
+		}
 	}
 	rt.publicChanged()
 	w.WriteHeader(http.StatusNoContent)

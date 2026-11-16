@@ -150,6 +150,20 @@ func checkTrash(from State) error {
 	return refuse(ErrPublic, err)
 }
 
+// checkTrashWithdrawing decides whether a project may be trashed in one step,
+// and whether a withdrawal is recorded first. A public project takes the two
+// moves the table lists in order, public to private and private to trashed, and
+// each is checked against it; any other project takes the one move Trash does.
+func checkTrashWithdrawing(from State) (withdraw bool, err error) {
+	if from != StatePublic {
+		return false, checkTrash(from)
+	}
+	if err := checkWithdraw(from); err != nil {
+		return false, err
+	}
+	return true, checkTrash(StatePrivate)
+}
+
 // checkRestore decides whether a project may leave the trash. The table's move
 // from public to private is a withdrawal, so only a trashed project is let
 // through.
@@ -554,6 +568,12 @@ type Store interface {
 	// ErrNotFound, because the caller has just authorized against one.
 	Trash(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error
+	// TrashWithdrawing moves a project to the trash in one step, ending a
+	// publication on the way. A public project is withdrawn as SetPrivate
+	// records it, with w, and then trashed; a private one is trashed as Trash
+	// does. Every refusal Trash makes holds, ErrSessionsActive among them, and a
+	// refusal leaves the project, and its publication history, as it was.
+	TrashWithdrawing(ctx context.Context, id string, w Withdrawal) error
 	// ListTrashed returns an owner's trashed projects, newest-trashed first. It
 	// is the only read that returns them; every other list filters them out.
 	ListTrashed(ctx context.Context, owner string) ([]Project, error)

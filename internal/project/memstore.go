@@ -172,6 +172,37 @@ func (s *MemStore) Trash(ctx context.Context, id string) error {
 	return nil
 }
 
+// TrashWithdrawing moves a project to the trash, recording the withdrawal of a
+// public one first. The session store's gate and the store's lock are held
+// across the checks and both writes, and a refusal changes nothing.
+func (s *MemStore) TrashWithdrawing(ctx context.Context, id string, w Withdrawal) error {
+	defer s.lockGate()()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[id]
+	if !ok {
+		return ErrNotFound
+	}
+	withdraw, err := checkTrashWithdrawing(p.State())
+	if err != nil {
+		return err
+	}
+	if err := s.refuseActive(ctx, id); err != nil {
+		return err
+	}
+	now := s.clock()
+	if withdraw {
+		p.Visibility = VisibilityPrivate
+		p.WithdrawnAt = &now
+		p.WithdrawnBy = w.By
+		p.WithdrawnReason = w.Reason
+		s.history[id] = append(s.history[id], Publication{Kind: PublicationWithdrawn, At: now, By: w.By, Reason: w.Reason})
+	}
+	p.DeletedAt = &now
+	s.projects[id] = p
+	return nil
+}
+
 // Restore takes a project back out of the trash. Any other project is refused.
 func (s *MemStore) Restore(_ context.Context, id string) error {
 	s.mu.Lock()

@@ -307,3 +307,101 @@ func TestMemStorePublicationWritersFollowTheTable(t *testing.T) {
 	statemachinetest.Exhaustive(t, Publications, d)
 	statemachinetest.Race(t, Publications, d)
 }
+
+// runTrashWithdrawingContract asserts the one-step delete through a store's own
+// writers. busy switches whether a session is in flight; it is called with the
+// store's project id so the Postgres store can seed a real row.
+func runTrashWithdrawingContract(t *testing.T, s Store, busy func(t *testing.T, id string, on bool)) {
+	t.Helper()
+	ctx := context.Background()
+	sign := SignOff{By: "del-owner", AttestationVersion: "v1", Handle: "ada"}
+	withdrawals := func(id string) (n int) {
+		hist, err := s.Publications(ctx, id)
+		if err != nil {
+			t.Fatalf("Publications: %v", err)
+		}
+		for _, h := range hist {
+			if h.Kind == PublicationWithdrawn {
+				n++
+			}
+		}
+		return n
+	}
+
+	// A session in flight refuses the delete and leaves the project public.
+	pub, err := s.Create(ctx, "del-owner", "Public")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := s.SetPublic(ctx, pub.ID, sign); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	busy(t, pub.ID, true)
+	if err := s.TrashWithdrawing(ctx, pub.ID, Withdrawal{By: "del-owner", Reason: "gone"}); !errors.Is(err, ErrSessionsActive) {
+		t.Fatalf("delete with a session in flight = %v, want ErrSessionsActive", err)
+	}
+	got, _ := s.Get(ctx, pub.ID)
+	if got.Visibility != VisibilityPublic || got.Trashed() || got.WithdrawnAt != nil {
+		t.Errorf("a refused delete changed the project: %+v", got)
+	}
+	if n := withdrawals(pub.ID); n != 0 {
+		t.Errorf("a refused delete recorded %d withdrawals", n)
+	}
+
+	// Without one it withdraws once and trashes.
+	busy(t, pub.ID, false)
+	if err := s.TrashWithdrawing(ctx, pub.ID, Withdrawal{By: "del-owner", Reason: "gone"}); err != nil {
+		t.Fatalf("delete a public project: %v", err)
+	}
+	got, _ = s.Get(ctx, pub.ID)
+	if got.Visibility != VisibilityPrivate || !got.Trashed() || got.WithdrawnAt == nil || got.WithdrawnBy != "del-owner" || got.WithdrawnReason != "gone" || got.SignedOffBy == "" {
+		t.Errorf("deleted public project = %+v", got)
+	}
+	if n := withdrawals(pub.ID); n != 1 {
+		t.Errorf("withdrawals recorded = %d, want 1", n)
+	}
+	if err := s.TrashWithdrawing(ctx, pub.ID, Withdrawal{By: "del-owner"}); !errors.Is(err, ErrTrashed) {
+		t.Errorf("deleting a trashed project = %v, want ErrTrashed", err)
+	}
+	if n := withdrawals(pub.ID); n != 1 {
+		t.Errorf("a second delete recorded a withdrawal: %d", n)
+	}
+
+	// A private project is trashed with no withdrawal.
+	priv, _ := s.Create(ctx, "del-owner", "Private")
+	if err := s.TrashWithdrawing(ctx, priv.ID, Withdrawal{By: "del-owner"}); err != nil {
+		t.Fatalf("delete a private project: %v", err)
+	}
+	if got, _ := s.Get(ctx, priv.ID); !got.Trashed() || got.WithdrawnAt != nil {
+		t.Errorf("deleted private project = %+v", got)
+	}
+	if n := withdrawals(priv.ID); n != 0 {
+		t.Errorf("a private delete recorded %d withdrawals", n)
+	}
+	if err := s.TrashWithdrawing(ctx, "no-such-project", Withdrawal{}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("deleting a missing project = %v, want ErrNotFound", err)
+	}
+}
+
+func TestMemStoreTrashWithdrawing(t *testing.T) {
+	var on bool
+	s := NewMemStore(WithActiveSessions(func(context.Context, string) (bool, error) { return on, nil }))
+	runTrashWithdrawingContract(t, s, func(_ *testing.T, _ string, v bool) { on = v })
+}
+
+func TestPGStoreTrashWithdrawing(t *testing.T) {
+	pool := testPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+	s := NewPGStore(pool, WithActivePhases(activeStrings()))
+	runTrashWithdrawingContract(t, s, func(t *testing.T, id string, on bool) {
+		t.Helper()
+		if on {
+			seedSession(t, pool, legacySession{id: "del-job-" + id, project: id, principal: "del-owner", ref: "r", key: "doi:1", phase: string(job.PhaseRunning), created: time.Now()})
+			return
+		}
+		if _, err := pool.Exec(ctx, `UPDATE jobs SET phase=$2 WHERE project_id=$1`, id, string(job.PhaseDone)); err != nil {
+			t.Fatalf("finish the session: %v", err)
+		}
+	})
+}

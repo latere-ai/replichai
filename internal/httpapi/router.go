@@ -128,6 +128,9 @@ type ProjectStore interface {
 	// out of every list, restore it, and list what is in the trash.
 	Trash(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error
+	// TrashWithdrawing trashes a project in one step, recording the withdrawal
+	// of a public one first (006o).
+	TrashWithdrawing(ctx context.Context, id string, w project.Withdrawal) error
 	ListTrashed(ctx context.Context, owner string) ([]project.Project, error)
 	// ModifiedAt is this store's half of a project's modified time (018).
 	ModifiedAt(ctx context.Context, ids []string) (map[string]time.Time, error)

@@ -188,6 +188,43 @@ func (s *PGStore) Trash(ctx context.Context, id string) error {
 	})
 }
 
+// TrashWithdrawing moves a project to the trash, recording the withdrawal of a
+// public one first. One transaction holds the project's row lock through the
+// state read, the session check, the withdrawal and the trash, so no session
+// can start between the steps and a refusal writes nothing.
+func (s *PGStore) TrashWithdrawing(ctx context.Context, id string, w Withdrawal) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		p, err := lock(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		withdraw, err := checkTrashWithdrawing(p.State())
+		if err != nil {
+			return err
+		}
+		if err := s.refuseActive(ctx, tx, id); err != nil {
+			return err
+		}
+		now := s.clock()
+		if withdraw {
+			if _, err := tx.Exec(ctx, `
+				UPDATE projects SET visibility=$5, withdrawn_at=$2, withdrawn_by=$3, withdrawn_reason=$4
+				WHERE id=$1`,
+				id, now, w.By, w.Reason, VisibilityPrivate); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO project_publications (project_id, kind, occurred_at, actor, reason)
+				VALUES ($1,$2,$3,$4,$5)`,
+				id, PublicationWithdrawn, now, w.By, w.Reason); err != nil {
+				return err
+			}
+		}
+		_, err = tx.Exec(ctx, `UPDATE projects SET deleted_at=$2 WHERE id=$1`, id, now)
+		return err
+	})
+}
+
 // Restore takes a project back out of the trash. Any other project is refused.
 func (s *PGStore) Restore(ctx context.Context, id string) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {

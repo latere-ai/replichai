@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/latere-ai/replichai/internal/access"
@@ -353,4 +354,65 @@ func errorCode(body []byte) string {
 	}
 	_ = json.Unmarshal(body, &out)
 	return out.Error
+}
+
+// TestDeletingAPublicProjectIsOneStep checks a delete the store refuses for a
+// session it saw leaves the project public with no withdrawal recorded, and
+// that one it accepts records exactly one withdrawal and trashes the project.
+func TestDeletingAPublicProjectIsOneStep(t *testing.T) {
+	pub := &fakeRepoPub{}
+	d := testDeps(allowAll)
+	d.RepoPublisher = pub
+	var busy atomic.Bool
+	store := busyProjects(d.Jobs.(project.SessionMover), &busy)
+	d.Projects = store
+	h := NewRouter(d).Handler()
+	ctx := context.Background()
+	owner := Identity{Sub: "me", Email: "me@x.com"}
+
+	p, _ := d.Projects.Create(ctx, owner.Sub, "Published")
+	_ = publishInto(t, d.Jobs, owner.Sub, p.ID, "r1")
+	publishable(t, d, owner.Sub, "ada")
+	if w := doAs(t, h, "POST", "/projects/"+p.ID+"/public", signOff, owner); w.Code != http.StatusOK {
+		t.Fatalf("publish: %d %s", w.Code, w.Body.String())
+	}
+	withdrawals := func() (n int) {
+		hist, _ := store.Publications(ctx, p.ID)
+		for _, e := range hist {
+			if e.Kind == project.PublicationWithdrawn {
+				n++
+			}
+		}
+		return n
+	}
+
+	busy.Store(true)
+	w := doAs(t, h, "DELETE", "/projects/"+p.ID, "", owner)
+	if w.Code != http.StatusConflict || errorCode(w.Body.Bytes()) != "sessions_running" {
+		t.Errorf("delete with a session the store saw = %d/%q, want 409/sessions_running", w.Code, errorCode(w.Body.Bytes()))
+	}
+	if got, _ := d.Projects.Get(ctx, p.ID); got.Visibility != project.VisibilityPublic || got.Trashed() {
+		t.Errorf("a refused delete changed the project: %+v", got)
+	}
+	if n := withdrawals(); n != 0 {
+		t.Errorf("a refused delete recorded %d withdrawals", n)
+	}
+	if len(pub.closed) != 0 {
+		t.Errorf("a refused delete closed repositories: %v", pub.closed)
+	}
+
+	busy.Store(false)
+	if w := doAs(t, h, "DELETE", "/projects/"+p.ID, "", owner); w.Code != http.StatusNoContent {
+		t.Fatalf("delete = %d %s, want 204", w.Code, w.Body.String())
+	}
+	got, _ := d.Projects.Get(ctx, p.ID)
+	if got.Visibility != project.VisibilityPrivate || !got.Trashed() {
+		t.Errorf("deleted project = %+v, want private and trashed", got)
+	}
+	if n := withdrawals(); n != 1 {
+		t.Errorf("withdrawals = %d, want 1", n)
+	}
+	if len(pub.closed) == 0 {
+		t.Error("the forge repository was left open")
+	}
 }
