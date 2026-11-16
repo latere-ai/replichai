@@ -161,6 +161,10 @@ type ProjectStore interface {
 	// another project (035). It is one call because the paper and its runs must
 	// move together.
 	MovePaper(ctx context.Context, fromID, toID, key string) error
+	// RecordPaperMiss notes that a lookup of the paper's bibliography found
+	// nothing, so the sweep that fills in papers does not fetch it again at
+	// once. A paper that is no longer there is not an error.
+	RecordPaperMiss(ctx context.Context, projectID, key string) error
 }
 
 // ProfileStore stores the researcher profile (006n), the identity a sign-off is

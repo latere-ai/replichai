@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -310,13 +311,35 @@ func run() error {
 	// directory.
 	var reproSource registry.Source
 	var repoPublisher httpapi.RepoPublisher
+	var vis *project.RepoVisibility
 	if forgeClient != nil {
 		reproSource = registry.NewGitHubSource(forgeClient, forgeOwner)
-		repoPublisher = &forgePublisher{client: forgeClient, owner: forgeOwner}
+		publisher := &forgePublisher{client: forgeClient, owner: forgeOwner}
+		repoPublisher = publisher
+		// With a database, the visibility a project's publication wants is
+		// recorded first and the forge call is retried until it lands. The
+		// in-memory server has nowhere to record it and calls the forge
+		// directly.
+		if st.pool != nil {
+			vis = project.NewRepoVisibility(st.pool, publisher)
+			repoPublisher = vis
+		}
 		logger.Info("reproductions: reading the forge org on GitHub", "owner", forgeOwner)
 	} else {
 		reproSource = registry.NewFSSource(*reproDir)
 		logger.Info("reproductions: reading a filesystem dir; set REPLICHAI_GITHUB_TOKEN to read the forge", "dir", *reproDir)
+	}
+
+	// The retry loop for repository visibility stops with the server, and the
+	// shutdown waits for it as it does for the worker, before the pool closes.
+	visStopped := make(chan struct{})
+	if vis != nil {
+		go func() {
+			defer close(visStopped)
+			vis.Run(ctx)
+		}()
+	} else {
+		close(visStopped)
 	}
 
 	notifier, err := buildNotifier(baseURL)
@@ -388,7 +411,7 @@ func run() error {
 	// own.
 	endStreams()
 	stop()
-	return errors.Join(serveErr, awaitWorker(workerStopped, workerStopTimeout))
+	return errors.Join(serveErr, awaitWorker(workerStopped, workerStopTimeout), awaitWorker(visStopped, workerStopTimeout))
 }
 
 // serverDrain is how long the server waits for in-flight requests once it is
@@ -398,6 +421,16 @@ const (
 	serverDrain       = 10 * time.Second
 	workerStopTimeout = 10 * time.Second
 )
+
+// activePhaseNames is the job table's active phases as the project store takes
+// them, so publish and trash see a session in flight under the row lock.
+func activePhaseNames() []string {
+	var out []string
+	for _, p := range job.ActivePhases() {
+		out = append(out, string(p))
+	}
+	return out
+}
 
 // awaitWorker waits for the worker to stop, up to timeout, and says so when it
 // did not.
@@ -827,7 +860,14 @@ func openStores(ctx context.Context, serving, migration string) (stores, error) 
 		members := access.NewMemMembership()
 		ledger := credit.NewMemStore(acc, members, credit.WithOnSolvent(thawOnSolvent(acc)))
 		jobs := job.NewMemStore(job.WithCredits(ledger, platform.StartReserve(plat)), job.WithRates(platform.RateSnapshot(plat)))
-		projects := project.NewMemStore(project.WithSessions(jobs))
+		projects := project.NewMemStore(project.WithSessions(jobs),
+			project.WithActiveSessions(func(ctx context.Context, projectID string) (bool, error) {
+				sessions, err := jobs.ListByProject(ctx, projectID)
+				if err != nil {
+					return false, err
+				}
+				return slices.ContainsFunc(sessions, func(j job.Job) bool { return j.Phase.Active() }), nil
+			}))
 		// The job store reads the project it is given a session for, as the
 		// Postgres one does from the project row.
 		jobs.UseProjects(func(ctx context.Context, id string) (string, bool, bool, error) {
@@ -868,8 +908,9 @@ func openStores(ctx context.Context, serving, migration string) (stores, error) 
 	ledger := credit.NewPGStore(pool, acc, members, credit.WithOnSolvent(thawOnSolvent(acc)))
 	jobs := job.NewPGStore(pool, job.WithPGCredits(ledger, platform.StartReserve(plat)), job.WithPGRates(platform.RateSnapshot(plat)))
 	return stores{
-		jobs:     jobs,
-		projects: project.NewPGStore(pool, project.WithPGSessions(jobs)),
+		jobs: jobs,
+		projects: project.NewPGStore(pool, project.WithPGSessions(jobs),
+			project.WithActivePhases(activePhaseNames())),
 		access:   acc,
 		members:  members,
 		platform: plat,

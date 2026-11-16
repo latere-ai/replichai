@@ -206,9 +206,8 @@ func modelOf(j *job.Job) string {
 type forge interface {
 	publish.LiveForge
 	// Prepare allocates a collision-free repository name for the paper under the
-	// owner and creates it private, returning the name. It is idempotent: an
-	// existing repository of that name is reused rather than reported as an
-	// error.
+	// owner and creates it private, returning the name. The repository returned
+	// is always one this call created; a name already taken is never reused.
 	Prepare(ctx context.Context, owner string, id paper.Identity) (name string, err error)
 }
 
@@ -217,16 +216,17 @@ type forge interface {
 // satisfies publish.LiveForge.
 type githubForge struct{ *github.Client }
 
-// Prepare allocates a collision-free name and creates the private repository.
+// Prepare allocates a name and creates the private repository under it. Creating
+// is the check: the registry draws a new suffix when GitHub reports the name
+// taken, so the repository returned is always one this call created and never
+// one another session already owns. A session that already recorded its
+// repository does not call Prepare; Resolve reuses j.RepoName.
 func (f githubForge) Prepare(ctx context.Context, owner string, id paper.Identity) (string, error) {
-	name, err := registry.New(registry.NewGitHubSource(f.Client, owner)).AllocateName(ctx, id)
-	if err != nil {
-		return "", fmt.Errorf("allocate repo name: %w", err)
-	}
-	_, err = f.CreateRepo(ctx, owner, name, true)
-	if errors.Is(err, github.ErrRepoExists) {
-		_, err = f.GetRepo(ctx, owner, name)
-	}
+	name, err := registry.New(registry.NewGitHubSource(f.Client, owner)).AllocateAndCreate(ctx, id,
+		func(ctx context.Context, name string) error {
+			_, err := f.CreateRepo(ctx, owner, name, true)
+			return err
+		})
 	if err != nil {
 		return "", fmt.Errorf("prepare repository: %w", err)
 	}
@@ -698,6 +698,9 @@ type forgePublisher struct {
 	owner  string
 }
 
+// Owner is the GitHub organization the reproductions live under.
+func (p *forgePublisher) Owner() string { return p.owner }
+
 // SetPublic makes one repository public.
 func (p *forgePublisher) SetPublic(ctx context.Context, repo string) error {
 	return p.client.SetPublic(ctx, p.owner, repo)
@@ -874,6 +877,9 @@ type forgeProvisioner struct {
 	forge githubForge
 	owner string
 }
+
+// Owner is the GitHub organization the repositories are created under.
+func (p forgeProvisioner) Owner() string { return p.owner }
 
 func (p forgeProvisioner) Provision(ctx context.Context, id paper.Identity) (httpapi.Provisioned, error) {
 	name, err := p.forge.Prepare(ctx, p.owner, id)
