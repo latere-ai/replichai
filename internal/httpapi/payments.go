@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/credit"
 	"github.com/latere-ai/replichai/internal/notify"
@@ -129,8 +131,8 @@ func (rt *Router) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 
 // restoreDispute gives back the credit a lost-then-won dispute took. Stripe may
 // report one win twice, and the store keys the credit on the dispute id, so the
-// second delivery credits nothing. A purchase this ledger has not recorded
-// answers 500 for a retry, as a refund does.
+// second delivery credits nothing. A purchase that is not a recorded wallet
+// top-up is acknowledged, since it never will be one.
 func (rt *Router) restoreDispute(r *http.Request, ev pay.Event) int {
 	if rt.credits == nil {
 		return http.StatusOK
@@ -140,6 +142,12 @@ func (rt *Router) restoreDispute(r *http.Request, ev pay.Event) int {
 		return http.StatusOK
 	}
 	_, err := rt.credits.RestoreDispute(r.Context(), ev.Ref, ev.ReversalRef)
+	if errors.Is(err, credit.ErrUnknownPurchase) {
+		// A dispute is decided weeks after its purchase, so a purchase that is
+		// not a recorded wallet top-up by now never will be.
+		slog.WarnContext(r.Context(), "stripe webhook: won dispute for an unknown or unreversable purchase", "ref", ev.Ref, "dispute", ev.ReversalRef)
+		return http.StatusOK
+	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "stripe webhook: won dispute not restored", "ref", ev.Ref, "dispute", ev.ReversalRef, "error", err)
 		return http.StatusInternalServerError
@@ -167,26 +175,55 @@ func (rt *Router) creditPurchase(r *http.Request, ev pay.Event) int {
 	return http.StatusOK
 }
 
-// chargeTotals reads, from a verified charge.refunded delivery, how much of the
-// charge has been refunded in all and what the charge was. Both are in the
-// charge's own currency, so their ratio is the share of the purchase refunded
-// without converting anything. The payload is the processor's own envelope;
-// the pay library keeps it on the event as Raw because it models the refund's
-// amount as advisory and leaves it out for any currency but USD.
-func chargeTotals(raw []byte) (refunded, charged int64, ok bool) {
+// delivered is what this handler reads of the object a verified delivery is
+// about: the charge of a charge.refunded, the dispute of a charge.dispute
+// event. The pay library keeps the processor's own envelope on the event as
+// Raw, because it models a refund's amount as advisory and leaves it out for
+// any currency but USD.
+type delivered struct {
+	// Amount is what the charge was, in its own currency.
+	Amount int64 `json:"amount"`
+	// AmountRefunded is everything refunded on the charge so far, in the same
+	// currency. Each new refund raises it, so with the charge it names the
+	// refund a delivery is about.
+	AmountRefunded int64 `json:"amount_refunded"`
+	// Created is when the object was made, in Unix seconds.
+	Created int64 `json:"created"`
+	// Status is a dispute's state. An inquiry's starts with "warning_": the
+	// card network has asked a question and taken no money yet.
+	Status string `json:"status"`
+}
+
+// readDelivered decodes the object of a verified delivery.
+func readDelivered(raw []byte) (delivered, bool) {
 	var env struct {
 		Data struct {
-			Object struct {
-				Amount         int64 `json:"amount"`
-				AmountRefunded int64 `json:"amount_refunded"`
-			} `json:"object"`
+			Object delivered `json:"object"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return 0, 0, false
+		return delivered{}, false
 	}
-	o := env.Data.Object
+	return env.Data.Object, true
+}
+
+// chargeTotals reads, from a verified charge.refunded delivery, how much of the
+// charge has been refunded in all and what the charge was. Both are in the
+// charge's own currency, so their ratio is the share of the purchase refunded
+// without converting anything.
+func chargeTotals(o delivered) (refunded, charged int64, ok bool) {
 	return o.AmountRefunded, o.Amount, o.Amount > 0 && o.AmountRefunded >= 0
+}
+
+// purchaseRetryWindow is how long Stripe keeps retrying a delivery it could not
+// hand over. The purchase of a charge older than this that is still not
+// recorded never will be.
+const purchaseRetryWindow = 3 * 24 * time.Hour
+
+// isInquiry reports whether a dispute is an inquiry, which takes no money
+// from the merchant unless it becomes a chargeback.
+func isInquiry(o delivered) bool {
+	return strings.HasPrefix(o.Status, "warning_")
 }
 
 // reversePurchase takes back credit for a refunded or disputed purchase. A
@@ -196,10 +233,14 @@ func chargeTotals(raw []byte) (refunded, charged int64, ok bool) {
 // credited. The credit is reversed in the units the ledger holds, not the
 // currency paid, which is the FX-drift rule: a purchase converted at one rate
 // and refunded at another leaves nothing unaccounted. The reversal is keyed on
-// its own id so it is deduplicated independently. A refund of a purchase this
-// ledger has not recorded yet answers 500 so the processor retries it after the
-// purchase's own event lands; one that is recorded but is not a wallet top-up
-// is acknowledged and dropped.
+// its own key so it is deduplicated independently: a dispute by its id, a
+// refund by its charge or refund id and the charge's refunded total, since a
+// charge.refunded payload may carry no list of refunds. An inquiry takes
+// nothing, since the card network has taken no money. A refund of a purchase
+// this ledger has not recorded yet answers 500 so the processor retries it
+// after the purchase's own event lands, unless the charge is older than the
+// processor retries for; one that is recorded but is not a wallet top-up is
+// acknowledged and dropped.
 func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 	if rt.credits == nil {
 		return http.StatusOK
@@ -208,12 +249,21 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 		slog.WarnContext(r.Context(), "stripe webhook: reversal without a purchase or a reversal id", "ref", ev.Ref, "reversal", ev.ReversalRef)
 		return http.StatusOK
 	}
+	obj, decoded := readDelivered(ev.Raw)
+	if ev.Kind == pay.KindDisputed && isInquiry(obj) {
+		slog.InfoContext(r.Context(), "stripe webhook: an inquiry takes no credit", "ref", ev.Ref, "dispute", ev.ReversalRef, "status", obj.Status)
+		return http.StatusOK
+	}
 	orig, ok, err := rt.credits.EntryByExternalRef(r.Context(), ev.Ref)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "stripe webhook: looking up the purchase", "ref", ev.Ref, "error", err)
 		return http.StatusInternalServerError
 	}
 	if !ok {
+		if ev.Kind == pay.KindRefunded && obj.Created > 0 && time.Since(time.Unix(obj.Created, 0)) > purchaseRetryWindow {
+			slog.WarnContext(r.Context(), "stripe webhook: refund of a charge this ledger never recorded", "ref", ev.Ref, "reversal", ev.ReversalRef)
+			return http.StatusOK
+		}
 		slog.WarnContext(r.Context(), "stripe webhook: refund before its purchase is recorded, asking for a retry", "ref", ev.Ref, "reversal", ev.ReversalRef)
 		return http.StatusInternalServerError
 	}
@@ -227,14 +277,14 @@ func (rt *Router) reversePurchase(r *http.Request, ev pay.Event) int {
 	case pay.KindDisputed:
 		rev, err = rt.credits.RefundRemainder(r.Context(), ev.Ref, ev.ReversalRef)
 	default:
-		refunded, charged, usable := chargeTotals(ev.Raw)
-		if !usable {
+		refunded, charged, usable := chargeTotals(obj)
+		if !decoded || !usable {
 			// Taking back the whole credit for a partial refund is the harm this
 			// path exists to prevent, so with no amounts nothing is taken back.
 			slog.ErrorContext(r.Context(), "stripe webhook: refund carries no usable amounts, nothing reversed", "ref", ev.Ref, "reversal", ev.ReversalRef)
 			return http.StatusOK
 		}
-		rev, err = rt.credits.RefundShare(r.Context(), ev.Ref, ev.ReversalRef, refunded, charged)
+		rev, err = rt.credits.RefundShare(r.Context(), ev.Ref, ev.ReversalRef+":"+strconv.FormatInt(refunded, 10), refunded, charged)
 	}
 	if errors.Is(err, credit.ErrUnknownPurchase) {
 		slog.WarnContext(r.Context(), "stripe webhook: refund for an unknown or unreversable purchase", "ref", ev.Ref, "reversal", ev.ReversalRef)

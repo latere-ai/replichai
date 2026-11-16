@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/latere-ai/replichai/internal/access"
 	"github.com/latere-ai/replichai/internal/credit"
@@ -147,7 +148,115 @@ func TestStripeWebhookAWonDisputeGivesTheCreditBackOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code := rt.deliverWebhook(unknown); code != http.StatusInternalServerError {
-		t.Fatalf("won dispute of an unrecorded purchase = %d, want 500", code)
+	if code := rt.deliverWebhook(unknown); code != http.StatusOK {
+		t.Fatalf("won dispute of an unrecorded purchase = %d, want 200: a dispute is decided weeks after its purchase", code)
+	}
+}
+
+// delivery is a webhook body for ev whose processor object is obj, as Stripe
+// sends it under data.object.
+func delivery(t *testing.T, ev pay.Event, obj map[string]any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	m["data"] = map[string]any{"object": obj}
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// TestStripeWebhookRefundsWithoutARefundListEachReverse checks that two partial
+// refunds of one charge each take back their share when the charge.refunded
+// payload names no refund, so both carry the charge's own id, and that a
+// redelivery of the first takes back nothing more.
+func TestStripeWebhookRefundsWithoutARefundListEachReverse(t *testing.T) {
+	_, rt, ledger, _ := paymentsDeps(t)
+	bal := func() int64 {
+		n, _ := ledger.Balance(context.Background(), credit.Wallet(payer.Email))
+		return n
+	}
+	paid, err := json.Marshal(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: "pi_nl", Meta: map[string]string{"credited_micro": "20000000"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := rt.deliverWebhook(paid); code != http.StatusOK {
+		t.Fatalf("purchase = %d", code)
+	}
+	refund := func(refunded int64) []byte {
+		return refundDelivery(t, pay.Event{Kind: pay.KindRefunded, Ref: "pi_nl", ReversalRef: "ch_nl"}, refunded, 2000)
+	}
+	first := refund(500)
+	for _, body := range [][]byte{first, refund(1000), first} {
+		if code := rt.deliverWebhook(body); code != http.StatusOK {
+			t.Fatalf("refund = %d, want 200", code)
+		}
+	}
+	if got := bal(); got != 10_000_000 {
+		t.Fatalf("after refunds of 25%% and 50%% in all, with the first delivered twice, the balance is %d, want 10000000", got)
+	}
+}
+
+// TestStripeWebhookAnInquiryTakesNothing checks that a dispute the card
+// network opened as an inquiry, which withdraws no money, leaves the credit and
+// does not freeze the account, and that a chargeback on the same purchase still
+// takes back what is left.
+func TestStripeWebhookAnInquiryTakesNothing(t *testing.T) {
+	_, rt, ledger, _ := paymentsDeps(t)
+	bal := func() int64 {
+		n, _ := ledger.Balance(context.Background(), credit.Wallet(payer.Email))
+		return n
+	}
+	paid, err := json.Marshal(pay.Event{Kind: pay.KindPaid, Email: payer.Email, Ref: "pi_iq", Meta: map[string]string{"credited_micro": "18700000"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := rt.deliverWebhook(paid); code != http.StatusOK {
+		t.Fatalf("purchase = %d", code)
+	}
+	for _, status := range []string{"warning_needs_response", "warning_under_review"} {
+		inquiry := delivery(t, pay.Event{Kind: pay.KindDisputed, Ref: "pi_iq", ReversalRef: "dp_iq"}, map[string]any{"status": status})
+		if code := rt.deliverWebhook(inquiry); code != http.StatusOK {
+			t.Fatalf("inquiry %s = %d, want 200", status, code)
+		}
+		if got := bal(); got != 18_700_000 {
+			t.Fatalf("after an inquiry (%s) the balance is %d, want the credit untouched", status, got)
+		}
+	}
+	chargeback := delivery(t, pay.Event{Kind: pay.KindDisputed, Ref: "pi_iq", ReversalRef: "dp_cb"}, map[string]any{"status": "needs_response"})
+	if code := rt.deliverWebhook(chargeback); code != http.StatusOK {
+		t.Fatalf("chargeback = %d, want 200", code)
+	}
+	if got := bal(); got != 0 {
+		t.Fatalf("after a chargeback the balance is %d, want 0", got)
+	}
+}
+
+// TestStripeWebhookARefundOfAnOldUnrecordedChargeIsAcknowledged checks that a
+// refund whose purchase is not recorded is retried only while the purchase's
+// own delivery could still arrive: a charge made longer ago than the processor
+// retries for is acknowledged.
+func TestStripeWebhookARefundOfAnOldUnrecordedChargeIsAcknowledged(t *testing.T) {
+	_, rt, _, _ := paymentsDeps(t)
+	for _, c := range []struct {
+		name    string
+		created time.Time
+		want    int
+	}{
+		{"an hour ago", time.Now().Add(-time.Hour), http.StatusInternalServerError},
+		{"four days ago", time.Now().Add(-4 * 24 * time.Hour), http.StatusOK},
+	} {
+		body := delivery(t, pay.Event{Kind: pay.KindRefunded, Ref: "pi_gone", ReversalRef: "re_gone"},
+			map[string]any{"amount": 2000, "amount_refunded": 2000, "created": c.created.Unix()})
+		if code := rt.deliverWebhook(body); code != c.want {
+			t.Errorf("refund of an unrecorded charge made %s = %d, want %d", c.name, code, c.want)
+		}
 	}
 }
