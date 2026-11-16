@@ -10,14 +10,11 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
-## Unreleased
-
 ### Fixed
 
 - **A dispute that starts as an inquiry takes back the credit once it becomes
   a chargeback,** when Stripe withdraws the money. Subscribe the webhook
   endpoint to `charge.dispute.funds_withdrawn` as well.
-
 - **A won dispute keeps its credit even when Stripe delivers the win before
   the dispute,** which can happen when a failed delivery is sent again by
   hand.
