@@ -73,6 +73,14 @@ func (e EvidenceReader) Fetch(ctx context.Context, artifact Artifact) ([]byte, e
 	return e.runtime.FetchArtifact(ctx, e.Status.Ref, artifact)
 }
 
+// ErrDetached is the cancellation cause of a context whose owner is stopping
+// and leaves the session to keep running on the backend, for example a server
+// shutting down while another process will rejoin the session. A wait whose
+// context ends with this cause returns an error wrapping it, and does not
+// cancel, retain or release the session. Any other cancellation, such as a
+// person stopping the session, still cancels it.
+var ErrDetached = errors.New("managed: stopped waiting, the session keeps running on the backend")
+
 // Result is what a controller operation reports back. It is returned alongside
 // an error as well as on success, so a caller can still settle usage and keep
 // the evidence of a run that ended badly.
@@ -315,15 +323,15 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 		status, err := runtime.Poll(ctx, ref)
 		if err != nil {
 			if !IsTemporary(err) || ctx.Err() != nil {
-				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
+				return c.abortOrDetach(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
 			}
 			silent := c.clock.now().Sub(lastSuccess) >= c.policy.MaxSilence
 			temporaryErrors++
 			if temporaryErrors >= c.policy.MaxTemporaryErrors || silent {
-				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, silent), hooks, err)
+				return c.abortOrDetach(ctx, runtime, ref, previousOrFailure(previous, ref, silent), hooks, err)
 			}
 			if err := c.clock.sleep(ctx, retryDelay(err, delay)); err != nil {
-				return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
+				return c.abortOrDetach(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
 			}
 			delay = nextDelay(delay, c.policy.MaxDelay)
 			continue
@@ -332,19 +340,19 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 		lastSuccess = c.clock.now()
 		delay = c.policy.InitialDelay
 		if err := validateObservation(runtime, ref, previous, status, graded); err != nil {
-			return c.abort(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
+			return c.abortOrDetach(ctx, runtime, ref, previousOrFailure(previous, ref, false), hooks, err)
 		}
 		if status.Ref.Revision > ref.Revision {
 			if hooks.Checkpoint != nil {
 				if err := hooks.Checkpoint(ctx, ref, status.Ref); err != nil {
-					return c.abort(ctx, runtime, ref, status, hooks, err)
+					return c.abortOrDetach(ctx, runtime, ref, status, hooks, err)
 				}
 			}
 			ref = status.Ref
 		}
 		if hooks.Status != nil && !sameObservation(previous, status) {
 			if err := hooks.Status(ctx, status); err != nil {
-				return c.abort(ctx, runtime, ref, status, hooks, err)
+				return c.abortOrDetach(ctx, runtime, ref, status, hooks, err)
 			}
 		}
 		previous = status
@@ -358,10 +366,20 @@ func (c *Controller) wait(ctx context.Context, runtime Runtime, ref SessionRef, 
 			lastSnapshot = c.clock.now()
 		}
 		if err := c.clock.sleep(ctx, delay); err != nil {
-			return c.abort(ctx, runtime, ref, status, hooks, err)
+			return c.abortOrDetach(ctx, runtime, ref, status, hooks, err)
 		}
 		delay = nextDelay(delay, c.policy.MaxDelay)
 	}
+}
+
+// abortOrDetach is abort for a wait that has stopped: when the wait's context
+// was cancelled with ErrDetached the session is left running on the backend and
+// nothing is cancelled, retained or released; otherwise it is abort.
+func (c *Controller) abortOrDetach(ctx context.Context, runtime Runtime, ref SessionRef, status Status, hooks Hooks, cause error) (Result, error) {
+	if errors.Is(context.Cause(ctx), ErrDetached) {
+		return Result{Ref: ref}, fmt.Errorf("%w: session %s", ErrDetached, ref.ID)
+	}
+	return c.abort(ctx, runtime, ref, status, hooks, cause)
 }
 
 func (c *Controller) abort(ctx context.Context, runtime Runtime, ref SessionRef, status Status, hooks Hooks, cause error) (Result, error) {

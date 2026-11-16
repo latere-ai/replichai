@@ -626,3 +626,102 @@ func TestResumeGradedHoldsTheSessionToAVerdict(t *testing.T) {
 		t.Fatalf("a graded resume with a verdict: %v", err)
 	}
 }
+
+// blockingRuntime is a runtime whose poll holds until the caller's context
+// ends, as a poll over the network does.
+type blockingRuntime struct {
+	*controllerRuntime
+	polling chan struct{}
+}
+
+func (r *blockingRuntime) Poll(ctx context.Context, _ SessionRef) (Status, error) {
+	select {
+	case r.polling <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return Status{}, ctx.Err()
+}
+
+// A wait whose context ends with ErrDetached stops driving the session and
+// touches nothing on the backend: no cancel, no evidence read, no release. A
+// wait whose context is cancelled any other way, as a person's cancel does,
+// still cancels the session.
+func TestWaitDetachedLeavesTheSessionRunning(t *testing.T) {
+	tests := []struct {
+		name       string
+		cause      error // nil is a plain cancel
+		wantCancel bool
+	}{
+		{name: "detached leaves the session running", cause: ErrDetached},
+		{name: "a plain cancel cancels the session", wantCancel: true},
+		{name: "another cause cancels the session", cause: errors.New("the lease moved"), wantCancel: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := &blockingRuntime{controllerRuntime: newControllerRuntime(), polling: make(chan struct{}, 1)}
+			// The cleanup budget is short: the runtime's poll holds until its
+			// context ends, so a cancelling wait spends all of it.
+			controller := NewController(controllerRouter{runtime: runtime}, WithWaitPolicy(WaitPolicy{
+				InitialDelay: 1, MaxDelay: 4, MaxTemporaryErrors: 3, MaxSilence: time.Minute, CleanupTimeout: 20 * time.Millisecond,
+			}))
+			ctx, cancel := context.WithCancelCause(context.Background())
+			defer cancel(nil)
+			type outcome struct {
+				result Result
+				err    error
+			}
+			done := make(chan outcome, 1)
+			go func() {
+				result, err := controller.Resume(ctx, runtime.ref, Hooks{})
+				done <- outcome{result, err}
+			}()
+			<-runtime.polling
+			cancel(test.cause)
+			var got outcome
+			select {
+			case got = <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("the wait did not return after its context ended")
+			}
+			cancelled := slicesContain(runtime.calls, "cancel")
+			if test.wantCancel != cancelled {
+				t.Fatalf("calls = %v, want cancel=%v", runtime.calls, test.wantCancel)
+			}
+			if test.cause == ErrDetached {
+				if !errors.Is(got.err, ErrDetached) {
+					t.Fatalf("error = %v, want ErrDetached", got.err)
+				}
+				for _, call := range []string{"events", "list", "release"} {
+					if slicesContain(runtime.calls, call) {
+						t.Errorf("a detached wait called %s on the runtime: %v", call, runtime.calls)
+					}
+				}
+				if got.result.Ref.ID != runtime.ref.ID {
+					t.Errorf("result ref = %+v, want the session's", got.result.Ref)
+				}
+			}
+		})
+	}
+}
+
+// A detach that lands while the controller sleeps between polls ends the wait
+// the same way.
+func TestSleepDetachedLeavesTheSessionRunning(t *testing.T) {
+	runtime := newControllerRuntime()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	controller := NewController(controllerRouter{runtime: runtime}, WithWaitPolicy(WaitPolicy{
+		InitialDelay: 1, MaxDelay: 1, MaxTemporaryErrors: 3, MaxSilence: time.Minute, CleanupTimeout: time.Second,
+	}), withControllerClock(time.Now, func(ctx context.Context, _ time.Duration) error {
+		cancel(ErrDetached)
+		return ctx.Err()
+	}))
+	_, err := controller.Resume(ctx, runtime.ref, Hooks{})
+	if !errors.Is(err, ErrDetached) {
+		t.Fatalf("error = %v, want ErrDetached", err)
+	}
+	if slicesContain(runtime.calls, "cancel") {
+		t.Fatalf("a detached wait cancelled the session: %v", runtime.calls)
+	}
+}

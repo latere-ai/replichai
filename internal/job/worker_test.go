@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -993,5 +994,127 @@ func TestAReplicaThatLostASessionDoesNotFinishIt(t *testing.T) {
 	defer r.mu.Unlock()
 	if slices.Contains(r.calls, "publish") {
 		t.Errorf("pod-a published a session pod-b holds: %v", r.calls)
+	}
+}
+
+// TestShutdownLeavesARunningSessionToTheNextReplica checks what a deploy does
+// to a session in flight. The pool ends with managed.ErrDetached as the cause
+// of the run's context, which is how the managed controller knows to stop
+// driving and leave the backend session running. The row stays running with
+// its run id, Start returns promptly, and a second replica adopts and finishes
+// the session once the first one's lease has lapsed.
+func TestShutdownLeavesARunningSessionToTheNextReplica(t *testing.T) {
+	s := NewMemStore()
+	ctx := t.Context()
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
+
+	const ttl = 40 * time.Millisecond
+	held := make(chan struct{})
+	var backendCancels atomic.Int32
+	first := &fakeRunner{observed: provider.RunStatus{RunID: "sesn_deploy_01"}}
+	first.runExecute = func(ctx context.Context) error {
+		close(held)
+		<-ctx.Done()
+		// The controller cancels the backend session for any cause but this one.
+		if !errors.Is(context.Cause(ctx), managed.ErrDetached) {
+			backendCancels.Add(1)
+		}
+		return context.Cause(ctx)
+	}
+	pool, shutdown := context.WithCancel(ctx)
+	defer shutdown()
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		NewWorker(s, first, WithWorkerID("pod-a"), WithPoll(time.Millisecond), withLeaseTTL(ttl)).Start(pool, 1)
+	}()
+	<-held
+	shutdown() // SIGTERM
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after the pool ended")
+	}
+
+	if n := backendCancels.Load(); n != 0 {
+		t.Fatalf("a shutdown cancelled the backend session %d times", n)
+	}
+	first.mu.Lock()
+	closed := slices.Clone(first.closed)
+	first.mu.Unlock()
+	if len(closed) != 0 {
+		t.Fatalf("a shutdown closed backend runs %v", closed)
+	}
+	got, _ := s.Get(ctx, j.ID)
+	if got.Phase != PhaseRunning || got.Err != "" || got.Status.RunID != "sesn_deploy_01" {
+		t.Fatalf("after shutdown: phase %s err %q run %q, want running with no error and the run id kept", got.Phase, got.Err, got.Status.RunID)
+	}
+
+	second := &fakeRunner{}
+	next := NewWorker(s, second, WithWorkerID("pod-b"), withLeaseTTL(ttl))
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resumed, failed, err := next.Reconcile(ctx)
+		if err != nil || failed != 0 {
+			t.Fatalf("Reconcile = %d/%d/%v, want no failure", resumed, failed, err)
+		}
+		if resumed == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the next replica never adopted the session")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	waitForPhase(t, s, j.ID, PhaseDone)
+	waitForCall(t, second, "resume")
+}
+
+// TestAPersonsCancelStillCancelsTheBackendSession checks that only the pool
+// ending detaches. A cancel from a person ends the run's context with the
+// plain cancellation, which the controller answers by cancelling the backend
+// session, and the backend run is closed on the way.
+func TestAPersonsCancelStillCancelsTheBackendSession(t *testing.T) {
+	s := NewMemStore()
+	ctx := t.Context()
+	j, _ := s.Enqueue(ctx, Submission{PaperKey: anyKey(), Principal: "sub", Ref: "ref", Kind: KindAudit})
+
+	held := make(chan struct{})
+	causes := make(chan error, 1)
+	r := &fakeRunner{observed: provider.RunStatus{RunID: "sesn_cancel_01"}}
+	r.runExecute = func(ctx context.Context) error {
+		close(held)
+		<-ctx.Done()
+		causes <- context.Cause(ctx)
+		return ctx.Err()
+	}
+	w := NewWorker(s, r, WithWorkerID("pod-a"))
+	processed := make(chan error, 1)
+	go func() {
+		_, err := w.Process(ctx)
+		processed <- err
+	}()
+	<-held
+	if err := w.Cancel(ctx, j.ID); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	select {
+	case cause := <-causes:
+		if errors.Is(cause, managed.ErrDetached) {
+			t.Fatalf("a person's cancel detached the run: %v", cause)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the run was never interrupted")
+	}
+	if err := <-processed; err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.closed) != 1 || r.closed[0] != "sesn_cancel_01" {
+		t.Errorf("the backend run was not closed, closed=%v", r.closed)
+	}
+	if got, _ := s.Get(ctx, j.ID); got.Phase != PhaseFailed || got.Err != CancelCause {
+		t.Errorf("cancelled job = %s/%q, want failed/cancelled", got.Phase, got.Err)
 	}
 }

@@ -531,17 +531,26 @@ func (w *Worker) begin(pool context.Context, id string) (context.Context, func()
 }
 
 // register is track's body, called with w.mu held.
+//
+// The run context ends in one of two ways, and the controller reads which from
+// context.Cause. A person's cancel, a lost lease or a failed write ends it with
+// the plain cancellation, and the managed session on the backend is cancelled
+// with it. The pool ending, which is every deploy and node drain, ends it with
+// managed.ErrDetached: this process stops driving, the backend session keeps
+// running, its lease lapses, and the next process rejoins it through Adopt.
 func (w *Worker) register(pool context.Context, id string) (context.Context, func()) {
 	// The context names this replica as the driver, so every write the session
 	// makes under it, the runner's observations included, is checked against
 	// the lease this replica holds.
-	ctx, cancel := context.WithCancel(WithWorker(pool, w.id))
-	w.running[id] = cancel
+	ctx, cancel := context.WithCancelCause(WithWorker(context.WithoutCancel(pool), w.id))
+	detach := context.AfterFunc(pool, func() { cancel(managed.ErrDetached) })
+	w.running[id] = func() { cancel(nil) }
 	return ctx, func() {
 		w.mu.Lock()
 		delete(w.running, id)
 		w.mu.Unlock()
-		cancel()
+		detach()
+		cancel(nil)
 	}
 }
 
@@ -714,11 +723,11 @@ func apply(src Job) func(*Job) {
 // shutting down.
 //
 // A shutdown is not a failed session. The pool context is cancelled on SIGTERM,
-// which surfaces inside the run as an ordinary error. Writing failed for it
-// would mark a live backend session dead on every deploy and node drain, and
-// because failed is terminal, Reconcile could never recover it. Leaving the row
-// in its phase lets the next boot rejoin the session and record its real
-// outcome. A person cancelling a session takes the other path: only that job's
+// which surfaces inside the run as an error wrapping managed.ErrDetached, and
+// the run leaves the backend session running. Writing failed for it would mark
+// a live session dead on every deploy and node drain, and because failed is
+// terminal, Reconcile could never recover it. Leaving the row in its phase lets
+// the next boot rejoin the session and record its real outcome. A person cancelling a session takes the other path: only that job's
 // own context is cancelled, not the pool's, so the row is still failed here,
 // and the store's cancel write, made first, wins in the state machine.
 func (w *Worker) stop(pool context.Context, id string, cause error) error {
