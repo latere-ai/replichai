@@ -18,6 +18,9 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"latere.ai/x/pkg/statemachine"
+	"latere.ai/x/pkg/statemachine/statemachinetest"
+
 	"github.com/latere-ai/replichai/internal/managed"
 )
 
@@ -835,19 +838,33 @@ func TestARunningEntryOnDiskIsReadAsInterrupted(t *testing.T) {
 	}
 }
 
-// An entry's phase moves only along phaseTransitions.
-func TestAPhaseChangeFollowsTheTable(t *testing.T) {
-	for from, targets := range phaseTransitions {
-		for _, to := range []Phase{Pending, Running, Done, Failed, Interrupted} {
-			entry := EntryState{Phase: from}
-			err := entry.advance(to)
-			if slices.Contains(targets, to) != (err == nil) {
-				t.Errorf("%s to %s: err = %v", from, to, err)
-			}
-		}
+// The entry's phase writer follows Entries, alone and when two race.
+func TestEntryPhaseWritersFollowTheTable(t *testing.T) {
+	var mu sync.Mutex
+	entries := map[string]*EntryState{}
+	driver := statemachinetest.Driver[Phase]{
+		Enter: func(t *testing.T, s Phase) string {
+			mu.Lock()
+			defer mu.Unlock()
+			key := fmt.Sprintf("e%d", len(entries))
+			entries[key] = &EntryState{Phase: s}
+			return key
+		},
+		Move: func(key string, to Phase) error {
+			mu.Lock()
+			defer mu.Unlock()
+			return entries[key].advance(to)
+		},
+		State: func(t *testing.T, key string) Phase {
+			mu.Lock()
+			defer mu.Unlock()
+			return entries[key].Phase
+		},
 	}
+	statemachinetest.Exhaustive(t, Entries, driver)
+	statemachinetest.Race(t, Entries, driver)
 	entry := EntryState{Phase: Done}
-	if err := entry.advance(Running); !errors.Is(err, ErrIllegalPhase) {
-		t.Fatalf("a finished entry started again = %v, want ErrIllegalPhase", err)
+	if err := entry.advance(Running); !errors.Is(err, ErrIllegalPhase) || !errors.Is(err, statemachine.ErrIllegalTransition) {
+		t.Fatalf("a finished entry started again = %v", err)
 	}
 }

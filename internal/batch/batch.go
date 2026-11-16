@@ -19,12 +19,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"go.yaml.in/yaml/v4"
+	"latere.ai/x/pkg/statemachine"
 
 	"github.com/latere-ai/replichai/internal/managed"
 )
@@ -262,27 +262,26 @@ const (
 	Interrupted Phase = "interrupted"
 )
 
-// phaseTransitions is every step an entry's phase takes within one process's
-// work on it, with every phase a key and a phase with no further step mapped
-// to nil. Done and Failed are outcomes. Interrupted is reached only by reading
-// a state file back (LoadState); a resume does not move it on, it starts a
-// new entry at Pending.
-var phaseTransitions = map[Phase][]Phase{
+// Entries is every step an entry's phase takes within one process's work on
+// it. Done, Failed and Interrupted are the phases with no further step. A
+// resume starts a new entry at Pending rather than moving an old one, and
+// Interrupted is reached only by reading a state file back (LoadState).
+var Entries = statemachine.Must(statemachine.New("BatchEntry", []Phase{Pending}, map[Phase][]Phase{
 	Pending:     {Running},
 	Running:     {Done, Failed, Interrupted},
 	Interrupted: nil,
 	Done:        nil,
 	Failed:      nil,
-}
+}))
 
 // ErrIllegalPhase reports a phase change the table does not allow.
 var ErrIllegalPhase = errors.New("illegal entry phase change")
 
-// advance moves the entry to phase to, refusing a step phaseTransitions does
-// not list.
+// advance moves the entry to phase to, refusing a step Entries does not
+// list.
 func (e *EntryState) advance(to Phase) error {
-	if !slices.Contains(phaseTransitions[e.Phase], to) {
-		return fmt.Errorf("%w: %s to %s", ErrIllegalPhase, e.Phase, to)
+	if err := Entries.Check(e.Phase, to); err != nil {
+		return fmt.Errorf("%w: %w", ErrIllegalPhase, err)
 	}
 	e.Phase = to
 	return nil
