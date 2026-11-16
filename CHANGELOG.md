@@ -10,6 +10,93 @@ committed. The commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **Every lifecycle the server stores is one declared table, and the build
+  proves things about it.** A session's phase, a person's access, a project's
+  publication, a runtime session and a batch entry are each declared once.
+  Every write is checked against its table in the transaction that makes it,
+  and tests drive each store's own writers through every step and every race.
+  The tables are rendered into Lean and TLA+ models under `formal/`, which the
+  build proves and model-checks along with the refund rule, the session lease
+  and the publish gate. `formal/README.md` says what each claim is and which
+  test holds it to the code.
+- **A won dispute gives the credit back,** once, even when Stripe reports the
+  win twice. Subscribe the webhook endpoint to `charge.dispute.closed` and
+  `charge.dispute.funds_reinstated`.
+- **A failed session says why it stopped** in `stop_reason`: `canceled`,
+  `interrupted` (a restart found no run to rejoin) or `error`.
+- **`/readyz` reports whether the database answers,** and the readiness probe
+  uses it. `/healthz` stays a liveness check.
+
+### Fixed
+
+- **A session canceled on one server now stops its run on the server driving
+  it,** instead of running on until it finished.
+- **A published project no longer takes paper edits, paper removals or a
+  repository for a local run.** Withdraw it first. A session can no longer
+  start on a project in the moment it is being published or moved to the
+  trash, and publishing or trashing a project is refused while one of its
+  sessions is still running.
+- **A refund or dispute that arrives before its purchase is retried** by
+  Stripe instead of dropped, and the webhook answers 503 when payments are not
+  configured.
+- **An account on hold can still cancel a session, withdraw a publication,
+  reclaim credits and move a project to the trash.** The account-on-hold mail
+  is sent once when two refunds arrive together.
+- **An admin credit grant applies once** even if the request is sent again,
+  an admin can no longer revoke their own access or demote the last admin, and
+  a row with no access tier no longer passes the access gate.
+- A session that had already finished is no longer reported as canceled when
+  a cancel arrives late, and a session that stops answering is reported as
+  timed out rather than as a runtime failure.
+- A hosted session started again after a crash finds the session it already
+  created instead of starting a second one, and releasing it retries a brief
+  platform failure.
+- A new run never pushes into a repository it did not create, and the
+  repository a session publishes to is recorded as soon as it exists.
+- On shutdown the server waits for its sessions before closing the database,
+  and ends open live views.
+- A live session view checks access again every 30 seconds and ends cleanly
+  when the session is gone. The page keeps updating when its live connection
+  drops, and a Stop that takes a while says so.
+- The transcript keeps showing the last update and retries when a refresh
+  fails.
+- Every publication and withdrawal of a project is kept, not only the latest,
+  and restoring applies only to a project in the trash.
+- A repository's public or private setting is retried until GitHub matches.
+- The signer link on a published attestation keeps the handle it was signed
+  under when the signer later makes their profile private.
+- The public listing and the sitemap update right after a rename, a profile
+  change or a session delete.
+- An imported session must name a repository in the deployment's
+  organization, and a finished imported record is never rewritten.
+- The project owner's membership cannot be removed or demoted.
+- A fresh platform sign-in is no longer erased when an older one is refused
+  at the same moment, and two `replichai` processes refreshing the saved
+  sign-in at once no longer sign each other out.
+- A local run no longer duplicates transcript lines or leaves a half-made
+  stage after a failed save, a brief container engine error no longer fails a
+  healthy session, and two processes watching one local session take turns.
+- A killed batch shows its unfinished runs as interrupted, and `--resume`
+  runs them again.
+- A paper whose details no source knows is looked up again after 7 days, not
+  on every pass.
+- Top-up: Pay waits for the fee, the page recovers after Back from the payment
+  page, and it says when a payment is not confirmed yet.
+- Admin: actions show progress and refuse a second click, revoking asks
+  first, and unsaved settings survive other actions.
+- Starting a session stays busy until the new session appears, a failed
+  projects load says so, and an expired sign-in asks you to sign in again.
+- Publishing: the confirmation resets when you edit the sign-off, the dialog
+  stays open while publishing, and a profile that fails to load shows an
+  error.
+
+### Changed
+
+- Built on `latere.ai/x/pkg` v0.116.0, `latere.ai/x/pay` v0.3.0 and lateregate
+  v0.72.0.
+
 ## v0.39.0 - 2026-11-15
 
 ### Fixed
