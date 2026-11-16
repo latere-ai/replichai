@@ -232,7 +232,8 @@ func NewWorker(store Store, runner Runner, opts ...WorkerOption) *Worker {
 // the agent stops and its spend with it, and marks the session cancelled in
 // the store regardless, so a queued session or one on no worker also stops.
 // The store write wins: the interrupted run's own failure write is refused by
-// the state machine and discarded.
+// the state machine and discarded, or, when it lands first, recorded as
+// canceled because the request was stored before the run was closed.
 func (w *Worker) Cancel(ctx context.Context, id string) error {
 	j, err := w.store.Get(ctx, id)
 	if err != nil {
@@ -240,6 +241,14 @@ func (w *Worker) Cancel(ctx context.Context, id string) error {
 	}
 	if j.Phase.Terminal() {
 		return nil
+	}
+	// Record the person's intent first. Closing the backend run ends it, and the
+	// goroutine driving it, here or on another replica, can write its failure
+	// before store.Cancel below: with the request on the row that failure is
+	// recorded as the stop it is. The request stays if the close fails, because
+	// the person did ask; a failure of that run is then also a canceled one.
+	if err := w.store.RequestCancel(ctx, id); err != nil {
+		return fmt.Errorf("record cancel request: %w", err)
 	}
 	// Stop the durable backend handle before making the row terminal. If this
 	// fails, the active row is the retry handle; cancelling it locally first

@@ -167,6 +167,13 @@ ALTER TABLE jobs ADD CONSTRAINT jobs_phase_known
 	CHECK (phase IN ('submitted','resolving','running','publishing','done','failed')) NOT VALID;
 ALTER TABLE jobs VALIDATE CONSTRAINT jobs_phase_known;
 `},
+	{13, `
+-- When a person asked to stop the session, set before the backend run is closed.
+-- Closing ends the run, and the replica driving it may write its failure first,
+-- on this server or another; a failure written while this is set records the
+-- stop as canceled. It is empty until someone asks.
+ALTER TABLE jobs ADD COLUMN cancel_requested_at TIMESTAMPTZ;
+`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own

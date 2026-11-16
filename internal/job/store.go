@@ -166,6 +166,14 @@ type Store interface {
 	// session still running counts what it has spent so far, because the wallet
 	// has already committed it.
 	SpendSince(ctx context.Context, ids []string, since time.Time) (map[string]int64, error)
+	// RequestCancel durably records that a person asked to stop a non-terminal
+	// session, before anything closes its backend run. From then on every write
+	// that moves the session to failed records the stop as canceled with the
+	// "cancelled" cause, whichever replica writes it and whatever it was
+	// reporting, so a run that fails because it was closed is not read as an
+	// error. It is idempotent, does nothing for a terminal session, and returns
+	// ErrNotFound for an unknown one.
+	RequestCancel(ctx context.Context, id string) error
 	// Cancel stops a non-terminal session, moving it to failed with a "cancelled"
 	// cause and the stop reason canceled, and returns the resulting job. It is idempotent: cancelling an
 	// already-terminal session returns it unchanged. It does not go through the

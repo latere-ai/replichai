@@ -462,6 +462,15 @@ func (s *PGStore) Advance(ctx context.Context, id string, to Phase, mutate func(
 		if mutate != nil {
 			mutate(&j)
 		}
+		if to == PhaseFailed {
+			var asked bool
+			if err := tx.QueryRow(ctx, `SELECT cancel_requested_at IS NOT NULL FROM jobs WHERE id = $1`, id).Scan(&asked); err != nil {
+				return err
+			}
+			if asked {
+				j.Err, j.StopReason = CancelCause, StopCanceled
+			}
+		}
 		now := s.clock()
 		j.Phase = to
 		j.UpdatedAt = now
@@ -721,6 +730,28 @@ func (s *PGStore) SpendSince(ctx context.Context, ids []string, since time.Time)
 		out[j.ProjectID] += j.withCost().Cost
 	}
 	return out, rows.Err()
+}
+
+// RequestCancel records, in one UPDATE on the active row, that a person asked to
+// stop the session. Advance reads it under the row lock when it writes failed.
+func (s *PGStore) RequestCancel(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE jobs SET cancel_requested_at = COALESCE(cancel_requested_at, $2)
+		WHERE id = $1 AND phase = ANY($3)`, id, s.clock(), activeNames())
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM jobs WHERE id = $1)`, id).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrNotFound
+	}
+	return nil // terminal already; there is nothing left to stop
 }
 
 // Cancel stops a non-terminal session with a guarded UPDATE. The WHERE clause

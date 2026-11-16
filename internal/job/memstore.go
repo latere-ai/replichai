@@ -42,7 +42,10 @@ type MemStore struct {
 	// selected. A lease is a fact about the process driving a session, not
 	// about the session.
 	leases map[string]lease
-	clock  func() time.Time
+	// cancelAsked holds the ids of sessions a person asked to stop, the memory
+	// side of the Postgres cancel_requested_at column.
+	cancelAsked map[string]bool
+	clock       func() time.Time
 	// projects reads a project's visibility and trash state for the check a
 	// new session makes. Nil means no project is refused.
 	projects ProjectLookup
@@ -500,6 +503,25 @@ func (s *MemStore) StatusByProjects(_ context.Context, ids []string) (map[string
 	return out, nil
 }
 
+// RequestCancel records that a person asked to stop the session, so a failure
+// written afterward is recorded as the stop it is.
+func (s *MemStore) RequestCancel(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j, ok := s.jobs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if j.Phase.Terminal() {
+		return nil
+	}
+	if s.cancelAsked == nil {
+		s.cancelAsked = map[string]bool{}
+	}
+	s.cancelAsked[id] = true
+	return nil
+}
+
 // Cancel stops a non-terminal session, idempotently.
 func (s *MemStore) Cancel(ctx context.Context, id string) (Job, error) {
 	s.mu.Lock()
@@ -594,6 +616,9 @@ func (s *MemStore) Advance(ctx context.Context, id string, to Phase, mutate func
 		return err
 	}
 	s.transition(&j, to, mutate)
+	if to == PhaseFailed && s.cancelAsked[id] {
+		j.Err, j.StopReason = CancelCause, StopCanceled
+	}
 	s.jobs[id] = j
 	if to.Terminal() {
 		s.settleLocked(ctx, j)
