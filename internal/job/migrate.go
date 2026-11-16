@@ -148,17 +148,21 @@ ALTER TABLE jobs ADD COLUMN payer TEXT NOT NULL DEFAULT '';
 	{12, `
 -- Why a failed session stopped: canceled (a person stopped it), interrupted (a
 -- restart found no live run to rejoin) or error (anything else). It is empty in
--- every other phase. The backfill reads the error text the earlier code wrote.
+-- every other phase. The backfill reads the error text the earlier code wrote:
+-- "interrupted by a restart in <phase>", which one earlier wording prefixed with
+-- "stopped: ", so the pattern matches the text anywhere in the error.
 ALTER TABLE jobs ADD COLUMN stop_reason TEXT NOT NULL DEFAULT '';
 UPDATE jobs SET stop_reason = CASE
 	WHEN error = 'cancelled' THEN 'canceled'
-	WHEN error LIKE 'interrupted by a restart in %' THEN 'interrupted'
+	WHEN error LIKE '%interrupted by a restart in %' THEN 'interrupted'
 	ELSE 'error'
 END WHERE phase = 'failed';
 -- The phase is a closed set, enforced by the schema as well as by the code.
 -- This list and the transition table in job.go are the same set; a test reads
--- the constraint back and compares them. Added NOT VALID so the check is
--- cheap to take, then validated against the rows already there.
+-- the constraint back and compares them. The ADD COLUMN above holds an ACCESS
+-- EXCLUSIVE lock on jobs until this transaction commits, and the backfill and
+-- the validation run inside it, so NOT VALID does not shorten the lock. It is
+-- acceptable because the table is small.
 ALTER TABLE jobs ADD CONSTRAINT jobs_phase_known
 	CHECK (phase IN ('submitted','resolving','running','publishing','done','failed')) NOT VALID;
 ALTER TABLE jobs VALIDATE CONSTRAINT jobs_phase_known;

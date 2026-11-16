@@ -122,6 +122,7 @@ func TestMigrationBackfillsTheStopReason(t *testing.T) {
 	for id, row := range map[string][2]string{
 		"c": {"failed", "cancelled"},
 		"i": {"failed", "interrupted by a restart in running; no live run to rejoin"},
+		"s": {"failed", "stopped: interrupted by a restart in running; the agent session was closed"},
 		"e": {"failed", "boom"},
 		"d": {"done", ""},
 	} {
@@ -143,7 +144,7 @@ func TestMigrationBackfillsTheStopReason(t *testing.T) {
 	if _, err := pool.Exec(ctx, m); err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
-	want := map[string]string{"c": "canceled", "i": "interrupted", "e": "error", "d": ""}
+	want := map[string]string{"c": "canceled", "i": "interrupted", "s": "interrupted", "e": "error", "d": ""}
 	for id, w := range want {
 		var got string
 		if err := pool.QueryRow(ctx, `SELECT stop_reason FROM jobs WHERE id = $1`, id).Scan(&got); err != nil || got != w {
