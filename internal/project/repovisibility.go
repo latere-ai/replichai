@@ -103,9 +103,17 @@ func (v *RepoVisibility) want(ctx context.Context, repo string, public bool) err
 // apply makes the forge match the recorded want of one repository. The row is
 // locked for the forge call, so two appliers never race on one repository, and a
 // row someone else is applying is skipped. A forge failure is recorded on the
-// row and returned.
+// row (the attempt count, the error and the next try) and the transaction
+// commits that record before the failure is returned.
+//
+// A public want is applied as public only while the repository's project is
+// public. The project is read here, at apply time, so the order in which a
+// publish and a withdraw wrote their wants does not decide the outcome: a
+// repository whose project is private, trashed or gone is made private and the
+// row says so.
 func (v *RepoVisibility) apply(ctx context.Context, repo string) error {
-	return pgx.BeginFunc(ctx, v.pool, func(tx pgx.Tx) error {
+	var forgeErr error
+	err := pgx.BeginFunc(ctx, v.pool, func(tx pgx.Tx) error {
 		var public bool
 		var attempts int
 		err := tx.QueryRow(ctx, `
@@ -118,7 +126,24 @@ func (v *RepoVisibility) apply(ctx context.Context, repo string) error {
 		if err != nil {
 			return err
 		}
-		var forgeErr error
+		if public {
+			// Visibility and deleted_at are the project's own columns; a session
+			// names its repository with or without the organization prefix.
+			if err := tx.QueryRow(ctx, `
+				SELECT EXISTS (
+					SELECT 1 FROM jobs j JOIN projects p ON p.id = j.project_id
+					WHERE regexp_replace(j.repo_name, '^.*/', '') = $1
+						AND j.deleted_at IS NULL
+						AND p.visibility = $2 AND p.deleted_at IS NULL)`,
+				repo, string(VisibilityPublic)).Scan(&public); err != nil {
+				return err
+			}
+			if !public {
+				if _, err := tx.Exec(ctx, `UPDATE repo_visibility SET public = false WHERE repo = $1`, repo); err != nil {
+					return err
+				}
+			}
+		}
 		if public {
 			forgeErr = v.forge.SetPublic(ctx, repo)
 		} else {
@@ -132,13 +157,15 @@ func (v *RepoVisibility) apply(ctx context.Context, repo string) error {
 		if len(msg) > repoErrorMax {
 			msg = msg[:repoErrorMax]
 		}
-		if _, err := tx.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 			UPDATE repo_visibility SET attempts = attempts + 1, last_error = $2, next_try_at = $3
-			WHERE repo = $1`, repo, msg, v.clock().Add(retryWait(attempts+1))); err != nil {
-			return err
-		}
-		return forgeErr
+			WHERE repo = $1`, repo, msg, v.clock().Add(retryWait(attempts+1)))
+		return err
 	})
+	if err != nil {
+		return err
+	}
+	return forgeErr
 }
 
 // retryWait is how long to wait after the nth failed attempt.

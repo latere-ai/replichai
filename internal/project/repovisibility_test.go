@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // scriptedForge records every visibility call and fails the ones a test marks.
@@ -44,6 +46,24 @@ func (f *scriptedForge) state(repo string) (public, known bool) {
 	return
 }
 
+// seedRepo gives a repository a project with the given visibility and one
+// session that published it, which is what the apply step reads to decide
+// whether a public want still holds.
+func seedRepo(t *testing.T, pool *pgxpool.Pool, repo string, visibility Visibility) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `INSERT INTO projects (id, owner, title, visibility, created_at) VALUES ($1, 'owner', 't', $2, now())`,
+		"proj-"+repo, string(visibility)); err != nil {
+		t.Fatalf("seed project: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO jobs (id, kind, principal, project_id, ref, phase, repo_name, created_at, updated_at)
+		VALUES ($1, 'session', 'owner', $2, 'ref', 'done', $3, now(), now())`,
+		"job-"+repo, "proj-"+repo, "org/"+repo); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+}
+
 // TestAFailedFlipIsRecordedAndRetriedUntilTheForgeMatches checks the wanted
 // visibility survives a forge failure and a sweep applies it once the forge
 // answers.
@@ -53,6 +73,7 @@ func TestAFailedFlipIsRecordedAndRetriedUntilTheForgeMatches(t *testing.T) {
 	ctx := context.Background()
 	forge := &scriptedForge{failing: true}
 	now := time.Now()
+	seedRepo(t, pool, "paper-aaaa", VisibilityPublic)
 	v := NewRepoVisibility(pool, forge)
 	v.clock = func() time.Time { return now }
 
@@ -67,9 +88,31 @@ func TestAFailedFlipIsRecordedAndRetriedUntilTheForgeMatches(t *testing.T) {
 		t.Fatal("the failing forge applied a visibility")
 	}
 
-	// Not due yet: the failure set a wait, so a sweep right away leaves it.
+	// The failed attempt is on the row: counted, explained and pushed out.
+	var attempts int
+	var lastError string
+	var wantedAt, nextTry time.Time
+	readRow := func() {
+		t.Helper()
+		if err := pool.QueryRow(ctx, `SELECT attempts, last_error, wanted_at, next_try_at FROM repo_visibility WHERE repo = 'paper-aaaa'`).
+			Scan(&attempts, &lastError, &wantedAt, &nextTry); err != nil {
+			t.Fatalf("read the row: %v", err)
+		}
+	}
+	readRow()
+	if attempts != 1 || lastError == "" || !nextTry.After(wantedAt) {
+		t.Fatalf("after a failed attempt: attempts=%d last_error=%q next_try_at=%v wanted_at=%v; want 1, an error and a later next try",
+			attempts, lastError, nextTry, wantedAt)
+	}
+
+	// Not due yet: the failure set a wait, so a sweep right away leaves it and
+	// does not call the forge.
+	calls := forge.calls
 	if n, err := v.Sweep(ctx); err != nil || n != 0 {
 		t.Fatalf("sweep before the wait = %d, %v; want nothing applied", n, err)
+	}
+	if forge.calls != calls {
+		t.Fatalf("a sweep before next_try_at called the forge %d times", forge.calls-calls)
 	}
 
 	// The forge recovers and the wait has passed.
@@ -96,6 +139,7 @@ func TestTheLastWantedVisibilityWins(t *testing.T) {
 	ctx := context.Background()
 	forge := &scriptedForge{failing: true}
 	now := time.Now()
+	seedRepo(t, pool, "paper-bbbb", VisibilityPublic)
 	v := NewRepoVisibility(pool, forge)
 	v.clock = func() time.Time { return now }
 
@@ -115,12 +159,40 @@ func TestTheLastWantedVisibilityWins(t *testing.T) {
 	}
 }
 
+// TestAPublishWantWrittenAfterAWithdrawalLeavesTheRepositoryPrivate checks the
+// forge follows the project when the two requests write their wants in the
+// other order: the withdrawal's private want lands first, then the publish
+// request's public want, with the project already private.
+func TestAPublishWantWrittenAfterAWithdrawalLeavesTheRepositoryPrivate(t *testing.T) {
+	pool := testPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+	forge := &scriptedForge{}
+	seedRepo(t, pool, "paper-dddd", VisibilityPrivate)
+	v := NewRepoVisibility(pool, forge)
+
+	if err := v.SetPrivate(ctx, "paper-dddd"); err != nil {
+		t.Fatalf("SetPrivate: %v", err)
+	}
+	if err := v.SetPublic(ctx, "paper-dddd"); err != nil {
+		t.Fatalf("SetPublic: %v", err)
+	}
+	if public, known := forge.state("paper-dddd"); !known || public {
+		t.Errorf("the forge holds public=%v known=%v, want private", public, known)
+	}
+	var public bool
+	if err := pool.QueryRow(ctx, `SELECT public FROM repo_visibility WHERE repo = 'paper-dddd'`).Scan(&public); err != nil || public {
+		t.Errorf("the recorded want is public=%v (%v), want private", public, err)
+	}
+}
+
 // TestRunResumesWorkLeftByARestart checks Run applies a pending flip on entry
 // and stops when its context ends.
 func TestRunResumesWorkLeftByARestart(t *testing.T) {
 	pool := testPool(t)
 	defer pool.Close()
 	forge := &scriptedForge{failing: true}
+	seedRepo(t, pool, "paper-cccc", VisibilityPublic)
 	v := NewRepoVisibility(pool, forge)
 	if err := v.SetPublic(context.Background(), "paper-cccc"); err != nil {
 		t.Fatalf("SetPublic: %v", err)
